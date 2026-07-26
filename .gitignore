@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets — never committed; see example.env
+.env
+*.creds
+*.pem
+*.key
+
+# Live/private profile data — only the example profile is public.
+# (order matters: un-ignore the dir, then its contents)
+profiles/*
+!profiles/example-club-racer/
+!profiles/example-club-racer/**
+
+# OS
+.DS_Store

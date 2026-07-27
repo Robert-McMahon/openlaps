@@ -8,8 +8,14 @@ DBCs, sensors, and track — is just a configuration profile on top of a
 generic core; `profiles/example-club-racer/` is a real one, checked in as
 documentation.
 
-This repo is in early bootstrap. See `docs/ARCHITECTURE.md` (coming in a
-follow-up phase) for the full design.
+This repo is in early bootstrap — design docs are complete; implementation
+is next. Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), then:
+
+- [`docs/WIRE_FORMAT.md`](docs/WIRE_FORMAT.md) — subjects, streams, protobuf schema
+- [`docs/AGENT_DESIGN.md`](docs/AGENT_DESIGN.md) — vehicle agent internals
+- [`docs/CATALOG.md`](docs/CATALOG.md) — configuration profiles and channel naming
+- [`docs/LINK_BUDGET.md`](docs/LINK_BUDGET.md) — measured bandwidth vs. radio capacity
+- [`docs/adr/`](docs/adr/) — decision records
 
 ## License
 

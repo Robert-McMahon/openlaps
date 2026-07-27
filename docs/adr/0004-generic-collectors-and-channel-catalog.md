@@ -89,3 +89,47 @@ IMU code path anywhere in the new system.
   sequence number carried in every batch header) is new protocol surface
   that must be implemented correctly for late-joining or reconnecting pit
   consumers to decode historical data with the right catalog version.
+
+## Amendment (2026-07-27)
+
+The example catalog originally grouped canonical channel names under fixed
+top-level domains (`engine.*`, `chassis.*`, `wheels.*`, `fuel.*`,
+`electrics.*`), documented in `docs/CATALOG.md`. In practice this
+taxonomy invited exactly the kind of pointless categorization debate this
+ADR's collector design was meant to avoid at the transport layer: does
+throttle position belong to `engine.*` or `chassis.*`? Is ECU-calculated
+vehicle speed `wheels.*` or `engine.*`? The old convention's own
+"judgement calls worth a second look" section already listed several such
+calls with no clean answer.
+
+The owner decided to flatten every on-vehicle sensor/actuator reading into
+a single `car.*` namespace (one level, snake_case), dropping the domain
+sub-taxonomy entirely. `position.*` (GNSS), `sys.*` (host + agent health),
+and the derived `lap.*` / `timing.*` namespaces are unaffected — they were
+never part of the domain taxonomy this amendment removes. Where a bare,
+flattened name would be ambiguous, the former domain word is folded into
+the name itself instead of used as a prefix (e.g. `engine.demand` ->
+`car.engine_demand`, `engine.limiting_active` ->
+`car.engine_limiting_active`).
+
+Alongside the flattening, the owner introduced a second catalog
+principle: **name the measurement, not the wire.** Some source signals —
+notably the PD16A power-distribution module's generic analog inputs
+(`AVI1-4`, `SPI3-4`) and its per-output current/status/load telemetry
+(`HBO1-2`, `HCO25_1-4`, `HCO8_1-10`) — have no fixed physical meaning; they
+report whatever happens to be wired to that pin on a given car. Mapping
+these to canonical names in the *example* profile would document a
+wiring choice, not a measurement, and would mislead anyone copying the
+example catalog for their own car. These entries were removed from
+`profiles/example-club-racer/catalog.yaml` and replaced with a commented
+template showing how to map one once its real-world meaning is known.
+PD16A device-health diagnostics (its own temperature, battery voltage,
+total current, per-driver-pair thermal status) are unaffected by this
+change — they describe the module itself, not its wiring, and remain
+mapped as `car.pd16_*` channels, alongside the CAN keypad's `car.keypad_*`
+channels (a generic device, not wiring-dependent).
+
+This amendment does not change anything else in this ADR's decision:
+collectors remain generic transports, the catalog still maps source refs
+to canonical names with units/type/link policy, and `ChannelRegistry`
+integer IDs still carry those canonical names over the wire.

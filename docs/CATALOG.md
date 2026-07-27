@@ -95,40 +95,91 @@ architecture).
 
 ## Canonical naming convention
 
-Dotted lowercase, `<domain>.<name>`. Fixed top-level domains:
+**Flat `car.*` namespace, snake_case, one level.** Every on-vehicle
+sensor/actuator reading -- engine, chassis dynamics, wheels, fuel,
+electrics, whatever -- is a single `car.<name>` channel. There is no
+domain sub-taxonomy (no `engine.*`, `chassis.*`, `wheels.*`, `fuel.*`,
+`electrics.*`). This was a deliberate simplification (see ADR 0004's
+2026-07-27 amendment): a domain taxonomy invites pointless categorization
+debates -- does throttle position belong to `engine.*` or `chassis.*`? does
+a wheel-speed-derived vehicle speed belong to `wheels.*` or `engine.*`? --
+that have no correct answer and no bearing on how any consumer actually
+uses the channel. Consumers match on the full channel name or a glob; they
+don't need or benefit from a domain prefix to group by.
 
-| Domain | Covers |
+Reserved namespaces, unchanged and outside `car.*`:
+
+| Namespace | Covers |
 |---|---|
-| `engine.*` | ECU-reported engine/drivetrain-control state: RPM, pressures, temperatures, lambda, ignition/injection timing, knock, engine protection, ECU/wideband-controller diagnostics |
-| `chassis.*` | IMU/dynamics: accelerometer, gyroscope, fused Euler angles, and driver-input switches that describe vehicle dynamics inputs (brake/clutch/accelerator pedal, traction control state) |
+| `car.*` | Every on-vehicle sensor/actuator reading: ECU engine/drivetrain state, IMU/dynamics, wheel speeds, fuel system, electrics, power-distribution/keypad device health. Flat, one level, snake_case. |
 | `position.*` | GNSS: lat, lon, speed, heading, fix quality |
-| `wheels.*` | Wheel-speed sensors and ECU-derived vehicle/driveline speed signals |
-| `fuel.*` | Fuel system: level, flow, consumption, trim |
-| `electrics.*` | Electrical system: battery, lighting, power-distribution module (`electrics.pd16.*`), CAN keypad (`electrics.keypad.*`), raw PDM diagnostic bytes |
 | `sys.*` | Host metrics and vehicle-agent health (queue depths, dropped-sample counters, link status) -- not populated via `catalog.yaml`; these are internal agent/host channels, not mapped source signals |
 | `lap.*`, `timing.*` | **Reserved, derived.** Produced by the timing engine from `apps.lap_timing`'s output (lap/sector events, `delta_best`, `predicted_lap`, distance). Never appear as a `from:` target in `catalog.yaml` -- they are channels the timing engine *writes*, re-entering the sample bus like any other channel. |
 
+Where the bare, flattened name would be ambiguous on its own, keep the
+former domain word as part of the name instead of the channel name itself:
+`car.engine_demand`, `car.engine_limiting_active`,
+`car.engine_protection_severity`, `car.gearbox_oil_temp`. Where it wouldn't
+be ambiguous, drop it: `engine.rpm` -> `car.rpm`, `chassis.accel_x` ->
+`car.accel_x`. Per-corner wheel-speed channels keep an explicit `wheel_`
+infix because the bare name (`car.speed_fl`) would be indistinguishable
+from a GPS-derived speed: `car.wheel_speed_fl`, `_fr`, `_rl`, `_rr`.
+
+**Name the measurement, not the wire.** Canonical names describe physical
+meaning, not wiring. This mainly bites on generic PDM (power-distribution
+module) I/O: a PD16A analog input (`AVI1`) or output driver (`HCO8_3`) has
+no fixed meaning -- it reports whatever sensor or load happens to be wired
+to that pin on *this* car. A different build of the same car (or a
+different car using the same PD16A) could have `AVI1` wired to a fuel
+surge-tank level sender, a brake-bias potentiometer, or nothing at all.
+Mapping `car.avi1_v` in the example catalog would document a wiring
+decision, not a measurement -- so the example catalog leaves these
+unmapped and documents the pattern with a commented template instead (see
+`profiles/example-club-racer/catalog.yaml`, PDM/keypad section):
+
+```yaml
+# car.fuel_surge_tank_level: { from: "can0:haltech2.PD16A_AVI_VOLTAGES.PD16A_AVI_1_VOLTAGE", units: "V" }
+```
+
+Device-health diagnostics are the exception: a PD16A's own temperature,
+battery voltage, and total current describe the module itself, not
+whatever is wired to it, so they're meaningful in any build and stay
+mapped as `car.pd16_temp`-style names (`car.pd16_cpu_temp`,
+`car.pd16_battery_v`, `car.pd16_total_current`, etc). Generic device
+signals like the CAN keypad's buttons are likewise always meaningful
+regardless of car-specific wiring and stay mapped (`car.keypad_button_1`,
+...).
+
 Judgement calls worth a second look (flagged for review, not blocking):
 
-- **`wheels.vehicle_speed`, `wheels.driveshaft_rpm`, `wheels.trip_distance_m`**:
-  these are ECU-calculated (not raw wheel-sensor) values, grouped under
-  `wheels.*` as "speed/distance metrics" rather than `engine.*` or a
-  dedicated drivetrain domain (none exists in the current convention).
-- **`chassis.accel_pedal_pos`, `chassis.brake_pedal_switch`,
-  `chassis.clutch_switch`**: grouped under `chassis.*` as driver-dynamics
-  inputs rather than `engine.*`, for consistency with each other -- even
-  though the ECU is the physical source for all three.
-- **`engine.ambient_air_temp`, `engine.fuel_temp`, `engine.gearbox_oil_temp`**:
-  kept under `engine.*` (matching how the Haltech DBC groups its own
-  temperature messages) even though the physical medium (ambient air, fuel,
-  gearbox oil) isn't strictly "engine".
-- **`electrics.pd16.avi1_v` / `avi1_state` / `spi3_v` naming**: no
-  underscore between the port prefix and its number (matches this plan's
-  own worked example), while the HCO25/HCO8/HBO output channels *do* keep
-  the underscore (`hco25_1_v`, `hco8_1_v`, `hbo_1_v`), mirroring the DBC's
-  own `HCO25_1`, `HCO8_1`, `HBO_1` signal-name style. This is a deliberate
-  but slightly inconsistent choice within `electrics.pd16.*` -- flagging
-  for review.
+- **`car.driveshaft_rpm`, `car.trip_distance_m`, `car.vehicle_speed`**:
+  ECU-calculated (not raw wheel-sensor) values; previously grouped under
+  `wheels.*`, now just flat `car.*` names with no domain marker since the
+  bare names aren't ambiguous.
+- **`car.ambient_air_temp`, `car.fuel_temp`, `car.gearbox_oil_temp`**:
+  previously kept under `engine.*` (matching how the Haltech DBC groups its
+  own temperature messages) even though the physical medium (ambient air,
+  fuel, gearbox oil) isn't strictly "engine". Flattening removes the
+  question entirely; `car.gearbox_oil_temp` keeps its full descriptive name
+  since bare `car.gearbox_temp` would collide conceptually with nothing
+  else here but reads better fully spelled out.
+- **`car.fuel_pressure`, `car.fuel_temp` vs. `car.fuel_level`,
+  `car.fuel_flow_rate`, ...**: previously split across `engine.*` (the
+  ECU-reported pressure/temp signals) and `fuel.*` (level, flow,
+  consumption, trim) -- an inconsistency the old convention's own
+  judgement-call notes flagged. Flattening incidentally resolves it: all
+  fuel-system channels are now consistently `car.fuel_*`.
+- **`car.pd16_hco25_12_temp_status`, `car.pd16_hco25_34_temp_status`**:
+  these come from the `PD16A_DIAGNOSTICS` message (per-driver-pair thermal
+  status), not `PD16A_OUTPUT_STATUS`, so -- unlike the per-output
+  current/status/load channels -- they describe PD16A hardware health, not
+  wiring. Kept mapped alongside the other PD16 diagnostics rather than
+  removed to the wiring-dependent template.
+- **`car.trigger_counter`, `car.trigger_error_count`,
+  `car.trigger_sync_level`**: kept bare (no `engine_` prefix) on the
+  judgement that "trigger" unambiguously reads as the ignition/crank
+  trigger system in this context; flagging in case a future channel
+  (e.g. a lap/sector "trigger") would collide.
 
 ## Worked example: adding a second CAN bus carrying GPS
 
@@ -189,6 +240,11 @@ untouched.
 +  position.fix_quality: { from: "can1:gps.GPS_STATUS.FIX_TYPE", type: string }
 ```
 
+`position.*` is a reserved namespace, not `car.*`, so this example is
+unaffected by the flat-`car.*` renaming -- it illustrates the same point
+either way: only the `from:` refs change when a source moves buses or
+transports.
+
 `apps.lap_timing` (`position: position.*`, `track: Wanneroo`) is untouched --
 it never referenced a bus or decoder, only canonical names. Every consumer
 downstream of the catalog mapper is equally unaffected.
@@ -204,112 +260,117 @@ Every `include_signals` entry from the old repo's
 actually present in the DBCs, honoring the old config's `exclude_signals`
 list (`IMU_*_SYNC`, `PD16A_*_CFG_*`, `PD16A_*_IN_*`).
 
-**101 old include-list entries -> 212 canonical channels, 100 entries
-mapped, 1 unmapped** (see note below).
+**101 old include-list entries -> 116 canonical `car.*` channels, 86
+entries mapped, 14 unmapped by design (wiring-dependent PDM I/O), 1
+unmapped (stale)** (see notes below). The 2026-07-27 flat-`car.*` renaming
+also collapsed the PDM per-output current/status/load and AVI/SPI analog
+input entries from mapped channels to the commented wiring-dependent
+template in `catalog.yaml` -- see "name the measurement, not the wire"
+above.
 
 | Old `signals_config.yaml` entry | Canonical channel(s) |
 |---|---|
-| `ENGINE_SPEED` | `engine.rpm` |
-| `MANIFOLD_PRESSURE` | `engine.map` |
-| `THROTTLE_POSITION` | `engine.throttle_pos` |
-| `COOLANT_PRESSURE` | `engine.coolant_pressure` |
-| `FUEL_PRESSURE` | `engine.fuel_pressure` |
-| `OIL_PRESSURE` | `engine.oil_pressure` |
-| `ENGINE_DEMAND` | `engine.demand` |
-| `WASTEGATE_PRESSURE` | `engine.wastegate_pressure` |
-| `COOLANT_TEMPERATURE` | `engine.coolant_temp` |
-| `AIR_TEMPERATURE` | `engine.air_temp` |
-| `FUEL_TEMPERATURE` | `engine.fuel_temp` |
-| `OIL_TEMPERATURE` | `engine.oil_temp` |
+| `ENGINE_SPEED` | `car.rpm` |
+| `MANIFOLD_PRESSURE` | `car.map` |
+| `THROTTLE_POSITION` | `car.throttle_pos` |
+| `COOLANT_PRESSURE` | `car.coolant_pressure` |
+| `FUEL_PRESSURE` | `car.fuel_pressure` |
+| `OIL_PRESSURE` | `car.oil_pressure` |
+| `ENGINE_DEMAND` | `car.engine_demand` |
+| `WASTEGATE_PRESSURE` | `car.wastegate_pressure` |
+| `COOLANT_TEMPERATURE` | `car.coolant_temp` |
+| `AIR_TEMPERATURE` | `car.air_temp` |
+| `FUEL_TEMPERATURE` | `car.fuel_temp` |
+| `OIL_TEMPERATURE` | `car.oil_temp` |
 | `GEARBOX_TEMPERATURE` | **unmapped** -- no signal with this name in any DBC (see note below) |
-| `WHEEL_SPEED_*` | `wheels.speed_fl`, `wheels.speed_fr`, `wheels.speed_rl`, `wheels.speed_rr` |
-| `ENGINE_LIMITING_ACTIVE` | `engine.limiting_active` |
-| `BOOST_CONTROL_OUTPUT` | `engine.boost_control_output` |
-| `VEHICLE_SPEED` | `wheels.vehicle_speed` |
-| `BATTERY_VOLTAGE` | `electrics.battery_v` |
-| `TARGET_BOOST_LEVEL` | `engine.target_boost` |
-| `BAROMETRIC_PRESSURE` | `engine.baro_pressure` |
-| `FUEL_FLOW` | `fuel.flow_rate` |
-| `LAMBDA_SENSOR1` | `engine.lambda1` |
-| `TRIGGER_SYSTEM_ERROR_COUNT` | `engine.trigger_error_count` |
-| `AMBIENT_AIR_TEMPERATURE` | `engine.ambient_air_temp` |
-| `FUEL_LEVEL` | `fuel.level` |
-| `BRAKE_PEDAL_SWITCH` | `chassis.brake_pedal_switch` |
-| `CLUTCH_SWITCH` | `chassis.clutch_switch` |
-| `OIL_PRESSURE_LIGHT` | `engine.oil_pressure_light` |
-| `TRACTION_CONTROL_ENABLED` | `chassis.tc_enabled` |
-| `TRACTION_CONTROL_ACTIVE` | `chassis.tc_active` |
-| `CHECK_ENGINE_LIGHT` | `engine.check_engine_light` |
-| `GEAR` | `engine.gear` |
-| `ENGINE_PROTECTION_SEVERITY_LEVEL` | `engine.protection_severity` |
-| `ENGINE_PROTECTION_REASON_LETTER` | `engine.protection_reason_letter` |
-| `ENGINE_PROTECTION_REASON_NUMBER` | `engine.protection_reason_number` |
-| `TOTAL_FUEL_USED_TRIP_METER1` | `fuel.trip_used` |
-| `DISTANCE_TRIP_METER1` | `wheels.trip_distance_m` |
-| `KNOCK_*` | `engine.knock_level1`, `engine.knock_level2` |
-| `PARK_LIGHT_STATE` | `electrics.park_light` |
-| `HEAD_LIGHT_STATE` | `electrics.head_light` |
-| `HIGH_BEAM_LIGHT_STATE` | `electrics.high_beam_light` |
-| `LEFT_INDICATOR_STATE` | `electrics.left_indicator` |
-| `RIGHT_INDICATOR_STATE` | `electrics.right_indicator` |
-| `GENERIC_OUTPUT_STATES` | `electrics.generic_output_states` |
-| `CALCULATED_AIR_TEMPERATURE` | `engine.calculated_air_temp` |
-| `PDM_DATA_BYTE_*` | `electrics.pdm_raw_byte_0`, `electrics.pdm_raw_byte_1`, `electrics.pdm_raw_byte_2`, `electrics.pdm_raw_byte_3` |
-| `IMU_ACCEL_*` | `chassis.accel_x`, `chassis.accel_y`, `chassis.accel_z` |
-| `IMU_GYRO_*` | `chassis.gyro_x`, `chassis.gyro_y`, `chassis.gyro_z` |
-| `IMU_ROLL` | `chassis.roll` |
-| `IMU_PITCH` | `chassis.pitch` |
-| `IMU_YAW` | `chassis.yaw` |
-| `IMU_TEMPERATURE` | `chassis.imu_temp` |
-| `LAMBDA_OVERALL` | `engine.lambda_overall` |
-| `TARGET_LAMBDA` | `engine.target_lambda` |
-| `IGNITION_ANGLE_LEADING` | `engine.ignition_angle_leading` |
-| `IGNITION_ANGLE_BANK1` | `engine.ignition_angle_bank1` |
-| `IGNITION_ANGLE_BANK2` | `engine.ignition_angle_bank2` |
-| `INJECTION_STAGE1_DUTY_CYCLE` | `engine.injection_stage1_duty` |
-| `INJECTION_STAGE1_AVG_TIME` | `engine.injection_stage1_avg_time` |
-| `FUEL_TRIM_LONG_TERM_BANK1` | `fuel.trim_long_term_bank1` |
-| `ACCELERATOR_PEDAL_POSITION` | `chassis.accel_pedal_pos` |
-| `INJECTOR_PRESSURE_DIFFERENTIAL` | `engine.injector_pressure_diff` |
-| `EXHAUST_MANIFOLD_PRESSURE` | `engine.exhaust_manifold_pressure` |
-| `LAUNCH_CONTROL_ACTIVE` | `engine.launch_control_active` |
-| `LAUNCH_CONTROL_IGNITION_RETARD` | `engine.launch_control_ign_retard` |
-| `DRIVESHAFT_RPM` | `wheels.driveshaft_rpm` |
-| `TOTAL_FUEL_USED` | `fuel.total_used` |
-| `PRIMARY_FUEL_PUMP_OUTPUT` | `fuel.primary_pump_output` |
-| `ECU_TEMPERATURE` | `engine.ecu_temp` |
-| `GEARBOX_OIL_TEMPERATURE` | `engine.gearbox_oil_temp` |
-| `TRIGGER_COUNTER` | `engine.trigger_counter` |
-| `TRIGGER_SYNC_LEVEL` | `engine.trigger_sync_level` |
-| `WB1_LAMBDA_1` | `engine.wb1_lambda1` |
-| `WB1_DIAGNOSTIC_1` | `engine.wb1_diagnostic1` |
-| `WB1_SENSE_RESISTOR_1` | `engine.wb1_sense_resistor1` |
-| `WB1_BATTERY_VOLTAGE` | `electrics.wb1_battery_v` |
-| `PD16A_TOTAL_CURRENT` | `electrics.pd16.total_current` |
-| `PD16A_BATTERY_VOLTAGE` | `electrics.pd16.battery_v` |
-| `PD16A_MAIN_RAIL_VOLTAGE` | `electrics.pd16.main_rail_v` |
-| `PD16A_PROT_RAIL_VOLTAGE` | `electrics.pd16.prot_rail_v` |
-| `PD16A_IGNITION_SWITCH` | `electrics.pd16.ignition_switch` |
-| `PD16A_CPU_TEMP` | `electrics.pd16.cpu_temp` |
-| `PD16A_MAIN_RAIL_TEMP` | `electrics.pd16.main_rail_temp` |
-| `PD16A_THERMISTOR_*_TEMP` | `electrics.pd16.thermistor_1_temp`, `electrics.pd16.thermistor_2_temp`, `electrics.pd16.thermistor_3_temp` |
-| `PD16A_*_TEMP_STATUS` | `electrics.pd16.hco25_12_temp_status`, `electrics.pd16.hco25_34_temp_status`, `electrics.pd16.main_rail_temp_status`, `electrics.pd16.tvs_temp_status` |
-| `PD16A_*_PIN_STATE` | `electrics.pd16.hbo_1_pin_state`, `electrics.pd16.hbo_2_pin_state`, `electrics.pd16.hco8_1_pin_state`, `electrics.pd16.hco8_2_pin_state`, `electrics.pd16.hco8_3_pin_state`, `electrics.pd16.hco8_4_pin_state`, `electrics.pd16.hco8_5_pin_state`, `electrics.pd16.hco8_6_pin_state`, `electrics.pd16.hco8_7_pin_state`, `electrics.pd16.hco8_8_pin_state`, `electrics.pd16.hco8_9_pin_state`, `electrics.pd16.hco8_10_pin_state`, `electrics.pd16.hco25_1_pin_state`, `electrics.pd16.hco25_2_pin_state`, `electrics.pd16.hco25_3_pin_state`, `electrics.pd16.hco25_4_pin_state` |
-| `PD16A_*_RETRY_COUNT` | `electrics.pd16.hbo_1_retry_count`, `electrics.pd16.hbo_2_retry_count`, `electrics.pd16.hco8_1_retry_count`, `electrics.pd16.hco8_2_retry_count`, `electrics.pd16.hco8_3_retry_count`, `electrics.pd16.hco8_4_retry_count`, `electrics.pd16.hco8_5_retry_count`, `electrics.pd16.hco8_6_retry_count`, `electrics.pd16.hco8_7_retry_count`, `electrics.pd16.hco8_8_retry_count`, `electrics.pd16.hco8_9_retry_count`, `electrics.pd16.hco8_10_retry_count`, `electrics.pd16.hco25_1_retry_count`, `electrics.pd16.hco25_2_retry_count`, `electrics.pd16.hco25_3_retry_count`, `electrics.pd16.hco25_4_retry_count` |
-| `PD16A_HCO*_VOLTAGE` | `electrics.pd16.hco8_1_v`, `electrics.pd16.hco8_2_v`, `electrics.pd16.hco8_3_v`, `electrics.pd16.hco8_4_v`, `electrics.pd16.hco8_5_v`, `electrics.pd16.hco8_6_v`, `electrics.pd16.hco8_7_v`, `electrics.pd16.hco8_8_v`, `electrics.pd16.hco8_9_v`, `electrics.pd16.hco8_10_v`, `electrics.pd16.hco25_1_v`, `electrics.pd16.hco25_2_v`, `electrics.pd16.hco25_3_v`, `electrics.pd16.hco25_4_v` |
-| `PD16A_HCO*_CURRENT` | `electrics.pd16.hco8_1_current`, `electrics.pd16.hco8_2_current`, `electrics.pd16.hco8_3_current`, `electrics.pd16.hco8_4_current`, `electrics.pd16.hco8_5_current`, `electrics.pd16.hco8_6_current`, `electrics.pd16.hco8_7_current`, `electrics.pd16.hco8_8_current`, `electrics.pd16.hco8_9_current`, `electrics.pd16.hco8_10_current`, `electrics.pd16.hco25_1_hs_current`, `electrics.pd16.hco25_1_ls_current`, `electrics.pd16.hco25_2_hs_current`, `electrics.pd16.hco25_2_ls_current`, `electrics.pd16.hco25_3_hs_current`, `electrics.pd16.hco25_3_ls_current`, `electrics.pd16.hco25_4_hs_current`, `electrics.pd16.hco25_4_ls_current` |
-| `PD16A_HCO*_LOAD` | `electrics.pd16.hco8_1_load`, `electrics.pd16.hco8_2_load`, `electrics.pd16.hco8_3_load`, `electrics.pd16.hco8_4_load`, `electrics.pd16.hco8_5_load`, `electrics.pd16.hco8_6_load`, `electrics.pd16.hco8_7_load`, `electrics.pd16.hco8_8_load`, `electrics.pd16.hco8_9_load`, `electrics.pd16.hco8_10_load`, `electrics.pd16.hco25_1_load`, `electrics.pd16.hco25_2_load`, `electrics.pd16.hco25_3_load`, `electrics.pd16.hco25_4_load` |
-| `PD16A_HBO_*_VOLTAGE` | `electrics.pd16.hbo_1_v`, `electrics.pd16.hbo_2_v` |
-| `PD16A_HBO_*_HS_CURRENT` | `electrics.pd16.hbo_1_hs_current`, `electrics.pd16.hbo_2_hs_current` |
-| `PD16A_HBO_*_LOAD` | `electrics.pd16.hbo_1_load`, `electrics.pd16.hbo_2_load` |
-| `PD16A_AVI_*_STATE` | `electrics.pd16.avi1_state`, `electrics.pd16.avi2_state`, `electrics.pd16.avi3_state`, `electrics.pd16.avi4_state` |
-| `PD16A_AVI_*_VOLTAGE` | `electrics.pd16.avi1_v`, `electrics.pd16.avi2_v`, `electrics.pd16.avi3_v`, `electrics.pd16.avi4_v` |
-| `PD16A_SPI_3_STATE` | `electrics.pd16.spi3_state` |
-| `PD16A_SPI_4_STATE` | `electrics.pd16.spi4_state` |
-| `PD16A_SPI_3_VOLTAGE` | `electrics.pd16.spi3_v` |
-| `PD16A_SPI_4_VOLTAGE` | `electrics.pd16.spi4_v` |
-| `KEYPAD_BUTTON_*` | `electrics.keypad.button_1`, `electrics.keypad.button_2`, `electrics.keypad.button_3`, `electrics.keypad.button_4`, `electrics.keypad.button_5`, `electrics.keypad.button_6`, `electrics.keypad.button_7`, `electrics.keypad.button_8`, `electrics.keypad.button_9`, `electrics.keypad.button_10`, `electrics.keypad.button_11`, `electrics.keypad.button_12`, `electrics.keypad.button_13`, `electrics.keypad.button_14`, `electrics.keypad.button_15` |
-| `KEYPAD_NMT_STATE` | `electrics.keypad.nmt_state` |
+| `WHEEL_SPEED_*` | `car.wheel_speed_fl`, `car.wheel_speed_fr`, `car.wheel_speed_rl`, `car.wheel_speed_rr` |
+| `ENGINE_LIMITING_ACTIVE` | `car.engine_limiting_active` |
+| `BOOST_CONTROL_OUTPUT` | `car.boost_control_output` |
+| `VEHICLE_SPEED` | `car.vehicle_speed` |
+| `BATTERY_VOLTAGE` | `car.battery_v` |
+| `TARGET_BOOST_LEVEL` | `car.target_boost` |
+| `BAROMETRIC_PRESSURE` | `car.baro_pressure` |
+| `FUEL_FLOW` | `car.fuel_flow_rate` |
+| `LAMBDA_SENSOR1` | `car.lambda1` |
+| `TRIGGER_SYSTEM_ERROR_COUNT` | `car.trigger_error_count` |
+| `AMBIENT_AIR_TEMPERATURE` | `car.ambient_air_temp` |
+| `FUEL_LEVEL` | `car.fuel_level` |
+| `BRAKE_PEDAL_SWITCH` | `car.brake_pedal_switch` |
+| `CLUTCH_SWITCH` | `car.clutch_switch` |
+| `OIL_PRESSURE_LIGHT` | `car.oil_pressure_light` |
+| `TRACTION_CONTROL_ENABLED` | `car.tc_enabled` |
+| `TRACTION_CONTROL_ACTIVE` | `car.tc_active` |
+| `CHECK_ENGINE_LIGHT` | `car.check_engine_light` |
+| `GEAR` | `car.gear` |
+| `ENGINE_PROTECTION_SEVERITY_LEVEL` | `car.engine_protection_severity` |
+| `ENGINE_PROTECTION_REASON_LETTER` | `car.engine_protection_reason_letter` |
+| `ENGINE_PROTECTION_REASON_NUMBER` | `car.engine_protection_reason_number` |
+| `TOTAL_FUEL_USED_TRIP_METER1` | `car.fuel_trip_used` |
+| `DISTANCE_TRIP_METER1` | `car.trip_distance_m` |
+| `KNOCK_*` | `car.knock_level1`, `car.knock_level2` |
+| `PARK_LIGHT_STATE` | `car.park_light` |
+| `HEAD_LIGHT_STATE` | `car.head_light` |
+| `HIGH_BEAM_LIGHT_STATE` | `car.high_beam_light` |
+| `LEFT_INDICATOR_STATE` | `car.left_indicator` |
+| `RIGHT_INDICATOR_STATE` | `car.right_indicator` |
+| `GENERIC_OUTPUT_STATES` | `car.generic_output_states` |
+| `CALCULATED_AIR_TEMPERATURE` | `car.calculated_air_temp` |
+| `PDM_DATA_BYTE_*` | `car.pdm_raw_byte_0`, `car.pdm_raw_byte_1`, `car.pdm_raw_byte_2`, `car.pdm_raw_byte_3` |
+| `IMU_ACCEL_*` | `car.accel_x`, `car.accel_y`, `car.accel_z` |
+| `IMU_GYRO_*` | `car.gyro_x`, `car.gyro_y`, `car.gyro_z` |
+| `IMU_ROLL` | `car.roll` |
+| `IMU_PITCH` | `car.pitch` |
+| `IMU_YAW` | `car.yaw` |
+| `IMU_TEMPERATURE` | `car.imu_temp` |
+| `LAMBDA_OVERALL` | `car.lambda_overall` |
+| `TARGET_LAMBDA` | `car.target_lambda` |
+| `IGNITION_ANGLE_LEADING` | `car.ignition_angle_leading` |
+| `IGNITION_ANGLE_BANK1` | `car.ignition_angle_bank1` |
+| `IGNITION_ANGLE_BANK2` | `car.ignition_angle_bank2` |
+| `INJECTION_STAGE1_DUTY_CYCLE` | `car.injection_stage1_duty` |
+| `INJECTION_STAGE1_AVG_TIME` | `car.injection_stage1_avg_time` |
+| `FUEL_TRIM_LONG_TERM_BANK1` | `car.fuel_trim_long_term_bank1` |
+| `ACCELERATOR_PEDAL_POSITION` | `car.accel_pedal_pos` |
+| `INJECTOR_PRESSURE_DIFFERENTIAL` | `car.injector_pressure_diff` |
+| `EXHAUST_MANIFOLD_PRESSURE` | `car.exhaust_manifold_pressure` |
+| `LAUNCH_CONTROL_ACTIVE` | `car.launch_control_active` |
+| `LAUNCH_CONTROL_IGNITION_RETARD` | `car.launch_control_ign_retard` |
+| `DRIVESHAFT_RPM` | `car.driveshaft_rpm` |
+| `TOTAL_FUEL_USED` | `car.fuel_total_used` |
+| `PRIMARY_FUEL_PUMP_OUTPUT` | `car.fuel_primary_pump_output` |
+| `ECU_TEMPERATURE` | `car.ecu_temp` |
+| `GEARBOX_OIL_TEMPERATURE` | `car.gearbox_oil_temp` |
+| `TRIGGER_COUNTER` | `car.trigger_counter` |
+| `TRIGGER_SYNC_LEVEL` | `car.trigger_sync_level` |
+| `WB1_LAMBDA_1` | `car.wb1_lambda1` |
+| `WB1_DIAGNOSTIC_1` | `car.wb1_diagnostic1` |
+| `WB1_SENSE_RESISTOR_1` | `car.wb1_sense_resistor1` |
+| `WB1_BATTERY_VOLTAGE` | `car.wb1_battery_v` |
+| `PD16A_TOTAL_CURRENT` | `car.pd16_total_current` |
+| `PD16A_BATTERY_VOLTAGE` | `car.pd16_battery_v` |
+| `PD16A_MAIN_RAIL_VOLTAGE` | `car.pd16_main_rail_v` |
+| `PD16A_PROT_RAIL_VOLTAGE` | `car.pd16_prot_rail_v` |
+| `PD16A_IGNITION_SWITCH` | `car.pd16_ignition_switch` |
+| `PD16A_CPU_TEMP` | `car.pd16_cpu_temp` |
+| `PD16A_MAIN_RAIL_TEMP` | `car.pd16_main_rail_temp` |
+| `PD16A_THERMISTOR_*_TEMP` | `car.pd16_thermistor_1_temp`, `car.pd16_thermistor_2_temp`, `car.pd16_thermistor_3_temp` |
+| `PD16A_*_TEMP_STATUS` | `car.pd16_hco25_12_temp_status`, `car.pd16_hco25_34_temp_status`, `car.pd16_main_rail_temp_status`, `car.pd16_tvs_temp_status` |
+| `PD16A_*_PIN_STATE` | **unmapped by design** -- wiring-dependent, name when assigned (per-output pin state on `PD16A_OUTPUT_STATUS`; see the commented template in `catalog.yaml`) |
+| `PD16A_*_RETRY_COUNT` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_HCO*_VOLTAGE` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_HCO*_CURRENT` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_HCO*_LOAD` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_HBO_*_VOLTAGE` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_HBO_*_HS_CURRENT` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_HBO_*_LOAD` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_AVI_*_STATE` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_AVI_*_VOLTAGE` | **unmapped by design** -- wiring-dependent, name when assigned (previously the six `rbe`-policed live analog voltage channels; the policy is documented in the `catalog.yaml` template comment for reuse when mapped) |
+| `PD16A_SPI_3_STATE` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_SPI_4_STATE` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_SPI_3_VOLTAGE` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `PD16A_SPI_4_VOLTAGE` | **unmapped by design** -- wiring-dependent, name when assigned |
+| `KEYPAD_BUTTON_*` | `car.keypad_button_1`, `car.keypad_button_2`, `car.keypad_button_3`, `car.keypad_button_4`, `car.keypad_button_5`, `car.keypad_button_6`, `car.keypad_button_7`, `car.keypad_button_8`, `car.keypad_button_9`, `car.keypad_button_10`, `car.keypad_button_11`, `car.keypad_button_12`, `car.keypad_button_13`, `car.keypad_button_14`, `car.keypad_button_15` |
+| `KEYPAD_NMT_STATE` | `car.keypad_nmt_state` |
 
 **Note on `GEARBOX_TEMPERATURE`:** no DBC signal has this exact name --
 `TEMPERATURE2` (message `BO_ 993` in `haltech-ecu.dbc`) defines
@@ -317,7 +378,7 @@ mapped, 1 unmapped** (see note below).
 `signals_config.yaml` includes both names (one under a `# TEMPERATURE2`
 comment, one later under `# ECU channels confirmed present...`); the
 second (`GEARBOX_OIL_TEMPERATURE`) matches a real signal and is already
-covered above as `engine.gearbox_oil_temp`. `GEARBOX_TEMPERATURE` itself
+covered above as `car.gearbox_oil_temp`. `GEARBOX_TEMPERATURE` itself
 is almost certainly a stale typo/duplicate in the old config that never
 matched anything at runtime -- flagging for the owner to confirm rather
 than silently dropping it.

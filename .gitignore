@@ -24,6 +24,6 @@ profiles/*
 # after the profile un-ignore rules above, or those re-include it.
 **/.registry-state.json*
 **/.session-state.json*
-
+**/.claude
 # OS
 .DS_Store

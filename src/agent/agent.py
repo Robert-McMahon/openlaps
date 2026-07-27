@@ -72,30 +72,39 @@ class AgentSettings:
     def from_env(
         cls, environ: dict[str, str] | None = None, profile_dir: str | Path | None = None
     ) -> AgentSettings:
-        """Build settings from the ``OPENLAPS_*`` environment set."""
+        """Build settings from the ``OPENLAPS_*`` environment set.
+
+        Unset or blank variables (``example.env`` templates them blank) fall
+        back to the dataclass defaults. Note ``slots=True`` means the class
+        attributes are descriptors, so defaults must come from the dataclass
+        machinery, never from ``cls.<field>``.
+        """
         env = dict(os.environ) if environ is None else environ
         profile = profile_dir if profile_dir is not None else env.get("OPENLAPS_PROFILE")
         if not profile:
             raise ValueError("no profile: pass a profile directory or set OPENLAPS_PROFILE")
-        state_dir = env.get("OPENLAPS_STATE_DIR")
-        return cls(
-            profile_dir=Path(profile),
-            nats_url=env.get("OPENLAPS_NATS_URL", cls.nats_url),
-            nats_creds=env.get("OPENLAPS_NATS_CREDS") or None,
-            vehicle_id=env.get("OPENLAPS_VEHICLE_ID") or None,
-            tick_ms=int(env.get("OPENLAPS_TICK_MS", cls.tick_ms)),
-            queue_maxlen=int(env.get("OPENLAPS_QUEUE_SIZE", cls.queue_maxlen)),
-            publish_window=int(env.get("OPENLAPS_PUBLISH_WINDOW", cls.publish_window)),
-            publish_buffer_bytes=int(
-                env.get("OPENLAPS_PUBLISH_BUFFER_BYTES", cls.publish_buffer_bytes)
-            ),
-            tele_max_age_s=float(env.get("OPENLAPS_TELE_MAX_AGE_H", "72")) * 3600.0,
-            tele_max_bytes=int(env.get("OPENLAPS_TELE_MAX_BYTES", cls.tele_max_bytes)),
-            registry_interval_s=float(
-                env.get("OPENLAPS_REGISTRY_REPUBLISH_S", cls.registry_interval_s)
-            ),
-            state_dir=Path(state_dir) if state_dir else None,
-        )
+        kwargs: dict[str, object] = {"profile_dir": Path(profile)}
+
+        def take(env_key: str, field: str, parse) -> None:
+            value = env.get(env_key)
+            if value:
+                try:
+                    kwargs[field] = parse(value)
+                except ValueError as exc:
+                    raise ValueError(f"{env_key}={value!r}: {exc}") from exc
+
+        take("OPENLAPS_NATS_URL", "nats_url", str)
+        take("OPENLAPS_NATS_CREDS", "nats_creds", str)
+        take("OPENLAPS_VEHICLE_ID", "vehicle_id", str)
+        take("OPENLAPS_TICK_MS", "tick_ms", int)
+        take("OPENLAPS_QUEUE_SIZE", "queue_maxlen", int)
+        take("OPENLAPS_PUBLISH_WINDOW", "publish_window", int)
+        take("OPENLAPS_PUBLISH_BUFFER_BYTES", "publish_buffer_bytes", int)
+        take("OPENLAPS_TELE_MAX_AGE_H", "tele_max_age_s", lambda hours: float(hours) * 3600.0)
+        take("OPENLAPS_TELE_MAX_BYTES", "tele_max_bytes", int)
+        take("OPENLAPS_REGISTRY_REPUBLISH_S", "registry_interval_s", float)
+        take("OPENLAPS_STATE_DIR", "state_dir", Path)
+        return cls(**kwargs)
 
 
 @dataclass(slots=True)

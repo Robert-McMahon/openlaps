@@ -1,7 +1,6 @@
 # Python
 __pycache__/
 *.py[cod]
-**/.registry-state.json*
 *.egg-info/
 build/
 dist/
@@ -20,6 +19,11 @@ dist/
 profiles/*
 !profiles/example-club-racer/
 !profiles/example-club-racer/**
+
+# Agent runtime state (written beside the profile by default) — must come
+# after the profile un-ignore rules above, or those re-include it.
+**/.registry-state.json*
+**/.session-state.json*
 
 # OS
 .DS_Store

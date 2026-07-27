@@ -103,6 +103,7 @@ class JetStreamPublisher:
         self._published = 0
         self._registry_publishes = 0
         self._connected = False
+        self._session_provisioned = False
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._wake: asyncio.Event | None = None
@@ -212,8 +213,8 @@ class JetStreamPublisher:
                 await self._sleep(backoff)
                 backoff = min(backoff * 2, _CONNECT_BACKOFF_MAX_S)
                 continue
-            backoff = _CONNECT_BACKOFF_START_S
             self._connected = True
+            self._session_provisioned = False
             logger.info("publisher: connected to %s", self._nats_url)
             try:
                 await self._serve(client)
@@ -225,6 +226,15 @@ class JetStreamPublisher:
                     await client.close()
                 except Exception:  # noqa: BLE001 - closing a dead client
                     pass
+            # A session that never got its streams provisioned (e.g. the
+            # server rejecting the stream config) would otherwise hot-loop:
+            # connect succeeds instantly, provisioning fails instantly.
+            # Back off exactly like a failed connect until it heals.
+            if self._session_provisioned:
+                backoff = _CONNECT_BACKOFF_START_S
+            elif not self._stopping.is_set():
+                await self._sleep(backoff)
+                backoff = min(backoff * 2, _CONNECT_BACKOFF_MAX_S)
 
     async def _connect(self) -> NatsClient:
         options: dict[str, object] = {
@@ -248,6 +258,7 @@ class JetStreamPublisher:
     async def _serve(self, client: NatsClient) -> None:
         js = client.jetstream()
         await self._ensure_streams(js)
+        self._session_provisioned = True
         await self._publish_registry(js)
 
         subscriptions = []

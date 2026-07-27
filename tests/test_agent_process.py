@@ -181,3 +181,39 @@ def test_derived_channel_set_covers_the_spec_table():
     assert names.count("sys.agent.status") == 1
     status = next(c for c in agent_derived_channels(["can0"]) if c.name == "sys.agent.status")
     assert status.value_type == pb.STRING
+
+
+def test_settings_from_env_defaults_apply_when_variables_are_unset():
+    """Regression: slots dataclass defaults must come from the dataclass, not cls attrs."""
+    settings = AgentSettings.from_env({"OPENLAPS_PROFILE": str(EXAMPLE_PROFILE)})
+    assert settings.nats_url == "nats://127.0.0.1:4222"
+    assert settings.nats_creds is None
+    assert settings.vehicle_id is None
+    assert settings.tick_ms == 20
+    assert settings.queue_maxlen == 10_000
+    assert settings.publish_window == 1_000
+    assert settings.tele_max_age_s == 72 * 3600
+    assert settings.registry_interval_s == 300.0
+    assert settings.state_dir is None
+
+
+def test_settings_from_env_treats_blank_values_as_unset():
+    """example.env templates every variable blank; sourcing it must be harmless."""
+    env = {
+        "OPENLAPS_PROFILE": str(EXAMPLE_PROFILE),
+        "OPENLAPS_NATS_URL": "",
+        "OPENLAPS_NATS_CREDS": "",
+        "OPENLAPS_VEHICLE_ID": "",
+        "OPENLAPS_TICK_MS": "",
+        "OPENLAPS_STATE_DIR": "",
+    }
+    settings = AgentSettings.from_env(env)
+    assert settings.nats_url == "nats://127.0.0.1:4222"
+    assert settings.tick_ms == 20
+    assert settings.state_dir is None
+
+
+def test_settings_from_env_reports_unparseable_values_precisely():
+    env = {"OPENLAPS_PROFILE": str(EXAMPLE_PROFILE), "OPENLAPS_TICK_MS": "fast"}
+    with pytest.raises(ValueError, match="OPENLAPS_TICK_MS='fast'"):
+        AgentSettings.from_env(env)

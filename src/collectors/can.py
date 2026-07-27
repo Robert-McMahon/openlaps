@@ -20,6 +20,7 @@ import can
 import cantools
 from cantools.database.can import Message as DbcMessage
 
+from collectors.clock import Emit, MonotonicWallClock, WallClock
 from core.config import BusConfig
 from core.samples import Sample, SampleValue
 
@@ -30,32 +31,11 @@ DEFAULT_BACKOFF_START_S = 0.5
 DEFAULT_BACKOFF_MAX_S = 30.0
 _MAX_TRACKED_UNKNOWN_IDS = 256
 
-WallClock = Callable[[int], float]
-"""Maps ``t_mono_ns`` onto wall-clock milliseconds."""
-
-Emit = Callable[[Sample], None]
 BusFactory = Callable[[BusConfig], can.BusABC]
 
 
 class CanDecoderError(ValueError):
     """A DBC attached to a bus could not be loaded."""
-
-
-class MonotonicWallClock:
-    """Fixed-offset monotonic-to-wall mapping, anchored at construction.
-
-    Collectors only need *a* mapping; the agent supplies its GNSS-steered one
-    (``docs/AGENT_DESIGN.md`` -> Clock discipline) in production.
-    """
-
-    __slots__ = ("_offset_ms",)
-
-    def __init__(self) -> None:
-        self._offset_ms = time.time() * 1000.0 - time.monotonic_ns() / 1e6
-
-    def __call__(self, t_mono_ns: int) -> float:
-        """Return the wall-clock milliseconds corresponding to ``t_mono_ns``."""
-        return self._offset_ms + t_mono_ns / 1e6
 
 
 class _FrameClock:

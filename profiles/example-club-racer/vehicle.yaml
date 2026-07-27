@@ -1,1 +1,49 @@
-# Filled in by WP6 (catalog schema + example profile).
+# profiles/example-club-racer/vehicle.yaml
+#
+# Example profile: a club-racer car with a single 1 Mbps CAN bus (Haltech
+# Elite ECU + a Haltech PD16A power-distribution module + a Haltech WB1
+# wideband controller + an FDI DETA10A IMU, all on the same bus under
+# distinct device aliases) and a UM980 GNSS receiver on serial0. See
+# docs/CATALOG.md for the full schema this file and catalog.yaml follow.
+#
+# No secrets live here. NTRIP corrections are supplied by the pit-side
+# ntrip-client over core NATS (subject rtcm.<vehicle>); this file only
+# says which serial driver accepts that write-back -- it holds no
+# credentials or host/mountpoint details.
+
+vehicle:
+  id: example-club-racer
+
+buses:
+  - name: can0
+    interface: can0
+    bitrate: 1000000
+    dbcs:
+      - device: haltech
+        file: dbcs/haltech-ecu.dbc
+      - device: haltech2
+        file: dbcs/haltech-multiplexed.dbc
+      - device: wideband
+        file: dbcs/haltech-wideband.dbc
+      - device: imu
+        file: dbcs/fdi-imu.dbc
+
+serial:
+  - name: serial0
+    port: /dev/ttyUSB0
+    baud: 115200
+    decoder: nmea
+    driver:
+      name: um980
+      config:
+        rate_hz: 50
+        sentences: [RMC]
+        configure_on_start: true
+      # Accepts RTCM correction bytes published by the pit ntrip-client on
+      # core NATS subject rtcm.<vehicle> and writes them straight to the
+      # receiver's correction input; no config needed here beyond having
+      # a um980 driver attached to this port.
+
+host:
+  enabled: true
+  interval: 5s

@@ -1,0 +1,71 @@
+VERSION ""
+
+NS_ :
+    NS_DESC_
+    CM_
+    BA_DEF_
+    BA_
+    VAL_
+    CAT_DEF_
+    CAT_
+    FILTER
+    BA_DEF_DEF_
+    EV_DATA_
+    ENVVAR_DATA_
+    SGTYPE_
+    SGTYPE_VAL_
+    BA_DEF_SGTYPE_
+    BA_SGTYPE_
+    SIG_TYPE_REF_
+    VAL_TABLE_
+    SIG_GROUP_
+    SIG_VALTYPE_
+    SIGTYPE_VALTYPE_
+    BO_TX_BU_
+    BA_DEF_REL_
+    BA_REL_
+    BA_DEF_DEF_REL_
+    BU_SG_REL_
+    BU_EV_REL_
+    BU_BO_REL_
+    SG_MUL_VAL_
+
+BS_:
+
+BU_: ECU WB1
+
+BO_ 689 WB1_LAMBDA: 8 WB1
+ SG_ WB1_LAMBDA_1 : 7|16@0- (0.0009765625,0) [-32|31.999] "lambda" ECU
+ SG_ WB1_LAMBDA_2 : 23|16@0- (0.0009765625,0) [-32|31.999] "lambda" ECU
+ SG_ WB1_SENSE_RESISTOR_1 : 39|8@0+ (1,0) [0|255] "ohm" ECU
+ SG_ WB1_SENSE_RESISTOR_2 : 47|8@0+ (1,0) [0|255] "ohm" ECU
+ SG_ WB1_DIAGNOSTIC_2 : 55|4@0+ (1,0) [0|12] "" ECU
+ SG_ WB1_DIAGNOSTIC_1 : 51|4@0+ (1,0) [0|12] "" ECU
+ SG_ WB1_BATTERY_VOLTAGE : 63|8@0+ (0.0784313725,0) [0|20] "V" ECU
+
+BO_ 691 WB1_STATUS: 3 WB1
+ SG_ WB1_STATUS : 7|4@0+ (1,0) [0|6] "" ECU
+ SG_ WB1_ID_CONFLICT : 1|1@0+ (1,0) [0|1] "" ECU
+ SG_ WB1_COMMS_LOSS : 0|1@0+ (1,0) [0|1] "" ECU
+ SG_ WB1_BOOTCODE_VERSION : 15|6@0+ (1,0) [0|63] "" ECU
+ SG_ WB1_FW_MAJOR : 9|2@0+ (1,0) [0|3] "" ECU
+ SG_ WB1_FW_MINOR : 23|8@0+ (1,0) [0|255] "" ECU
+
+BO_ 1072 WB1_COMMAND_REQUEST: 3 ECU
+ SG_ WB1_COMMAND : 7|8@0+ (1,0) [0|255] "" WB1
+ SG_ WB1_COMMAND_DATA : 15|16@0+ (1,0) [0|65535] "" WB1
+
+BO_ 1781 WB1_RUN_STATE: 8 ECU
+ SG_ WB1_ENGINE_RUNNING : 0|1@0+ (1,0) [0|1] "" WB1
+
+CM_ BU_ WB1 "Haltech WB1 single-channel CAN O2 wideband controller. WB2 units use adjacent IDs: lambda WB2A 0x2B0 / WB2B 0x2B4 / WB2C 0x2B6 / WB2D 0x2B8, status 0x2B2/0x2B5/0x2B7/0x2B9. Protocol reverse-engineered by PT Motorsport (ptmotorsport.com.au/haltech-wideband-can-sniffing-and-dbc-files); scaling corrected and verified against the 2026-05-23 capture.";
+CM_ BO_ 689 "WB1 lambda broadcast, 20Hz. Lambda raw/1024; negative lambda carries a diagnostic error code, 32767 = free air. Channel 2 fields are zero on the single-channel WB1.";
+CM_ SG_ 689 WB1_DIAGNOSTIC_1 "Reads 0 during normal closed-loop operation in captures; per PT Motorsport the code is meaningful when the lambda field is negative.";
+CM_ BO_ 691 "WB1 status and firmware, 10Hz. This unit (FW 1.18) broadcasts 3 bytes; firmware 3.10+ adds bugfix/release bytes and sensor type nibbles in bytes 3-5.";
+CM_ BO_ 1072 "ECU -> WB1 device command request (set sensor type / calibrate / firmware update), also used as a ~4s keepalive (observed constant 75 00 00). Response comes on 0x438.";
+CM_ BO_ 1781 "ECU -> wideband broadcast, 2Hz. Bit 0 tells all widebands the engine is running (or forced on) so they start heater control.";
+VAL_ 689 WB1_DIAGNOSTIC_1 0 "Error" 1 "Battery Low" 2 "Battery High" 3 "Sensor Short Circuit" 4 "Sensor Open Circuit" 5 "Sensor Cold" 6 "Free Air" 7 "Heater Short" 8 "Condensation" 9 "Controller Inactive" 10 "Engine Stopped" 11 "Sensor Uncalibrated" 12 "Sensor Calibrating" ;
+VAL_ 689 WB1_DIAGNOSTIC_2 0 "Error" 1 "Battery Low" 2 "Battery High" 3 "Sensor Short Circuit" 4 "Sensor Open Circuit" 5 "Sensor Cold" 6 "Free Air" 7 "Heater Short" 8 "Condensation" 9 "Controller Inactive" 10 "Engine Stopped" 11 "Sensor Uncalibrated" 12 "Sensor Calibrating" ;
+VAL_ 691 WB1_STATUS 0 "Boot Mode" 1 "In Firmware" 2 "Hardware Failure" 3 "Firmware Erased" 4 "Watchdog Timeout" 5 "Illegal Opcode" 6 "Overtemperature" ;
+VAL_ 691 WB1_COMMS_LOSS 0 "OK" 1 "Lost Comms With ECU" ;
+VAL_ 1781 WB1_ENGINE_RUNNING 0 "Wideband Off" 1 "Wideband Running" ;

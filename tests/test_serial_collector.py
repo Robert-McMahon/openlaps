@@ -78,6 +78,7 @@ def test_run_configures_receiver_before_reading_sentences():
     stop = threading.Event()
     port = FakeSerial(
         [
+            b"$command,CONFIG CMDFORMAT 1,response: OK*08\r\n",
             b"$command,UNLOG,response: OK*25\r\n",
             b"$command,GPRMC 0.02,response: OK*0D\r\n",
             RMC,
@@ -95,7 +96,11 @@ def test_run_configures_receiver_before_reading_sentences():
 
     collector.run(stop)
 
-    assert port.writes == [b"UNLOG\r\n", b"GPRMC 0.02\r\n"]
+    assert port.writes == [
+        b"CONFIG CMDFORMAT 1\r\n",
+        b"$UNLOG*5F\r\n",
+        b"$GPRMC 0.02*77\r\n",
+    ]
     assert len(samples) == 5
     assert port.closed
 
@@ -138,6 +143,7 @@ def test_configuration_io_failure_closes_and_reconnects():
         else:
             port = FakeSerial(
                 [
+                    b"$command,CONFIG CMDFORMAT 1,response: OK*08\r\n",
                     b"$command,UNLOG,response: OK*25\r\n",
                     b"$command,GPRMC 0.02,response: OK*0D\r\n",
                     RMC,

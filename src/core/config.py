@@ -214,7 +214,6 @@ class ChannelConfig(StrictModel):
     units: str = ""
     type: Literal["double", "int", "bool", "string"] = "double"
     rbe: RbeConfig | None = None
-    live_hz: Annotated[float, Field(gt=0)] | None = None
     encode: EncodeConfig | None = None
 
     @field_validator("encode", mode="before")

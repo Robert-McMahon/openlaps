@@ -34,7 +34,6 @@ class ChannelPolicy:
     name: str
     value_type: int
     rbe: RbeConfig | None
-    live_hz: float | None
     scale: float = 0.0
     offset: float = 0.0
 
@@ -129,9 +128,7 @@ def build_runtime_catalog(
                 f"{loaded.path / 'catalog.yaml'}: duplicate derived channel {derived.name!r}"
             )
         source_ref = f"derived:{derived.name}"
-        policy = ChannelPolicy(
-            name=derived.name, value_type=derived.value_type, rbe=None, live_hz=None
-        )
+        policy = ChannelPolicy(name=derived.name, value_type=derived.value_type, rbe=None)
         _add_mapping(source_map, source_ref, channel_id, policy, loaded.path)
         channel_ids[derived.name] = channel_id
         policies_by_id[channel_id] = policy
@@ -161,7 +158,6 @@ def _channel_policy(name: str, channel: ChannelConfig) -> ChannelPolicy:
         name=name,
         value_type=_VALUE_TYPES[encoding_type],
         rbe=channel.rbe,
-        live_hz=channel.live_hz,
         scale=scale,
         offset=offset,
     )

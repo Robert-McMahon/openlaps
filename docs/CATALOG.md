@@ -78,7 +78,6 @@ channels:
       deadband: <number>         #   suppress samples that haven't moved by at least this much
       min_interval: <duration>   #   never publish more often than this even if noisy
       max_interval: <duration>   #   always publish at least this often (heartbeat, bounds fill-forward)
-    live_hz: <number>            # optional decimation hint for the pit live-decoder (MQTT-Live path)
     encode:                       # optional wire-encoding override, see "Wire encoding" below
       type: double|float|uint|int #   protobuf value arm to encode this channel's samples with
       scale: <number>             #   fixed-point scale (uint/int only), see below
@@ -93,12 +92,17 @@ apps:
     track: <string>              # track definition name, resolved under profiles/<profile>/tracks/
 ```
 
-`rbe` and `live_hz` are independent: `rbe` governs what reaches the durable
-JetStream stream and Timescale; `live_hz` only decimates the *pit live
-decoder*'s republish to MQTT for gauge panels. Neither affects the timing
-engine, which taps the sample stream **pre-RBE** so lap timing never sees
-decimated position data (see the vehicle agent design spec for the tap
-architecture).
+`rbe` governs what reaches the durable JetStream stream and Timescale. It
+does not affect the timing engine, which taps the sample stream **pre-RBE**
+so lap timing never sees decimated position data (see the vehicle agent
+design spec for the tap architecture).
+
+Nothing here configures the pit's live gauge panels. Which channels are
+republished to MQTT for live viewing, and at what rate, is **pit-side
+configuration** owned by the `live-decoder` service — the garage changing
+what it watches must never mean editing the file that describes the car.
+The catalog once carried a `live_hz` decimation hint for that purpose; it
+was never consumed and has been removed.
 
 ## Wire encoding (`encode:`)
 

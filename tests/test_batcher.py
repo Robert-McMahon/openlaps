@@ -15,7 +15,6 @@ def _policy(
         name=name,
         value_type=value_type,
         rbe=None,
-        live_hz=None,
         scale=scale,
         offset=offset,
     )

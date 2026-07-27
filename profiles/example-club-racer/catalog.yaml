@@ -14,8 +14,6 @@
 # `type` defaults to double; set explicitly for bool/int/string channels.
 # `rbe` (report-by-exception) is a link/store filter: {deadband, min_interval,
 # max_interval}. It never applies to the timing engine's pre-RBE tap.
-# `live_hz` is a decimation hint for the pit live-decoder (MQTT-Live panels),
-# independent of the RBE policy used for the durable JetStream/Timescale path.
 #
 # Naming: every on-vehicle sensor/actuator reading lives in a flat `car.*`
 # namespace (see docs/CATALOG.md) -- no engine/chassis/wheels/fuel/electrics
@@ -114,16 +112,16 @@ channels:
   car.right_indicator: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.RIGHT_INDICATOR_STATE", type: bool }
 
   # ---- IMU: FDI DETA10A (device: imu) ----
-  car.accel_x: { from: "can0:imu.FDI_IMU_ACCEL.IMU_ACCEL_X", units: "g", live_hz: 10 }
-  car.accel_y: { from: "can0:imu.FDI_IMU_ACCEL.IMU_ACCEL_Y", units: "g", live_hz: 10 }
-  car.accel_z: { from: "can0:imu.FDI_IMU_ACCEL.IMU_ACCEL_Z", units: "g", live_hz: 10 }
-  car.gyro_x: { from: "can0:imu.FDI_IMU_GYRO.IMU_GYRO_X", units: "deg/s", live_hz: 10 }
-  car.gyro_y: { from: "can0:imu.FDI_IMU_GYRO.IMU_GYRO_Y", units: "deg/s", live_hz: 10 }
-  car.gyro_z: { from: "can0:imu.FDI_IMU_GYRO.IMU_GYRO_Z", units: "deg/s", live_hz: 10 }
+  car.accel_x: { from: "can0:imu.FDI_IMU_ACCEL.IMU_ACCEL_X", units: "g" }
+  car.accel_y: { from: "can0:imu.FDI_IMU_ACCEL.IMU_ACCEL_Y", units: "g" }
+  car.accel_z: { from: "can0:imu.FDI_IMU_ACCEL.IMU_ACCEL_Z", units: "g" }
+  car.gyro_x: { from: "can0:imu.FDI_IMU_GYRO.IMU_GYRO_X", units: "deg/s" }
+  car.gyro_y: { from: "can0:imu.FDI_IMU_GYRO.IMU_GYRO_Y", units: "deg/s" }
+  car.gyro_z: { from: "can0:imu.FDI_IMU_GYRO.IMU_GYRO_Z", units: "deg/s" }
   car.imu_temp: { from: "can0:imu.FDI_IMU_INFO.IMU_TEMPERATURE", units: "C" }
-  car.pitch: { from: "can0:imu.FDI_UKF_EULER.IMU_PITCH", units: "deg", live_hz: 10 }
-  car.roll: { from: "can0:imu.FDI_UKF_EULER.IMU_ROLL", units: "deg", live_hz: 10 }
-  car.yaw: { from: "can0:imu.FDI_UKF_EULER.IMU_YAW", units: "deg", live_hz: 10 }
+  car.pitch: { from: "can0:imu.FDI_UKF_EULER.IMU_PITCH", units: "deg" }
+  car.roll: { from: "can0:imu.FDI_UKF_EULER.IMU_ROLL", units: "deg" }
+  car.yaw: { from: "can0:imu.FDI_UKF_EULER.IMU_YAW", units: "deg" }
 
   # ---- PDM/keypad: PD16A power distribution module (device: haltech2, haltech-multiplexed.dbc) ----
   # PD16A_DIAGNOSTICS: ~2 Hz device-health telemetry -- rail voltages, temps,

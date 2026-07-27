@@ -79,6 +79,13 @@ channels:
       min_interval: <duration>   #   never publish more often than this even if noisy
       max_interval: <duration>   #   always publish at least this often (heartbeat, bounds fill-forward)
     live_hz: <number>            # optional decimation hint for the pit live-decoder (MQTT-Live path)
+    encode:                       # optional wire-encoding override, see "Wire encoding" below
+      type: double|float|uint|int #   protobuf value arm to encode this channel's samples with
+      scale: <number>             #   fixed-point scale (uint/int only), see below
+      offset: <number>            #   fixed-point offset (uint/int only), see below
+                                   #   shorthand: `encode: float32` == `encode: {type: float}`,
+                                   #   `encode: int64` == `encode: {type: int}`; a bare
+                                   #   `encode: uint`/`int`/`float`/`double` is also accepted
 
 apps:
   lap_timing:
@@ -92,6 +99,58 @@ decoder*'s republish to MQTT for gauge panels. Neither affects the timing
 engine, which taps the sample stream **pre-RBE** so lap timing never sees
 decimated position data (see the vehicle agent design spec for the tap
 architecture).
+
+## Wire encoding (`encode:`)
+
+Every channel's samples are encoded as one of four protobuf value arms:
+`double` (8-byte, the default), `float` (4-byte single-precision), `uint`
+(unsigned varint) or `int` (signed varint). `encode:` is how a catalog
+author opts a channel out of the `double` default and into a cheaper
+wire representation — this is the primary bandwidth lever in the system,
+worth **-24% to -26%** offered load applied broadly (see
+[`docs/LINK_BUDGET.md`](LINK_BUDGET.md) §7 for the measurement).
+Every pit decoder (`tools/decode.py`, and every P3 pit service that
+decodes `SampleBatch`) must honour a channel's declared `encode` — it is
+not optional metadata, it changes which oneof arm is populated on the
+wire and, for `uint`/`int`, what transform recovers the physical value.
+
+- `type: double` — the default; no need to write this explicitly.
+- `type: float` — single-precision float. Good for real-valued channels
+  (temperatures, pressures, voltages) whose physical precision never
+  approaches single-float resolution.
+- `type: uint` / `type: int` — a varint, as few as 1-2 bytes for
+  small-magnitude values. Good for naturally-integer channels (counters,
+  raw RPM), and, combined with `scale`/`offset`, for fractional physical
+  quantities that don't need double's dynamic range.
+
+`scale` and `offset` are **only valid when `type` is `uint` or `int`** —
+the catalog loader (`EncodeConfig` in `src/core/config.py`) rejects them
+on `double`/`float` channels, and rejects `encode:` outright on `bool`/
+`string` channels (those have no fixed-point representation to speak of).
+A `scale` of `0` (the default) means "unscaled": the wire value *is* the
+physical value. A non-zero `scale` activates the fixed-point convention
+`docs/WIRE_FORMAT.md` defines at the wire level:
+
+```
+wire_value = round((physical - offset) / scale)
+physical   = wire_value * scale + offset
+```
+
+**Worked example:** `car.coolant_temp` (`profiles/example-club-racer/`) is
+coolant temperature in Kelvin, physically ranging roughly 250-400 K:
+
+```yaml
+channels:
+  car.coolant_temp:
+    from: "can0:haltech.TEMPERATURE1.COOLANT_TEMPERATURE"
+    units: "K"
+    encode: { type: uint, scale: 0.1, offset: 0 }
+```
+
+A reading of 300.0 K encodes as `wire_value = round((300.0 - 0) / 0.1) =
+3000` — a value that fits a 1-2 byte varint instead of an 8-byte double —
+and decodes back to `3000 * 0.1 + 0 = 300.0 K`, preserving 0.1 K
+precision.
 
 ## Canonical naming convention
 

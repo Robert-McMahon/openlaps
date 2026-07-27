@@ -64,11 +64,37 @@ whatever bandwidth is available, live or backlogged, off the same stream.
 | Storage | File | Must survive an agent restart; this is the vehicle's only durability until the pit has ingested it |
 | Retention | Limits | Age cap ~72 h *and* a size cap (sized to the vehicle's disk budget), whichever is hit first, oldest messages dropped |
 | Replicas | 1 (single vehicle node) | No HA requirement on the vehicle; the pit copy is the redundancy |
+| `duplicate_window` | `2m` | Set explicitly (see "Deduplication" below) rather than left on the server default |
 
 72 hours comfortably covers "car sits in the garage over a long weekend with
 no pit wifi" without needing operator intervention; the size cap is the
 backstop for unexpectedly high data rates (e.g. a misbehaving collector
 publishing far above its configured rate).
+
+#### Deduplication
+
+Every published `TickBatch` carries a `Nats-Msg-Id` header of
+`<source-class>:<batch_epoch_unix_ms>` (`src/agent/pipeline.py` builds the
+id, `src/agent/publisher.py` sets the header on publish). JetStream uses
+this header to deduplicate messages published again within the stream's
+`duplicate_window`: if the same `source-class:epoch_ms` pair is published
+twice inside that window, the second publish is accepted but not stored
+again. `TELE` sets `duplicate_window` explicitly to **2 minutes** rather
+than relying on the server default, so this behaviour doesn't silently
+shift if the default changes.
+
+**What this buys, precisely:** it makes *reconnect-scale* republication
+idempotent — if the agent's NATS connection drops and reconnects, or a
+publish is retried because the ack was lost in flight, the same batch
+arriving twice within the 2-minute window is deduplicated at the stream
+level, so a consumer only ever sees it once. **What it does not buy:**
+anything beyond that window. A consumer that crashes, is redeployed, or
+falls behind for longer than `duplicate_window` will see redelivery (from
+JetStream's normal at-least-once consumer semantics) that this header does
+nothing to prevent. Consumers that need exact-once effects at the row/write
+level — the pit ingest-writer (P3.2) — cannot rely on `Nats-Msg-Id` dedupe
+alone and must carry their own idempotency key (a committed stream
+sequence cursor) independent of this window.
 
 ### `CMD`
 
@@ -279,3 +305,74 @@ capture_time_ms = SampleBatch.batch_epoch_unix_ms + Sample.t_offset_us / 1000.0
   the next tick fresh against the new one, or splits the tick — either way
   a single `SampleBatch` never mixes samples meant for two different
   registry generations.
+
+## `lap.event` payload schema
+
+The timing engine (`src/agent/timing_app.py`, hosted in-agent per
+`docs/AGENT_DESIGN.md`) emits timing events as an ordinary `STRING`-typed
+channel, `lap.event`, re-entering the pipeline like any other derived
+sample — it is published on `tele.<vehicle>.derived` as part of a normal
+`SampleBatch`, `Sample.value` holding the JSON payload below as its `s`
+arm. This is **not** a separate subject or message shape; it exists so the
+pit ingest-writer (P3.2) can materialise it into relational `laps` /
+`lap_sectors` rows without inventing a second decode path.
+
+The payload is a compact JSON object (`json.dumps(..., sort_keys=True,
+separators=(",", ":"))`) with these keys:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `type` | string | One of `timing.timing_core.EventType`'s values: `sector_completed`, `lap_completed`, `pit_entry`, `pit_exit` |
+| `time` | number | Interpolated crossing time, epoch seconds |
+| `line` | string | Timing line name that produced the event |
+| `lap_number` | int | Lap number the event pertains to |
+| `sector` | int | Sector number the event pertains to (0 when not sector-specific) |
+| `split_time` | number | Completed sector split, seconds (0.0 unless `type` is `sector_completed`) |
+| `lap_time` | number | Completed lap time, seconds (0.0 unless `type` is `lap_completed`) |
+| `valid` | bool | Whether the lap/sector is eligible for best-time comparison |
+| `direction` | string | Crossing direction |
+| `pit_status` | string | `"track"` or `"pit"` at the time of the event |
+| `lat` | number | Interpolated latitude at the crossing |
+| `lon` | number | Interpolated longitude at the crossing |
+
+Plus, whenever the active session (`src/agent/session.py`, stamped from
+`cmd.<vehicle>.session` — see below) has them: `session_id`, `driver`,
+`stint_number`, `session_type`, `track_name`. These five are added only
+when non-`None` in the current session state, so a lap recorded with no
+session open carries none of them.
+
+**Consumers must tolerate unknown keys** — this schema is expected to grow
+(new session-stamp keys, new event metadata) without a wire-format version
+bump, since it travels inside an already-versioned `SampleBatch.Sample`
+rather than being its own typed message.
+
+## `cmd.<vehicle>.session` payload schema
+
+Published by session-control (P3.4) to `cmd.<vehicle>.session` on `CMD`
+(`max_msgs_per_subject = 1`, so only the latest state is ever retained —
+see "CMD" above). The vehicle agent (`src/agent/session.py`) consumes this
+payload **opaquely**: it stamps five of these keys onto derived channels
+(`session_id`, `driver`, `stint_number`, `session_type`, `track_name`) and
+otherwise does not interpret the message. The payload is a JSON object
+with these keys:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `session_id` | string | Stable identifier for the current session |
+| `session_type` | string | One of `practice`, `qualifying`, `race`, `test` |
+| `driver` | string | Current driver identifier |
+| `track_name` | string | Track the session is running at |
+| `car` | string | Car/vehicle identifier for the session |
+| `stint_number` | int | Current stint number within the session |
+| `session_start` | number | Session start time, unix ms |
+| `stint_start` | number | Current stint start time, unix ms |
+| `status` | string | One of `none`, `active`, `ended` |
+| `timestamp` | number | Time this payload was produced, unix ms |
+
+**Consumers must preserve unknown keys** they don't understand (forward
+compatibility for session-control additions) and, on a payload that fails
+to parse as valid JSON or is missing required structure, **leave prior
+session state in force** rather than clearing it — a malformed publish
+must not un-stamp an in-progress session (`src/agent/session.py` already
+implements this: it logs and discards the bad payload, keeping the last
+good state).

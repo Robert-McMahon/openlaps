@@ -111,7 +111,7 @@ Sample = (source_ref: str-interned, t_mono_ns: int, t_wall_ms: float, value)
   hash-derived monotonic counter persisted beside the profile (bump on any
   catalog change).
 - The registry is published into `TELE` (subject
-  `tele.<vehicle>.registry`) at startup and republished on a slow interval
+  `tele.<vehicle>.catalog`) at startup and republished on a slow interval
   (default 5 min) so a pit stream trimmed by retention still always
   contains at least one copy ahead of any batch it holds.
 - Every batch carries `registry_seq`; a consumer seeing an unknown seq

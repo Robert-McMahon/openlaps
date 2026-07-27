@@ -270,5 +270,5 @@ erodes the margin.
   just smaller, and has not been bench-measured over real HaLow. Treat the
   numbers in this document as the *forward* (vehicle → pit) offered load
   only, and bench-measure the full round-trip behaviour on real hardware
-  before treating any of this as commissioned — this is Phase 6's garage
+  before treating any of this as commissioned — this is Phase 4's garage
   bench test, not a paper exercise.

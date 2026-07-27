@@ -153,13 +153,22 @@ sequenceDiagram
   P->>W: deliver, COPY to DB
   Note over L: link drops (RF shadow, crash, overnight)
   V->>V: keeps appending seq 1043..8800<br/>(file store, retention-capped)
-  Note over P: live gauges go stale — visibly, via sys.link lag channel
+  Note over P: live gauges go stale — visibly, via rising sys.agent.publish_lag_ms
   Note over L: link returns (or car rolls into garage wifi)
   P->>V: resume sourcing from seq 1043
   V-->>P: replay 1043..8800 at link speed
   P->>W: writer drains in order, DB heals — no gaps, no duplicates
   Note over V,W: no operator action, no sync service, no diff scan
 ```
+
+`sys.agent.publish_lag_ms` is vehicle-side telemetry — it measures the
+agent's own unacked-publish age and arrives over the radio like any other
+channel, so it goes stale (not zero) the instant the link drops, which is
+exactly the visible symptom a pit operator watches for. Pit-side ingest
+lag — how far behind the DB write path is once batches *do* arrive at the
+pit — is a separate, pit-local health concern owned by ingest-writer
+(P3.2)'s `/health` endpoint, not a telemetry channel that crosses the
+radio.
 
 Overload behaves the same way as outage: if offered load exceeds link
 capacity on a bad-RF day, the pit stream lags rather than dropping. Live

@@ -205,5 +205,6 @@ in this repository.
 - `WIRE_FORMAT.md` — subjects, streams, protobuf schema, registry lifecycle, timestamps
 - `AGENT_DESIGN.md` — vehicle agent threading, queues, RBE semantics, failure modes
 - `CATALOG.md` — profile schema (`vehicle.yaml`, `catalog.yaml`), naming convention, worked examples
+- `PIT_SCHEMA.md` — the pit database: tables, registry resolution, chunking/compression, stable views
 - `LINK_BUDGET.md` — measured bandwidth model vs. radio capacity
 - `adr/` — decision records with alternatives considered

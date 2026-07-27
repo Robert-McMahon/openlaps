@@ -10,6 +10,7 @@ dependencies = [
     "nats-py>=2.15.0",
     "protobuf>=5.28",
     "psutil>=7.2.2",
+    "psycopg[binary,pool]>=3.2",
     "pydantic>=2.13.4",
     "pyserial>=3.5",
     "python-can>=4.6.1",
@@ -18,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 openlaps-agent = "agent.__main__:main"
+openlaps-migrate = "pit.db.__main__:main"
 
 [project.optional-dependencies]
 dev = [

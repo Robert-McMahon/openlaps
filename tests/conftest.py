@@ -10,6 +10,7 @@ import time
 import uuid
 from pathlib import Path
 
+import psycopg
 import pytest
 
 from timing.tracks import TrackDefinition, load_track
@@ -19,6 +20,7 @@ WANNEROO_KML = EXAMPLE_PROFILE / "tracks" / "Wanneroo.kml"
 
 _M_PER_DEG_LAT = 111_320.0
 _NATS_IMAGE = "nats:2.12-alpine"
+_TIMESCALE_IMAGE = "timescale/timescaledb:latest-pg17"
 _LAP_POINT_ORDER = ("StartFinish", "Sector1", "Sector2")
 
 
@@ -149,5 +151,54 @@ def nats_url():
         if not ready:
             pytest.skip("nats container did not become ready")
         yield f"nats://127.0.0.1:{port}"
+    finally:
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+
+
+@pytest.fixture
+def timescale_dsn():
+    """A fresh throwaway TimescaleDB in docker, empty and unmigrated."""
+    if shutil.which("docker") is None:
+        pytest.skip("docker not available")
+    port = _free_port()
+    name = f"openlaps-test-timescale-{uuid.uuid4().hex[:8]}"
+    run = subprocess.run(
+        [
+            "docker",
+            "run",
+            "-d",
+            "--rm",
+            "--name",
+            name,
+            "-p",
+            f"127.0.0.1:{port}:5432",
+            "-e",
+            "POSTGRES_PASSWORD=openlaps",
+            "-e",
+            "POSTGRES_DB=openlaps",
+            _TIMESCALE_IMAGE,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if run.returncode != 0:
+        pytest.skip(f"cannot start timescale container: {run.stderr.strip()[:200]}")
+    dsn = f"postgresql://postgres:openlaps@127.0.0.1:{port}/openlaps"
+    try:
+        # The image restarts the server partway through first-time init, so a
+        # completed connection — not an open socket — is the readiness signal.
+        deadline = time.monotonic() + 60.0
+        ready = False
+        while time.monotonic() < deadline:
+            try:
+                with psycopg.connect(dsn, connect_timeout=2) as conn:
+                    conn.execute("SELECT 1")
+                ready = True
+                break
+            except psycopg.Error:
+                time.sleep(0.25)
+        if not ready:
+            pytest.skip("timescale container did not become ready")
+        yield dsn
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)

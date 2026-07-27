@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
+**/.registry-state.json*
 *.egg-info/
 build/
 dist/

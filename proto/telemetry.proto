@@ -32,6 +32,16 @@ enum ValueType {
   INT64 = 2;
   BOOL = 3;
   STRING = 4;
+  // Single-precision float (Sample.f). A compact lever for channels where
+  // double's extra precision buys nothing on the wire (4 B vs 8 B). Chosen
+  // per-channel by the catalog; see docs/WIRE_FORMAT.md.
+  FLOAT = 5;
+  // Unsigned varint (Sample.u). A compact lever for naturally-integer or
+  // fixed-point channels (e.g. RPM, or a scaled temperature) — a varint
+  // costs as few as 1-2 B for small-magnitude values versus double's fixed
+  // 8 B. Pair with Channel.scale/offset for fixed-point physical values;
+  // see docs/WIRE_FORMAT.md.
+  UINT = 6;
 }
 
 // A single channel definition: the mapping from a wire-stable integer id to
@@ -59,6 +69,28 @@ message Channel {
   // Datatype this channel's samples carry — selects the oneof arm in
   // Sample.value for every Sample with this channel_id.
   ValueType type = 5;
+
+  // Fixed-point scale/offset for compact integer wire encodings. Applies
+  // only when `type` is UINT (or INT64/sint) and the catalog has chosen to
+  // encode an otherwise-fractional physical value as a scaled integer —
+  // it is meaningless for DOUBLE/FLOAT/BOOL/STRING channels and MUST be
+  // left at its default (0) there.
+  //
+  // Default 0 for both fields means "unscaled" (wire value == physical
+  // value); a non-zero `scale` activates the fixed-point convention:
+  //
+  //   wire_value = round((physical - offset) / scale)
+  //   physical   = wire_value * scale + offset
+  //
+  // Producers choose the wire type and these coefficients per-channel via
+  // the catalog's `encode:` lever (see docs/CATALOG.md for the config
+  // syntax); consumers MUST apply scale/offset when decoding a UINT/INT64
+  // sample for a channel that declares them. Example: coolant temperature
+  // in Kelvin (roughly 250-400 K) with scale 0.1 encodes as a wire value
+  // in the low thousands — comfortably inside a 1-2 B varint — instead of
+  // an 8 B double.
+  double scale = 6;
+  double offset = 7;
 }
 
 // Published on agent start and whenever the channel catalog changes.
@@ -106,6 +138,15 @@ message Sample {
                      // small-magnitude signed values like deltas/counters)
     bool b = 5;     // ValueType.BOOL
     string s = 6;   // ValueType.STRING
+    float f = 7;    // ValueType.FLOAT — compact real-valued lever (4 B
+                     // fixed width vs double's 8 B); catalog-selected
+                     // per-channel, see docs/WIRE_FORMAT.md.
+    uint64 u = 8;   // ValueType.UINT — varint-encoded; compact lever for
+                     // naturally-integer channels or, combined with
+                     // Channel.scale/offset, fixed-point physical values
+                     // (e.g. RPM as a raw count, or a scaled temperature).
+                     // As few as 1-2 B on the wire for small values versus
+                     // double's fixed 8 B.
   }
 }
 
@@ -138,4 +179,21 @@ message SampleBatch {
   // source-class produced a value for. One SampleBatch per 10-20 ms tick
   // per source-class; see docs/WIRE_FORMAT.md "Batching rules".
   repeated Sample samples = 4;
+
+  // Wire payload shape version. Currently always 1 (the per-sample
+  // repeated-submessage layout above). Consumers MUST reject a batch whose
+  // format_version they don't understand rather than guessing at its
+  // shape — see docs/WIRE_FORMAT.md "format_version semantics". A
+  // producer that omits this field is understood as version 1 (proto3
+  // default), so existing producers need no change to keep working.
+  uint32 format_version = 5;
+
+  // Reserved for a future format_version 2: a columnar payload shape
+  // (per-channel packed arrays of values/offsets instead of one
+  // submessage per sample) for long-tick/degraded-link operation, where
+  // per-sample submessage framing stops amortizing well. See
+  // docs/WIRE_FORMAT.md "Future: columnar payload (format_version 2)".
+  // Left unallocated (not even in a oneof) so format_version 1 producers
+  // and consumers are completely unaffected until that shape is designed.
+  reserved 10 to 15;
 }

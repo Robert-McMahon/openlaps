@@ -119,6 +119,111 @@ auditable place to change.
    retaining every registry generation for the life of the stream's
    retention window is not a size concern.
 
+## Value encoding
+
+`Sample.value` is a oneof with six arms: `d` (double), `i` (sint64), `b`
+(bool), `s` (string), `f` (float), `u` (uint64, varint). `d`/`i`/`b`/`s` map
+1:1 to `ValueType.DOUBLE`/`INT64`/`BOOL`/`STRING`; `f` and `u` map to the
+newer `ValueType.FLOAT` and `ValueType.UINT`. Exactly one arm is set per
+`Sample`, selected by the `ValueType` of that sample's channel in the
+`ChannelRegistry` it was encoded against — a decoder doesn't need to guess
+which arm is populated, it looks up the channel's declared type first.
+
+**Default stays `DOUBLE`.** Every channel the catalog doesn't explicitly
+tune still round-trips through a plain 8-byte double, exactly as before this
+change. `FLOAT` and `UINT` are opt-in, per-channel compact encodings —
+"levers" a catalog author reaches for on channels where the extra headroom
+of a double buys nothing:
+
+- **`FLOAT`** (`Sample.f`) — single-precision, 4 bytes fixed width instead
+  of double's 8. Good for real-valued channels whose physical precision
+  never approaches single-float resolution (most analog sensor channels:
+  temperatures, pressures, voltages).
+- **`UINT`** (`Sample.u`) — an unsigned varint, as few as 1-2 bytes on the
+  wire for small-magnitude values, instead of double's fixed 8. Good for
+  naturally-integer channels (counters, RPM as a raw count) and, combined
+  with the fixed-point convention below, for channels that are physically
+  fractional but don't need double's dynamic range.
+
+Producers choose the wire type per channel via the catalog's per-channel
+`encode:` setting — see [`docs/CATALOG.md`](CATALOG.md) for the exact config
+syntax; this document only describes the wire-level mechanics the catalog
+lever controls: which `ValueType` a channel's `ChannelRegistry.Channel`
+entry declares, and, for `UINT`, the accompanying `scale`/`offset`
+coefficients.
+
+### Fixed-point convention (`scale` / `offset`)
+
+`Channel` carries two `double` fields, `scale` and `offset`, both defaulting
+to `0`. A `scale` of `0` means "unscaled" — the wire value *is* the physical
+value (used for plain `UINT`/`INT64` counters). A non-zero `scale` activates
+a fixed-point convention that lets an integer wire type carry a fractional
+physical quantity:
+
+```
+wire_value = round((physical - offset) / scale)
+physical   = wire_value * scale + offset
+```
+
+`scale`/`offset` are only meaningful for integer wire types (`UINT`, and
+`INT64` where a producer wants the same trick with signed deltas); they are
+undefined for `DOUBLE`/`FLOAT`/`BOOL`/`STRING` channels and MUST be left at
+`0` there. Decoders MUST apply a channel's `scale`/`offset` when it declares
+them non-zero — a raw `wire_value` without that transform is not the
+physical quantity.
+
+**Worked example:** coolant temperature in Kelvin (roughly 250-400 K)
+encoded with `scale: 0.1, offset: 0` becomes a wire value in the low
+thousands (e.g. 300.0 K -> 3000) — comfortably inside a 1-2 byte varint —
+instead of an 8-byte double, while still resolving to 0.1 K precision on
+decode.
+
+## format_version
+
+`SampleBatch.format_version` declares the shape of that batch's payload.
+Today it is always `1` — the per-sample repeated-submessage layout described
+above (one `Sample` message per value, each carrying its own `channel_id`
+and `t_offset_us`). A producer that doesn't set the field is implicitly
+version 1 (proto3's zero-value default), so existing producers need no
+change.
+
+**Consumers MUST reject a batch whose `format_version` they don't
+understand, loudly** — log/alert and drop the batch, not best-effort parse
+it as if it were version 1. A version bump is a signal that the payload
+shape itself changed (see below), not just that new fields were added to
+the existing shape; silently misinterpreting an unknown version's bytes as
+version 1 risks decoding garbage as valid samples.
+
+## Future: columnar payload (format_version 2)
+
+`SampleBatch` reserves field numbers `10` to `15` (see the proto) for a
+future `format_version 2`: a **columnar** payload — per-channel packed
+arrays of values and offsets — instead of today's `format_version 1`
+per-sample repeated submessages. This is not implemented yet; the reservation
+exists so the schema can grow into it later without a breaking field-number
+reuse.
+
+**Why it isn't worth doing today.** At the 10-20 ms batching ticks this
+system actually runs (see "Batching rules" below), most channels contribute
+at most one sample per batch — there is nothing to amortize a per-channel
+array format against; the per-sample submessage framing (`Sample`'s
+tag+length plus its own `channel_id`/`t_offset_us`) barely matters when
+there's usually only one sample per channel per tick anyway.
+
+**Why it would pay off at longer ticks.** The wire format is designed to
+tolerate longer batching ticks under degraded-link conditions (100+ ms,
+where a source-class's collector keeps sampling at its native rate but
+publishing is throttled back). At that tick length, a single channel can
+contribute many samples to one batch, and today's format pays the full
+per-sample submessage tag+length plus a repeated `channel_id` for every one
+of them. A columnar `format_version 2` — one packed array of values and one
+packed array of offsets per channel, `channel_id` written once — removes
+that repeated per-sample framing entirely. Estimated savings: **~40%**
+further reduction on top of the `float32`/`UINT` lever, at the tick lengths
+where it would actually be used (see the "levers" section of
+[`docs/LINK_BUDGET.md`](LINK_BUDGET.md) for the reasoning this estimate
+carries forward from).
+
 ## Timestamp scheme
 
 Every sample's true capture time is:

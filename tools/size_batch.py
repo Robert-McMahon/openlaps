@@ -14,15 +14,24 @@ source-class per tick using the generated bindings and just measure
 
 Signal mix modelled (see --stats):
   - CAN: every signal update in the stats file's `can_rows` becomes one
-    double Sample (rate = frame_rate_hz * signals_per_frame per message).
-  - GPS: 50 Hz, 6 doubles per fix (lat, lon, speed, heading, + 2 status
-    doubles).
-  - IMU: 100 Hz, 10 doubles per frame.
+    Sample (rate = frame_rate_hz * signals_per_frame per message).
+  - GPS: 50 Hz, 6 values per fix (lat, lon, speed, heading, + 2 status
+    values).
+  - IMU: 100 Hz, 10 values per frame.
+
+`--wire-profile` selects the per-channel wire encoding lever each of those
+samples uses (see docs/WIRE_FORMAT.md "Value encoding" and the catalog's
+`encode:` setting, docs/CATALOG.md): "double" (default, today's behaviour,
+8 B fixed-width DOUBLE), "float32" (4 B fixed-width FLOAT), or "mixed"
+(float32 for analog values, compact UINT varints for the naturally-integer
+slice).
 
 Usage:
     uv run python tools/size_batch.py
     uv run python tools/size_batch.py --tick-ms 10
     uv run python tools/size_batch.py --stats path/to/mqtt_payload_stats.json
+    uv run python tools/size_batch.py --wire-profile float32
+    uv run python tools/size_batch.py --wire-profile mixed
 """
 
 from __future__ import annotations
@@ -112,10 +121,38 @@ def samples_in_tick(streams: list[ChannelStream], tick_s: float) -> int:
     return round(total)
 
 
-def build_sample_batch(n_samples: int, tick_us: int, registry_seq: int = 1) -> bytes:
-    """Build one representative SampleBatch of n_samples doubles and return
+WIRE_PROFILES = ("double", "float32", "mixed")
+
+# "mixed" profile: every 10th sample (naturally-integer channels, e.g.
+# engine.rpm, trigger/retry counters) goes out as a compact UINT value;
+# the rest (analog channels: pressures, temperatures, accel/gyro, GPS)
+# go out as float32. This mirrors the real catalog mix, where the large
+# majority of channels are analog/real-valued and a smaller slice are
+# naturally-integer counters -- see docs/CATALOG.md's channel list.
+MIXED_PROFILE_UINT_STRIDE = 10
+
+
+def build_sample_batch(
+    n_samples: int, tick_us: int, registry_seq: int = 1, wire_profile: str = "double"
+) -> bytes:
+    """Build one representative SampleBatch of n_samples samples and return
     its serialized bytes. Channel ids and offsets are spread the way a real
-    tick would fill them, matching tests/test_wire_format.py's model."""
+    tick would fill them, matching tests/test_wire_format.py's model.
+
+    wire_profile selects the per-channel compact encoding lever (see
+    docs/WIRE_FORMAT.md "Value encoding" and the catalog's `encode:`
+    setting, docs/CATALOG.md):
+      - "double": every value a DOUBLE (Sample.d) -- today's default,
+        unscaled 8 B fixed-width values. The baseline this tool has always
+        modelled.
+      - "float32": every value a FLOAT (Sample.f) -- 4 B fixed-width.
+      - "mixed": float32 for analog values, UINT (Sample.u, varint) for
+        every MIXED_PROFILE_UINT_STRIDE'th sample, standing in for the
+        catalog's naturally-integer channels (RPM, counters).
+    """
+    if wire_profile not in WIRE_PROFILES:
+        raise ValueError(f"unknown wire_profile {wire_profile!r}, expected one of {WIRE_PROFILES}")
+
     batch = pb.SampleBatch(
         registry_seq=registry_seq,
         batch_epoch_unix_ms=1_753_500_000_000,
@@ -125,7 +162,15 @@ def build_sample_batch(n_samples: int, tick_us: int, registry_seq: int = 1) -> b
     for i in range(n_samples):
         offset_us = 0 if n_samples <= 1 else round(i * tick_us / n_samples)
         sample = batch.samples.add(channel_id=i % n_channels, t_offset_us=offset_us)
-        sample.d = 100.0 + (i % 997) * 0.25
+        if wire_profile == "double":
+            sample.d = 100.0 + (i % 997) * 0.25
+        elif wire_profile == "float32":
+            sample.f = 100.0 + (i % 997) * 0.25
+        else:  # mixed
+            if i % MIXED_PROFILE_UINT_STRIDE == 0:
+                sample.u = 100 + (i % 997)
+            else:
+                sample.f = 100.0 + (i % 997) * 0.25
     return batch.SerializeToString()
 
 
@@ -144,6 +189,19 @@ def main() -> None:
         type=float,
         default=20.0,
         help="Batching tick length in milliseconds (default: 20)",
+    )
+    parser.add_argument(
+        "--wire-profile",
+        choices=WIRE_PROFILES,
+        default="double",
+        help=(
+            "Per-channel wire encoding lever to model (default: double). "
+            "'double': today's default, every value DOUBLE (8 B). "
+            "'float32': every value FLOAT (4 B). "
+            "'mixed': float32 for analog values, UINT varint for the "
+            "naturally-integer slice (~10%% of samples) -- see "
+            "docs/WIRE_FORMAT.md 'Value encoding'."
+        ),
     )
     args = parser.parse_args()
 
@@ -164,7 +222,7 @@ def main() -> None:
     # per-sample byte cost, and splitting them only adds a fixed ~20 B
     # header per extra batch, which the NATS framing overhead below already
     # approximates for a small number of source-classes).
-    wire = build_sample_batch(n_samples_per_tick, tick_us)
+    wire = build_sample_batch(n_samples_per_tick, tick_us, wire_profile=args.wire_profile)
     batch_bytes = len(wire)
 
     batches_per_s = ticks_per_s
@@ -178,6 +236,7 @@ def main() -> None:
     n_can_msgs, can_frames_per_s, can_updates_per_s = can_summary(args.stats)
 
     print(f"Stats file:        {args.stats}")
+    print(f"Wire profile:      {args.wire_profile}")
     print(f"Tick length:       {args.tick_ms:g} ms ({batches_per_s:.0f} batches/s)")
     print(
         f"CAN:               {n_can_msgs} messages, {can_frames_per_s:.1f} frames/s, "

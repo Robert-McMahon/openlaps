@@ -188,24 +188,49 @@ None of these are needed to fit 2 MHz MCS4 today (§5); listed in rough
 order of effort, for if a future signal mix (more CAN buses, higher rates)
 erodes the margin.
 
-- **`float32` values (proto change).** `Sample.value` currently only offers
-  `double` (8 B) for real-valued channels. Adding a `float` (4 B) arm to
-  the oneof and using it for channels where single-precision is enough
-  halves the value field itself (8 B → 4 B). Measured against this
-  document's own per-sample breakdown (~15.9 B/sample, of which 9 B is the
-  double's tag+value), that's roughly a **~25%** cut to total batch bytes
-  — not a full halving, since channel_id and t_offset framing don't
-  shrink. At 10 ms this would take offered load from ~553 kbit/s to
-  roughly ~415 kbit/s.
-- **Columnar/packed encoding per channel.** Right now every sample pays a
-  submessage tag+length plus its own `channel_id` and `t_offset_us` fields.
-  Restructuring `SampleBatch` around one repeated (packed) array per
-  channel — values packed together, offsets packed together — removes the
-  per-sample submessage framing that repeats today for every one of the
-  ~2,700+ CAN updates/s. Estimated **~40% further** reduction on top of the
-  float32 change; this is a wire-format-breaking change (a new proto
-  message shape), so it's a "if we actually need it" lever, not a
-  first-choice one.
+- **`float32`/`UINT`-with-`scale` values — shipped, per-channel catalog
+  levers.** As of the `format_version`/compact-encoding schema update,
+  `Sample.value` offers `float` (4 B, `ValueType.FLOAT`) and a varint
+  `uint64` (`ValueType.UINT`, as low as 1-2 B for small-magnitude values)
+  alongside the original `double` (8 B) — see
+  [`WIRE_FORMAT.md`](WIRE_FORMAT.md) "Value encoding" for the wire
+  mechanics and the `scale`/`offset` fixed-point convention that lets a
+  `UINT` channel carry a fractional physical value (e.g. coolant temp in
+  Kelvin at `scale: 0.1`). These aren't hypothetical any more — they're
+  levers a catalog author reaches for per-channel today via the catalog's
+  `encode:` setting (see [`docs/CATALOG.md`](CATALOG.md)); the default for
+  an unconfigured channel is still `double`, unchanged.
+
+  Measured with `tools/size_batch.py --wire-profile {double,float32,mixed}`
+  (`mixed` = float32 for analog channels, `UINT` for the naturally-integer
+  slice, ~10% of samples — see the tool's docstring), NATS-framed offered
+  load against this document's default signal mix:
+
+  | Tick | `double` (baseline) | `float32` | `mixed` |
+  | --- | ---: | ---: | ---: |
+  | 10 ms | 552.8 kbit/s | 421.6 kbit/s (**−23.7%**) | 411.2 kbit/s (**−25.6%**) |
+  | 20 ms | 544.4 kbit/s | 413.2 kbit/s (**−24.1%**) | 404.8 kbit/s (**−25.6%**) |
+
+  In line with the earlier estimate (~25% from halving the value field on
+  channels that don't need double's range), and confirms `mixed` buys only
+  a couple more points over plain `float32` for this signal mix, since most
+  of today's catalog is analog/real-valued rather than naturally-integer.
+- **Columnar payload — reserved as `format_version 2`, not yet
+  implemented.** Right now every sample pays a submessage tag+length plus
+  its own `channel_id` and `t_offset_us` fields. `SampleBatch` reserves
+  field numbers 10-15 (see `proto/telemetry.proto` and `WIRE_FORMAT.md`'s
+  "Future: columnar payload (format_version 2)" section) for a future
+  payload shape — one packed array of values and one packed array of
+  offsets per channel, `channel_id` written once — that removes this
+  per-sample framing entirely. It only pays off at the longer, degraded-
+  link tick lengths (100+ ms) where a channel contributes many samples to
+  one batch; at the 10-20 ms ticks modelled in this document, most
+  channels contribute ≤1 sample per batch, so there's nothing to amortize
+  yet. Estimated **~40% further** reduction on top of the float32/mixed
+  numbers above, at those longer ticks. This is a wire-format-breaking
+  change (a new payload shape gated behind `format_version`), so it
+  remains a "if we actually need it" lever, not a first-choice one — the
+  schema is future-proofed for it, nothing more.
 - **Per-channel rate caps / RBE in the catalog.** Config-only, no code or
   wire-format change — this is what §4's PD16 example already models.
   Applying deadband + `max_interval` policies more broadly across the

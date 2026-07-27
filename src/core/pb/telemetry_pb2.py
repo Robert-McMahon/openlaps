@@ -24,21 +24,21 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0ftelemetry.proto\x12\x0bopenlaps.v1\"l\n\x07\x43hannel\x12\n\n\x02id\x18\x01 \x01(\r\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x12\n\nsource_ref\x18\x03 \x01(\t\x12\r\n\x05units\x18\x04 \x01(\t\x12$\n\x04type\x18\x05 \x01(\x0e\x32\x16.openlaps.v1.ValueType\"|\n\x0f\x43hannelRegistry\x12\x14\n\x0cregistry_seq\x18\x01 \x01(\r\x12\x12\n\nvehicle_id\x18\x02 \x01(\t\x12\x17\n\x0f\x63reated_unix_ms\x18\x03 \x01(\x06\x12&\n\x08\x63hannels\x18\x04 \x03(\x0b\x32\x14.openlaps.v1.Channel\"n\n\x06Sample\x12\x12\n\nchannel_id\x18\x01 \x01(\r\x12\x13\n\x0bt_offset_us\x18\x02 \x01(\r\x12\x0b\n\x01\x64\x18\x03 \x01(\x01H\x00\x12\x0b\n\x01i\x18\x04 \x01(\x12H\x00\x12\x0b\n\x01\x62\x18\x05 \x01(\x08H\x00\x12\x0b\n\x01s\x18\x06 \x01(\tH\x00\x42\x07\n\x05value\"\x83\x01\n\x0bSampleBatch\x12\x14\n\x0cregistry_seq\x18\x01 \x01(\r\x12\x1b\n\x13\x62\x61tch_epoch_unix_ms\x18\x02 \x01(\x06\x12\x1b\n\x13\x62\x61tch_epoch_mono_ns\x18\x03 \x01(\x06\x12$\n\x07samples\x18\x04 \x03(\x0b\x32\x13.openlaps.v1.Sample*T\n\tValueType\x12\x1a\n\x16VALUE_TYPE_UNSPECIFIED\x10\x00\x12\n\n\x06\x44OUBLE\x10\x01\x12\t\n\x05INT64\x10\x02\x12\x08\n\x04\x42OOL\x10\x03\x12\n\n\x06STRING\x10\x04\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0ftelemetry.proto\x12\x0bopenlaps.v1\"\x8b\x01\n\x07\x43hannel\x12\n\n\x02id\x18\x01 \x01(\r\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x12\n\nsource_ref\x18\x03 \x01(\t\x12\r\n\x05units\x18\x04 \x01(\t\x12$\n\x04type\x18\x05 \x01(\x0e\x32\x16.openlaps.v1.ValueType\x12\r\n\x05scale\x18\x06 \x01(\x01\x12\x0e\n\x06offset\x18\x07 \x01(\x01\"|\n\x0f\x43hannelRegistry\x12\x14\n\x0cregistry_seq\x18\x01 \x01(\r\x12\x12\n\nvehicle_id\x18\x02 \x01(\t\x12\x17\n\x0f\x63reated_unix_ms\x18\x03 \x01(\x06\x12&\n\x08\x63hannels\x18\x04 \x03(\x0b\x32\x14.openlaps.v1.Channel\"\x88\x01\n\x06Sample\x12\x12\n\nchannel_id\x18\x01 \x01(\r\x12\x13\n\x0bt_offset_us\x18\x02 \x01(\r\x12\x0b\n\x01\x64\x18\x03 \x01(\x01H\x00\x12\x0b\n\x01i\x18\x04 \x01(\x12H\x00\x12\x0b\n\x01\x62\x18\x05 \x01(\x08H\x00\x12\x0b\n\x01s\x18\x06 \x01(\tH\x00\x12\x0b\n\x01\x66\x18\x07 \x01(\x02H\x00\x12\x0b\n\x01u\x18\x08 \x01(\x04H\x00\x42\x07\n\x05value\"\xa1\x01\n\x0bSampleBatch\x12\x14\n\x0cregistry_seq\x18\x01 \x01(\r\x12\x1b\n\x13\x62\x61tch_epoch_unix_ms\x18\x02 \x01(\x06\x12\x1b\n\x13\x62\x61tch_epoch_mono_ns\x18\x03 \x01(\x06\x12$\n\x07samples\x18\x04 \x03(\x0b\x32\x13.openlaps.v1.Sample\x12\x16\n\x0e\x66ormat_version\x18\x05 \x01(\rJ\x04\x08\n\x10\x10*i\n\tValueType\x12\x1a\n\x16VALUE_TYPE_UNSPECIFIED\x10\x00\x12\n\n\x06\x44OUBLE\x10\x01\x12\t\n\x05INT64\x10\x02\x12\x08\n\x04\x42OOL\x10\x03\x12\n\n\x06STRING\x10\x04\x12\t\n\x05\x46LOAT\x10\x05\x12\x08\n\x04UINT\x10\x06\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'telemetry_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_VALUETYPE']._serialized_start=514
-  _globals['_VALUETYPE']._serialized_end=598
-  _globals['_CHANNEL']._serialized_start=32
-  _globals['_CHANNEL']._serialized_end=140
-  _globals['_CHANNELREGISTRY']._serialized_start=142
-  _globals['_CHANNELREGISTRY']._serialized_end=266
-  _globals['_SAMPLE']._serialized_start=268
-  _globals['_SAMPLE']._serialized_end=378
-  _globals['_SAMPLEBATCH']._serialized_start=381
-  _globals['_SAMPLEBATCH']._serialized_end=512
+  _globals['_VALUETYPE']._serialized_start=603
+  _globals['_VALUETYPE']._serialized_end=708
+  _globals['_CHANNEL']._serialized_start=33
+  _globals['_CHANNEL']._serialized_end=172
+  _globals['_CHANNELREGISTRY']._serialized_start=174
+  _globals['_CHANNELREGISTRY']._serialized_end=298
+  _globals['_SAMPLE']._serialized_start=301
+  _globals['_SAMPLE']._serialized_end=437
+  _globals['_SAMPLEBATCH']._serialized_start=440
+  _globals['_SAMPLEBATCH']._serialized_end=601
 # @@protoc_insertion_point(module_scope)

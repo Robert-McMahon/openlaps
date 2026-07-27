@@ -1,0 +1,141 @@
+// openlaps wire format — telemetry transport messages.
+//
+// This file is the normative definition of the vehicle -> pit wire format;
+// see docs/WIRE_FORMAT.md for the accompanying prose spec (subject
+// hierarchy, JetStream stream definitions, registry lifecycle, timestamp
+// scheme, batching rules). Keep the two in sync.
+//
+// Two message kinds cross the wire:
+//
+//   ChannelRegistry — published by the vehicle agent on startup and again
+//   whenever the channel catalog changes. It is the only place channel
+//   names, units and types ever appear; every other message refers to
+//   channels by a small integer id. Consumers MUST NOT attempt to decode a
+//   SampleBatch against a registry with a different registry_seq — see the
+//   registry lifecycle section of docs/WIRE_FORMAT.md for the look-back
+//   procedure when a batch references an unknown seq.
+//
+//   SampleBatch — one per source-class per batching tick (10-20 ms; see
+//   docs/WIRE_FORMAT.md "Batching rules"). Carries a wall-clock epoch and a
+//   monotonic epoch for the tick, plus a list of samples whose true capture
+//   time is batch_epoch_unix_ms + t_offset_us.
+syntax = "proto3";
+
+package openlaps.v1;
+
+// The datatype of a channel's values, as declared in the channel catalog.
+// Determines which branch of Sample.value is populated for that channel.
+enum ValueType {
+  // Proto3 requires a zero value; registries must never actually emit this.
+  VALUE_TYPE_UNSPECIFIED = 0;
+  DOUBLE = 1;
+  INT64 = 2;
+  BOOL = 3;
+  STRING = 4;
+}
+
+// A single channel definition: the mapping from a wire-stable integer id to
+// its canonical name, source reference, units and datatype.
+message Channel {
+  // Wire id referenced by Sample.channel_id in SampleBatch messages that
+  // carry this registry's registry_seq. Ids are only meaningful within one
+  // registry generation — a catalog reload may renumber them.
+  uint32 id = 1;
+
+  // Canonical channel name from the catalog, e.g. "engine.rpm",
+  // "chassis.accel_x", "position.lat". Dashboards, the timing engine and
+  // exports reference this name; wire payloads never repeat it.
+  string name = 2;
+
+  // Origin of the raw signal in collector namespace, e.g.
+  // "can0:haltech.ENGINE1.ENGINE_SPEED" or "serial0:um980.RMC.lat".
+  // Present for traceability/debugging; not used for routing.
+  string source_ref = 3;
+
+  // Engineering units, e.g. "rpm", "g", "V", "deg". Empty string for
+  // dimensionless or non-numeric channels (e.g. STRING-typed status text).
+  string units = 4;
+
+  // Datatype this channel's samples carry — selects the oneof arm in
+  // Sample.value for every Sample with this channel_id.
+  ValueType type = 5;
+}
+
+// Published on agent start and whenever the channel catalog changes.
+// Stored durably in the TELE stream so late-joining or resuming consumers
+// can always resolve a registry_seq by looking back through the stream.
+message ChannelRegistry {
+  // Monotonically increasing generation number. Every SampleBatch carries
+  // the registry_seq it was encoded against; a batch is only decodable
+  // against the ChannelRegistry with the matching registry_seq.
+  uint32 registry_seq = 1;
+
+  // Vehicle identifier this registry belongs to, matching the <vehicle>
+  // segment of the tele.<vehicle>.<source-class> subject hierarchy.
+  string vehicle_id = 2;
+
+  // Wall-clock time this registry generation was created, epoch
+  // milliseconds (UTC). See docs/WIRE_FORMAT.md for the wall-clock source
+  // (GPS-disciplined when available).
+  fixed64 created_unix_ms = 3;
+
+  // Every channel known to the agent as of this registry generation. Not a
+  // delta — each new registry is a complete snapshot of the catalog.
+  repeated Channel channels = 4;
+}
+
+// One sample of one channel: a value plus its offset from the enclosing
+// batch's epoch.
+message Sample {
+  // References Channel.id in the ChannelRegistry whose registry_seq
+  // matches the enclosing SampleBatch.
+  uint32 channel_id = 1;
+
+  // Microseconds after the enclosing SampleBatch's batch_epoch_unix_ms at
+  // which this sample was actually captured. True capture time is
+  // batch_epoch_unix_ms + t_offset_us (see docs/WIRE_FORMAT.md "Timestamp
+  // scheme"). Bounded by the batch tick length (10-20 ms), so 32 bits is
+  // far more range than ever needed, but keeps the field fixed-width and
+  // simple to reason about.
+  uint32 t_offset_us = 2;
+
+  // Exactly one of these is set, per the channel's declared ValueType.
+  oneof value {
+    double d = 3;   // ValueType.DOUBLE
+    sint64 i = 4;   // ValueType.INT64 (sint64: zig-zag encoded, cheap for
+                     // small-magnitude signed values like deltas/counters)
+    bool b = 5;     // ValueType.BOOL
+    string s = 6;   // ValueType.STRING
+  }
+}
+
+// One batch of samples from one source-class (e.g. can0, serial0, host,
+// derived) for one batching tick. Published to
+// tele.<vehicle>.<source-class> — see docs/WIRE_FORMAT.md "Subject
+// hierarchy" and "Batching rules". Empty ticks (no samples) are never
+// published.
+message SampleBatch {
+  // Generation of the ChannelRegistry this batch's channel_id values were
+  // assigned from. Consumers must hold (or fetch) the ChannelRegistry with
+  // this exact registry_seq before decoding channel_id -> name/units/type.
+  uint32 registry_seq = 1;
+
+  // Wall-clock epoch of the batch tick, epoch milliseconds (UTC). This is
+  // the reference point every sample's t_offset_us is measured from:
+  // a sample's true capture time = batch_epoch_unix_ms + t_offset_us / 1000.
+  // Sourced from a GPS-disciplined clock when available (the vehicle has no
+  // reliable RTC guarantee); see docs/WIRE_FORMAT.md.
+  fixed64 batch_epoch_unix_ms = 2;
+
+  // Monotonic capture-clock reading (nanoseconds since an arbitrary,
+  // per-process epoch) at the same instant as batch_epoch_unix_ms. Carried
+  // so a downstream consumer can measure cross-host latency (mono-to-mono
+  // deltas are immune to wall-clock jumps/NTP steps) without needing the
+  // wall clock to be trustworthy.
+  fixed64 batch_epoch_mono_ns = 3;
+
+  // Samples captured during this tick, across every channel this
+  // source-class produced a value for. One SampleBatch per 10-20 ms tick
+  // per source-class; see docs/WIRE_FORMAT.md "Batching rules".
+  repeated Sample samples = 4;
+}

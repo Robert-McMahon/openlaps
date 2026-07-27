@@ -1,0 +1,396 @@
+{
+  "source": {
+    "candump": "/home/rmc/logger/tests/fixtures/candump/candump-sample.log",
+    "imu_candump": "/home/rmc/logger/tests/fixtures/candump/candump-imu-sample.log",
+    "candump_duration_s": 5.286,
+    "imu_candump_duration_s": 4.99,
+    "signals_config": "config/signals_config.yaml"
+  },
+  "can_rows": [
+    {
+      "message": "PD16A_AVI_VOLTAGES",
+      "frame_id": "0x320",
+      "frame_rate_hz": 100.08,
+      "signals": 8,
+      "signals_per_frame": 8.0,
+      "mean_payload_b": 123.9,
+      "max_payload_b": 140,
+      "mean_topic_b": 51
+    },
+    {
+      "message": "PD16A_SPI_VOLTAGES",
+      "frame_id": "0x324",
+      "frame_rate_hz": 100.08,
+      "signals": 4,
+      "signals_per_frame": 4.0,
+      "mean_payload_b": 125.3,
+      "max_payload_b": 142,
+      "mean_topic_b": 51
+    },
+    {
+      "message": "MISC6",
+      "frame_id": "0x3E5",
+      "frame_rate_hz": 42.76,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 107,
+      "max_payload_b": 107,
+      "mean_topic_b": 34
+    },
+    {
+      "message": "INJECTION_TIME",
+      "frame_id": "0x364",
+      "frame_rate_hz": 42.76,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 129.9,
+      "max_payload_b": 130,
+      "mean_topic_b": 54
+    },
+    {
+      "message": "MISC9",
+      "frame_id": "0x3EB",
+      "frame_rate_hz": 42.76,
+      "signals": 2,
+      "signals_per_frame": 2.0,
+      "mean_payload_b": 124,
+      "max_payload_b": 124,
+      "mean_topic_b": 40
+    },
+    {
+      "message": "ENGINE1",
+      "frame_id": "0x360",
+      "frame_rate_hz": 42.76,
+      "signals": 4,
+      "signals_per_frame": 4.0,
+      "mean_payload_b": 113.8,
+      "max_payload_b": 129,
+      "mean_topic_b": 37.5
+    },
+    {
+      "message": "ENGINE2",
+      "frame_id": "0x361",
+      "frame_rate_hz": 42.76,
+      "signals": 4,
+      "signals_per_frame": 4.0,
+      "mean_payload_b": 119.7,
+      "max_payload_b": 128,
+      "mean_topic_b": 36
+    },
+    {
+      "message": "ENGINE3",
+      "frame_id": "0x362",
+      "frame_rate_hz": 42.57,
+      "signals": 2,
+      "signals_per_frame": 2.0,
+      "mean_payload_b": 125,
+      "max_payload_b": 128,
+      "mean_topic_b": 46.5
+    },
+    {
+      "message": "MISC11",
+      "frame_id": "0x471",
+      "frame_rate_hz": 42.57,
+      "signals": 3,
+      "signals_per_frame": 3.0,
+      "mean_payload_b": 126.4,
+      "max_payload_b": 141,
+      "mean_topic_b": 48
+    },
+    {
+      "message": "PD16A_OUTPUT_STATUS",
+      "frame_id": "0x6D4",
+      "frame_rate_hz": 38.03,
+      "signals": 41,
+      "signals_per_frame": 4.975,
+      "mean_payload_b": 127.4,
+      "max_payload_b": 143,
+      "mean_topic_b": 55.2
+    },
+    {
+      "message": "WB1_LAMBDA",
+      "frame_id": "0x2B1",
+      "frame_rate_hz": 19.49,
+      "signals": 4,
+      "signals_per_frame": 4.0,
+      "mean_payload_b": 119.3,
+      "max_payload_b": 127,
+      "mean_topic_b": 41.8
+    },
+    {
+      "message": "TRIGGER",
+      "frame_id": "0x369",
+      "frame_rate_hz": 17.22,
+      "signals": 3,
+      "signals_per_frame": 3.0,
+      "mean_payload_b": 114.7,
+      "max_payload_b": 121,
+      "mean_topic_b": 41.7
+    },
+    {
+      "message": "KNOCK",
+      "frame_id": "0x36A",
+      "frame_rate_hz": 17.22,
+      "signals": 2,
+      "signals_per_frame": 2.0,
+      "mean_payload_b": 106,
+      "max_payload_b": 106,
+      "mean_topic_b": 32
+    },
+    {
+      "message": "WHEEL_SPEED",
+      "frame_id": "0x36C",
+      "frame_rate_hz": 17.03,
+      "signals": 4,
+      "signals_per_frame": 4.0,
+      "mean_payload_b": 124,
+      "max_payload_b": 125,
+      "mean_topic_b": 48
+    },
+    {
+      "message": "MISC2",
+      "frame_id": "0x36E",
+      "frame_rate_hz": 17.03,
+      "signals": 2,
+      "signals_per_frame": 2.0,
+      "mean_payload_b": 126.5,
+      "max_payload_b": 134,
+      "mean_topic_b": 46
+    },
+    {
+      "message": "PWM_OUTPUT",
+      "frame_id": "0x36F",
+      "frame_rate_hz": 17.03,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 118,
+      "max_payload_b": 118,
+      "mean_topic_b": 45
+    },
+    {
+      "message": "MISC3",
+      "frame_id": "0x370",
+      "frame_rate_hz": 17.03,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 109,
+      "max_payload_b": 109,
+      "mean_topic_b": 33
+    },
+    {
+      "message": "GENERIC3",
+      "frame_id": "0x3E9",
+      "frame_rate_hz": 17.03,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 135,
+      "max_payload_b": 135,
+      "mean_topic_b": 36
+    },
+    {
+      "message": "VEHICLE_LIGHTS_DATA",
+      "frame_id": "0x6F4",
+      "frame_rate_hz": 17.03,
+      "signals": 5,
+      "signals_per_frame": 5.0,
+      "mean_payload_b": 129.8,
+      "max_payload_b": 132,
+      "mean_topic_b": 52.8
+    },
+    {
+      "message": "WIDEBAND1",
+      "frame_id": "0x368",
+      "frame_rate_hz": 17.03,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 124,
+      "max_payload_b": 124,
+      "mean_topic_b": 38
+    },
+    {
+      "message": "MISC10",
+      "frame_id": "0x470",
+      "frame_rate_hz": 17.03,
+      "signals": 2,
+      "signals_per_frame": 2.0,
+      "mean_payload_b": 110.5,
+      "max_payload_b": 121,
+      "mean_topic_b": 30
+    },
+    {
+      "message": "PD16A_DIAGNOSTICS",
+      "frame_id": "0x6D6",
+      "frame_rate_hz": 10.22,
+      "signals": 14,
+      "signals_per_frame": 4.667,
+      "mean_payload_b": 128.3,
+      "max_payload_b": 141,
+      "mean_topic_b": 54.1
+    },
+    {
+      "message": "FUEL_FLOW",
+      "frame_id": "0x371",
+      "frame_rate_hz": 8.7,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 109,
+      "max_payload_b": 109,
+      "mean_topic_b": 33
+    },
+    {
+      "message": "MISC4",
+      "frame_id": "0x372",
+      "frame_rate_hz": 8.51,
+      "signals": 3,
+      "signals_per_frame": 3.0,
+      "mean_payload_b": 118.3,
+      "max_payload_b": 129,
+      "mean_topic_b": 37.3
+    },
+    {
+      "message": "AMBIENT",
+      "frame_id": "0x376",
+      "frame_rate_hz": 8.51,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 118,
+      "max_payload_b": 118,
+      "mean_topic_b": 45
+    },
+    {
+      "message": "MISC12",
+      "frame_id": "0x473",
+      "frame_rate_hz": 8.51,
+      "signals": 2,
+      "signals_per_frame": 2.0,
+      "mean_payload_b": 115,
+      "max_payload_b": 122,
+      "mean_topic_b": 40.5
+    },
+    {
+      "message": "MISC14",
+      "frame_id": "0x6F7",
+      "frame_rate_hz": 8.51,
+      "signals": 2,
+      "signals_per_frame": 2.0,
+      "mean_payload_b": 123.4,
+      "max_payload_b": 135,
+      "mean_topic_b": 44.5
+    },
+    {
+      "message": "KEYPAD_HEARTBEAT",
+      "frame_id": "0x70C",
+      "frame_rate_hz": 6.81,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 117,
+      "max_payload_b": 117,
+      "mean_topic_b": 47
+    },
+    {
+      "message": "TEMPERATURE2",
+      "frame_id": "0x3E1",
+      "frame_rate_hz": 4.35,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 128.4,
+      "max_payload_b": 138,
+      "mean_topic_b": 50
+    },
+    {
+      "message": "FUEL_LEVEL",
+      "frame_id": "0x3E2",
+      "frame_rate_hz": 4.35,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 109,
+      "max_payload_b": 109,
+      "mean_topic_b": 35
+    },
+    {
+      "message": "FUEL_TRIM",
+      "frame_id": "0x3E3",
+      "frame_rate_hz": 4.35,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 122,
+      "max_payload_b": 122,
+      "mean_topic_b": 49
+    },
+    {
+      "message": "MISC5",
+      "frame_id": "0x3E4",
+      "frame_rate_hz": 4.35,
+      "signals": 7,
+      "signals_per_frame": 7.0,
+      "mean_payload_b": 116.3,
+      "max_payload_b": 121,
+      "mean_topic_b": 39.3
+    },
+    {
+      "message": "MISC13",
+      "frame_id": "0x6F3",
+      "frame_rate_hz": 4.35,
+      "signals": 3,
+      "signals_per_frame": 3.0,
+      "mean_payload_b": 126,
+      "max_payload_b": 126,
+      "mean_topic_b": 52.3
+    },
+    {
+      "message": "TRIP_METER",
+      "frame_id": "0x6F6",
+      "frame_rate_hz": 4.35,
+      "signals": 2,
+      "signals_per_frame": 2.0,
+      "mean_payload_b": 120,
+      "max_payload_b": 124,
+      "mean_topic_b": 48.5
+    },
+    {
+      "message": "ECU_TEMPERATURE",
+      "frame_id": "0x469",
+      "frame_rate_hz": 4.35,
+      "signals": 1,
+      "signals_per_frame": 1.0,
+      "mean_payload_b": 127.9,
+      "max_payload_b": 133,
+      "mean_topic_b": 45
+    },
+    {
+      "message": "TEMPERATURE1",
+      "frame_id": "0x3E0",
+      "frame_rate_hz": 4.16,
+      "signals": 4,
+      "signals_per_frame": 4.0,
+      "mean_payload_b": 120.6,
+      "max_payload_b": 130,
+      "mean_topic_b": 43.2
+    }
+  ],
+  "imu_frame_rates_hz": {
+    "FDI_IMU_ACCEL": 100.2,
+    "FDI_IMU_GYRO": 100.2,
+    "FDI_IMU_INFO": 1.0,
+    "FDI_UKF_EULER": 50.1
+  },
+  "imu_frame_ids": {
+    "FDI_UKF_EULER": "0x306",
+    "FDI_IMU_GYRO": "0x290",
+    "FDI_IMU_ACCEL": "0x289",
+    "FDI_IMU_INFO": "0x288"
+  },
+  "payload_bytes": {
+    "gps_data": 577,
+    "gps_data_no_session": 490,
+    "lap_events": 435,
+    "imu_live": 206,
+    "session_command": 259
+  },
+  "topic_bytes": {
+    "gps_data": 18,
+    "lap_events": 20,
+    "imu_live": 18,
+    "session_command": 22
+  }
+}

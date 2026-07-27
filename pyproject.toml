@@ -5,13 +5,16 @@ description = "Generic multi-CAN racing telemetry platform — the car is just a
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "protobuf>=5.28",
+]
 
 [project.optional-dependencies]
 dev = [
     "ruff>=0.16",
     "pytest>=8.3",
     "pre-commit>=4.0",
+    "grpcio-tools>=1.66",
 ]
 
 [build-system]
@@ -30,6 +33,7 @@ packages = [
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+extend-exclude = ["src/core/pb/*_pb2.py", "src/core/pb/*_pb2.pyi"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

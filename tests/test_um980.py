@@ -73,19 +73,25 @@ def test_write_rtcm_completes_partial_serial_writes():
     assert b"".join(port.writes) == b"abcdefgh"
 
 
-def test_configure_rejects_corrupted_ack_checksum():
-    port = FakeSerial([b"$command,UNLOG,response: OK*00\r\n"])
-    driver = UM980Driver(port, _settings(), ack_timeout_s=0.001)
-
-    with pytest.raises(UM980ConfigurationError, match="checksum"):
+def test_configure_accepts_acks_regardless_of_checksum_field():
+    """Bench-proven predecessor behaviour: the ``*hh`` trailer is stripped,
+    never verified — the real UM980's acks do not validate under NMEA XOR,
+    and a stricter port of this parser failed against actual hardware."""
+    for ack in (
+        b"$command,UNLOG,response: OK*00\r\n",  # checksum that doesn't XOR-validate
+        b"$command,UNLOG,response: OK*21\r\n",
+        b"$command,UNLOG,response: OK\r\n",  # no checksum trailer at all
+    ):
+        port = FakeSerial([ack, b"$command,GPRMC 0.02,response: OK\r\n"])
+        driver = UM980Driver(port, _settings(), ack_timeout_s=0.05)
         driver.configure()
 
 
-def test_configure_rejects_ack_without_checksum():
-    port = FakeSerial([b"$command,UNLOG,response: OK\r\n"])
-    driver = UM980Driver(port, _settings(), ack_timeout_s=0.001)
+def test_configure_still_fails_on_error_acks():
+    port = FakeSerial([b"$command,UNLOG,response: PARSING FAILD! NO MATCHING FUNC*66\r\n"])
+    driver = UM980Driver(port, _settings(), ack_timeout_s=0.05)
 
-    with pytest.raises(UM980ConfigurationError, match="checksum"):
+    with pytest.raises(UM980ConfigurationError, match="PARSING FAILD"):
         driver.configure()
 
 

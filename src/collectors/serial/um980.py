@@ -96,10 +96,7 @@ class UM980Driver:
             deadline = time.monotonic() + self._ack_timeout_s
             while time.monotonic() < deadline:
                 line = self._port.readline(513).decode("ascii", errors="replace").strip()
-                try:
-                    result = parse_command_response(line)
-                except ValueError as exc:
-                    return CommandResult(command, False, str(exc))
+                result = parse_command_response(line)
                 if result is not None and result.command.upper() == command.upper():
                     return result
         return CommandResult(command, False, "timeout")
@@ -115,22 +112,22 @@ class UM980Driver:
 
 
 def parse_command_response(line: str) -> CommandResult | None:
-    """Parse a UM980 ``$command,...,response: ...`` acknowledgement."""
+    """Parse a UM980 ``$command,...,response: ...`` acknowledgement.
+
+    Ported verbatim from the predecessor's bench-proven parser: any trailing
+    ``*hh`` checksum is stripped but deliberately NOT verified — the real
+    receiver's ``$command`` acknowledgements do not validate under plain
+    NMEA XOR (found on the bench 2026-07-27; an earlier port of this
+    function added strict verification and broke startup configuration
+    against actual hardware). Anything that is not a command ack returns
+    None so callers keep scanning the interleaved NMEA stream.
+    """
     if not line.startswith("$command,"):
         return None
-    framed_body = line[1:]
-    body_with_prefix, separator, supplied_checksum = framed_body.rpartition("*")
-    if not separator:
-        raise ValueError("missing UM980 acknowledgement checksum")
-    if len(supplied_checksum) != 2:
-        raise ValueError("invalid UM980 acknowledgement checksum field")
-    checksum = 0
-    for character in body_with_prefix:
-        checksum ^= ord(character)
-    if supplied_checksum.upper() != f"{checksum:02X}":
-        raise ValueError("invalid UM980 acknowledgement checksum")
-    framed_body = body_with_prefix
-    body = framed_body[len("command,") :]
+    body = line[len("$command,") :]
+    star = body.rfind("*")
+    if star != -1:
+        body = body[:star]
     command, separator, response = body.rpartition(",response:")
     if not separator or not command.strip():
         return None

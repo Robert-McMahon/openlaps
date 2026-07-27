@@ -11,6 +11,7 @@ from typing import Protocol
 
 import serial
 
+from collectors.clock import Emit, MonotonicWallClock, WallClock
 from collectors.serial.nmea import NmeaDecoder
 from collectors.serial.um980 import UM980ConfigurationError, UM980Driver
 from core.config import SerialConfig
@@ -21,9 +22,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_BACKOFF_START_S = 0.5
 DEFAULT_BACKOFF_MAX_S = 30.0
 MAX_SENTENCE_BYTES = 1024
-
-WallClock = Callable[[int], float]
-Emit = Callable[[Sample], None]
 
 
 class SerialPort(Protocol):
@@ -39,18 +37,6 @@ class SerialPort(Protocol):
 
 
 SerialFactory = Callable[[SerialConfig], SerialPort]
-
-
-class MonotonicWallClock:
-    """Fixed-offset monotonic-to-wall mapping, anchored at construction."""
-
-    __slots__ = ("_offset_ms",)
-
-    def __init__(self) -> None:
-        self._offset_ms = time.time() * 1000.0 - time.monotonic_ns() / 1e6
-
-    def __call__(self, t_mono_ns: int) -> float:
-        return self._offset_ms + t_mono_ns / 1e6
 
 
 @dataclass(slots=True)

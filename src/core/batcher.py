@@ -73,6 +73,10 @@ def _encode_value(wire_sample: pb.Sample, value: SampleValue, policy: ChannelPol
             wire_value = round((value - policy.offset) / policy.scale)
         elif isinstance(value, int):
             wire_value = value
+        elif value.is_integer():
+            # DBC decoding yields floats even for integer-valued signals
+            # (any non-unit scale factor); an integral float is that case.
+            wire_value = int(value)
         else:
             raise TypeError(f"unscaled {policy.name} requires an integer value")
         if policy.value_type == pb.INT64:
@@ -82,9 +86,13 @@ def _encode_value(wire_sample: pb.Sample, value: SampleValue, policy: ChannelPol
                 raise ValueError(f"{policy.name} encoded to a negative UINT value")
             wire_sample.u = wire_value
     elif policy.value_type == pb.BOOL:
-        if not isinstance(value, bool):
+        if isinstance(value, bool):
+            wire_sample.b = value
+        elif isinstance(value, (int, float)) and value in (0, 1):
+            # CAN flag signals decode as 0/1 numerics, not Python bools.
+            wire_sample.b = bool(value)
+        else:
             raise TypeError(f"{policy.name} requires a bool value")
-        wire_sample.b = value
     elif policy.value_type == pb.STRING:
         if not isinstance(value, str):
             raise TypeError(f"{policy.name} requires a string value")

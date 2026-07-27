@@ -68,8 +68,12 @@ Sample = (source_ref: str-interned, t_mono_ns: int, t_wall_ms: float, value)
 - `t_mono_ns` is the ordering and interval truth everywhere internally.
 - The wall clock maps from monotonic via an affine `(offset)` estimate:
   initialised from the system clock, and — when a GNSS time source is
-  present among the mapped channels — steered gently toward GPS time
-  (slew, never step, while running; a step is allowed only at startup).
+  present among the mapped channels (the agent looks for the canonical
+  channel `position.time_unix_ms`) — steered gently toward GPS time
+  (slew, never step, while running; a step is allowed only at startup —
+  including the first GNSS acquisition after boot, since the vehicle has
+  no RTC guarantee and slewing away a large system-clock error at ppm
+  rates would take hours).
   The current offset and its source (`system` / `gnss`) are published as
   `sys.agent.clock_offset_ms` / `sys.agent.clock_source`.
 - Each `SampleBatch` records both epochs (`batch_epoch_unix_ms`,

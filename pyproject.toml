@@ -7,6 +7,7 @@ license = "Apache-2.0"
 requires-python = ">=3.13"
 dependencies = [
     "cantools>=42.0.3",
+    "nats-py>=2.15.0",
     "protobuf>=5.28",
     "psutil>=7.2.2",
     "pydantic>=2.13.4",
@@ -14,6 +15,9 @@ dependencies = [
     "python-can>=4.6.1",
     "pyyaml>=6.0.3",
 ]
+
+[project.scripts]
+openlaps-agent = "agent.__main__:main"
 
 [project.optional-dependencies]
 dev = [

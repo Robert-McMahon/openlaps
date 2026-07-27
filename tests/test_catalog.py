@@ -254,3 +254,23 @@ def test_registry_state_cleanup_does_not_mask_primary_write_error(
 
     with pytest.raises(ConfigError, match=r"registry-state.json.*primary replace failure"):
         build_runtime_catalog(profile_dir, created_unix_ms=1)
+
+
+def test_registry_seq_bumps_when_derived_channel_set_changes(tmp_path: Path):
+    """The registry snapshot includes derived channels, so they gate the seq too."""
+    from core.catalog import DEFAULT_DERIVED_CHANNELS, DerivedChannel
+
+    profile_dir = _write_profile(tmp_path, 'car.rpm: {from: "can0:ecu.ENGINE.RPM", units: rpm}')
+    state = tmp_path / "state.json"
+    first = build_runtime_catalog(load_profile(profile_dir), state_path=state, created_unix_ms=1)
+    again = build_runtime_catalog(load_profile(profile_dir), state_path=state, created_unix_ms=1)
+    assert again.registry.registry_seq == first.registry.registry_seq
+
+    extended = DEFAULT_DERIVED_CHANNELS + (DerivedChannel("sys.agent.extra", pb.INT64),)
+    bumped = build_runtime_catalog(
+        load_profile(profile_dir),
+        state_path=state,
+        derived_channels=extended,
+        created_unix_ms=1,
+    )
+    assert bumped.registry.registry_seq == first.registry.registry_seq + 1

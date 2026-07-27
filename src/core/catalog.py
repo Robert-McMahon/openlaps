@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import os
 import tempfile
@@ -86,7 +87,15 @@ def build_runtime_catalog(
     loaded = load_profile(profile) if isinstance(profile, (str, Path)) else profile
     catalog_hash = loaded.catalog_hash
     persisted_path = Path(state_path) if state_path is not None else loaded.path / _STATE_FILE_NAME
-    registry_seq = _update_registry_state(persisted_path, catalog_hash)
+    # The registry snapshot also carries the agent's derived channels, so the
+    # persisted generation must bump when *either* the catalog file or the
+    # derived set changes — a consumer decodes strictly by registry_seq.
+    registry_hash = hashlib.sha256(
+        catalog_hash.encode("ascii")
+        + b"\x00"
+        + repr([(d.name, d.value_type, d.units) for d in derived_channels]).encode("utf-8")
+    ).hexdigest()
+    registry_seq = _update_registry_state(persisted_path, registry_hash)
     created_ms = round(time.time() * 1000) if created_unix_ms is None else created_unix_ms
 
     registry = pb.ChannelRegistry(

@@ -119,8 +119,13 @@ def parse_command_response(line: str) -> CommandResult | None:
     receiver's ``$command`` acknowledgements do not validate under plain
     NMEA XOR (found on the bench 2026-07-27; an earlier port of this
     function added strict verification and broke startup configuration
-    against actual hardware). Anything that is not a command ack returns
-    None so callers keep scanning the interleaved NMEA stream.
+    against actual hardware). Per the Unicore manual this is because the
+    module defaults to abbreviated ASCII (``CONFIG CMDFORMAT 0``, no
+    checksums); verified command framing requires configuring
+    ``CONFIG CMDFORMAT 1`` first and sending ``$CMD*hh`` — a deliberate
+    follow-up, not something to bolt back onto unchecksummed mode.
+    Anything that is not a command ack returns None so callers keep
+    scanning the interleaved NMEA stream.
     """
     if not line.startswith("$command,"):
         return None

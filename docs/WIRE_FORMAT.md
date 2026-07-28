@@ -49,12 +49,13 @@ correction has already superseded it.
 
 ## JetStream stream definitions
 
-Two JetStream streams live on the vehicle's `nats-server`. The pit's
-`nats-server` connects to the vehicle over a leafnode and sources `TELE`
-from it, so the vehicle-side stream and the pit-side copy are (eventually)
-identical — JetStream's resumable sourcing is what makes link dropouts a
-non-event: the pit catches up from the last sequence number it has, on
-whatever bandwidth is available, live or backlogged, off the same stream.
+Two JetStream streams live on the vehicle's `nats-server`, and one at the
+pit. The pit's `nats-server` connects to the vehicle over a leafnode and
+sources `TELE` into its own `TELE_VEHICLE`, so the vehicle-side stream and
+the pit-side copy are (eventually) identical — JetStream's resumable
+sourcing is what makes link dropouts a non-event: the pit catches up from
+the last sequence number it has, on whatever bandwidth is available, live
+or backlogged, off the same stream.
 
 ### `TELE`
 
@@ -107,6 +108,50 @@ sequence cursor) independent of this window.
 `CMD` messages are small and infrequent (driver swaps, track changes), so
 the volume argument for retention doesn't apply the way it does for `TELE`;
 what matters is that exactly one current value exists per subject.
+
+### `TELE_VEHICLE`
+
+The pit's copy of `TELE`, created at the pit by
+`deploy/provision_pit_streams.py` — not by the agent, which knows nothing
+about it. It is the stream every pit service actually consumes, and its
+name is deploy-time configuration on each of them
+(`OPENLAPS_INGEST_STREAM`, `OPENLAPS_LIVE_STREAM`, `OPENLAPS_NTRIP_STREAM`).
+
+| Setting | Value | Rationale |
+| --- | --- | --- |
+| Subjects | **none** | See below — a sourced stream that also declares `tele.<vehicle>.>` captures every message twice |
+| Sources | `TELE`, `external.api = "$JS.veh.API"` | Cross-domain sourcing over the leafnode; `veh` is the vehicle server's JetStream domain |
+| Storage | File | Survives a pit reboot without re-sourcing from the start |
+| Retention | Limits, age ~24 h and a size cap from pit disk | A buffer in front of Timescale, not an archive — the database is the archive (ADR 0003), so the vehicle's 72 h does not apply |
+| Replicas | 1 | Single pit node |
+
+**Why it declares no subjects.** The leafnode propagates
+`tele.<vehicle>.>` to the pit server as ordinary core NATS. A pit stream
+that declared that subject would capture each message directly *and* again
+through sourcing: measured at exactly 2× — ten messages published once to
+the vehicle grew such a stream by twenty. The sourced stream must therefore
+stay subject-less. Subjects are preserved *through* sourcing, so pit
+consumers still filter on `tele.<vehicle>.>`; they simply do it against a
+stream they name.
+
+**Consumers must name the stream.** `nats-py` resolves a stream from a
+subject by calling `$JS.API.STREAM.NAMES` with a subject filter, and the
+server matches that filter against a stream's *declared* subjects. A
+subject-less stream matches nothing, so a bare
+`js.subscribe("tele.<vehicle>.>")` raises `NotFoundError` against the pit
+while the `stream=`-qualified form succeeds. This is a property of the
+deployed topology, not of the wire format, but it is the first thing a new
+pit consumer gets wrong — every existing one passes `stream=` from
+configuration for exactly this reason.
+
+**Dropout recovery.** Sourcing resumes by sequence, so a severed and
+restored link is a catch-up, not a gap: the pit continues from the last
+sequence it holds, at whatever bandwidth is available. Verified over a
+severed-and-restored leafnode pair with 200 messages published while
+disconnected — zero missing, zero duplicated, order preserved
+(`tests/test_deploy_topology.py`). What remains unproven is the same
+behaviour over real half-duplex HaLow RF, which is Phase 4's garage bench
+test.
 
 ## Registry lifecycle
 

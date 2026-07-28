@@ -1,0 +1,252 @@
+# Pit stack: nats-server, TimescaleDB, mosquitto, and the four pit services.
+#
+#     docker compose -f deploy/pit-compose.yaml up -d
+#
+# No Grafana: locked decision 3 of docs/plan/PHASE3.md. The MQTT bridge is
+# verifiable with `mosquitto_sub` and the database with a SQL query; the
+# dashboard work is a later phase.
+#
+# Bring-up order is expressed in `depends_on`, not in a runbook, so `up -d`
+# gets it right unattended:
+#
+#   timescaledb healthy -> migrate runs to completion -> DB services start
+#   nats healthy -> provision-streams runs to completion -> NATS consumers start
+#
+# The two one-shots are the interesting part. Migrations are a bring-up
+# *step*, not a service: modelling them as an entrypoint line in each of the
+# four services would have four containers racing the same DDL on every
+# restart. Likewise the sourced stream is created once, by one thing.
+
+name: openlaps-pit
+
+x-openlaps-image: &openlaps-image
+  image: ${OPENLAPS_IMAGE:-openlaps:local}
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+
+x-pit-env: &pit-env
+  env_file:
+    - .env
+
+services:
+  # --- infrastructure -------------------------------------------------------
+
+  nats:
+    image: nats:2.12-alpine
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - ./nats/pit.conf:/etc/nats/nats.conf:ro
+      - ${NATS_TLS_DIR:?set NATS_TLS_DIR in .env}:/etc/nats/tls:ro
+      - nats-data:/data
+    environment:
+      # The whole leafnode remote URL, as one variable — nats-server expands
+      # $VAR only as a complete token, never as a substring, so pit.conf
+      # cannot assemble this from parts. Embed the vehicle stack's
+      # NATS_LEAF_PASSWORD and the car's address (which must match its
+      # certificate's SAN):
+      #     NATS_LEAFNODE_URL=tls://leaf:<password>@<vehicle-host>:7422
+      NATS_LEAFNODE_URL: ${NATS_LEAFNODE_URL:?set NATS_LEAFNODE_URL in .env}
+    ports:
+      - "4222:4222"   # clients (tools/decode.py, the nats CLI)
+      - "8222:8222"   # monitoring: /healthz, /leafz, /jsz
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg17
+    environment:
+      POSTGRES_DB: ${TIMESCALE_DB:-openlaps}
+      POSTGRES_USER: ${TIMESCALE_USER:-openlaps}
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:?set TIMESCALE_PASSWORD in .env}
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      # `pg_isready` alone reports ready during first-time init, before the
+      # server's restart partway through it. A completed query does not.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -q"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - "1883:1883"   # live-decoder and mosquitto_sub
+      - "9001:9001"   # websockets, for browser gauges
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -t '$$SYS/#' -C 1 -W 3 >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # --- one-shot bring-up steps ----------------------------------------------
+
+  migrate:
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-migrate"]
+    environment:
+      TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
+      TIMESCALE_PORT: "5432"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    # Safe to re-run: the applier records applied versions and serialises on
+    # an advisory lock (docs/PIT_SCHEMA.md). It exits 0 with nothing to do.
+    restart: "no"
+
+  provision-streams:
+    <<: [*openlaps-image, *pit-env]
+    command: ["python", "/app/deploy/provision_pit_streams.py"]
+    environment:
+      OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://nats:4222}
+    depends_on:
+      nats:
+        condition: service_healthy
+    # Idempotent: creates TELE_VEHICLE or converges the existing one.
+    restart: "no"
+
+  # --- pit services ---------------------------------------------------------
+
+  ingest-writer:
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-ingest-writer"]
+    environment:
+      OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://nats:4222}
+      OPENLAPS_INGEST_STREAM: ${OPENLAPS_INGEST_STREAM:-TELE_VEHICLE}
+      OPENLAPS_INGEST_HEALTH_PORT: "8081"
+      TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
+      TIMESCALE_PORT: "5432"
+    ports:
+      - "8081:8081"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      provision-streams:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+  live-decoder:
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-live-decoder"]
+    environment:
+      OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://nats:4222}
+      OPENLAPS_LIVE_STREAM: ${OPENLAPS_LIVE_STREAM:-TELE_VEHICLE}
+      OPENLAPS_LIVE_CONFIG: /config/live/live-decoder.yaml
+      OPENLAPS_LIVE_HEALTH_PORT: "8082"
+      OPENLAPS_MQTT_HOST: mosquitto
+      OPENLAPS_MQTT_PORT: "1883"
+    volumes:
+      # A bind mount of the *directory*, not of the single file. The reload
+      # path is an mtime poll plus SIGHUP, and most editors save by writing
+      # a temporary file and renaming it over the original -- which changes
+      # the inode. A single-file bind would keep pointing at the old one and
+      # the edit would never be seen.
+      - ./pit-config:/config/live:ro
+    ports:
+      - "8082:8082"
+    depends_on:
+      provision-streams:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8082/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+  session-control:
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-session-control"]
+    environment:
+      # Publishes *across* the leafnode into the vehicle's JetStream domain,
+      # so this URL is still the pit's own server. The domain below must
+      # equal `jetstream { domain: ... }` in deploy/nats/vehicle.conf; a
+      # mismatch is a silent publish failure into a domain that does not
+      # exist.
+      OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://nats:4222}
+      OPENLAPS_VEHICLE_JS_DOMAIN: ${OPENLAPS_VEHICLE_JS_DOMAIN:-veh}
+      # A container has to bind 0.0.0.0 to be reachable at all, and
+      # SessionControlSettings.from_env refuses to start on a non-loopback
+      # bind without an API key. The key is therefore mandatory here, not
+      # something to discover at first bring-up.
+      OPENLAPS_SESSION_HOST: 0.0.0.0
+      OPENLAPS_SESSION_API_KEY: ${OPENLAPS_SESSION_API_KEY:?set OPENLAPS_SESSION_API_KEY in .env}
+      OPENLAPS_SESSION_PORT: "8080"
+      OPENLAPS_SESSION_STATE_FILE: /data/session-state.json
+      OPENLAPS_SESSION_ROSTER: /config/roster.json
+      TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
+      TIMESCALE_PORT: "5432"
+    volumes:
+      # Restart continuity depends on the state file outliving the
+      # container: on startup the service re-publishes what it finds here,
+      # re-asserting the current session to a vehicle that may have
+      # restarted too.
+      - session-data:/data
+      - ${OPENLAPS_ROSTER_FILE:-../profiles/example-club-racer/session-roster.json}:/config/roster.json:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+  ntrip-client:
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-ntrip-client"]
+    environment:
+      OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://nats:4222}
+      # Only read when NTRIP_ENABLE_GGA=1, but it costs nothing to set and
+      # the GGA feed fails at startup without it against a sourced stream.
+      OPENLAPS_NTRIP_STREAM: ${OPENLAPS_NTRIP_STREAM:-TELE_VEHICLE}
+      OPENLAPS_NTRIP_HEALTH_PORT: "8083"
+    ports:
+      - "8083:8083"
+    depends_on:
+      provision-streams:
+        condition: service_completed_successfully
+    # NTRIP_HOST and NTRIP_MOUNTPOINT are required; without them the service
+    # exits 2 at startup and restarts, which is the intended loud failure.
+    # If you are not running RTK, `docker compose ... stop ntrip-client`.
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+volumes:
+  nats-data:
+  timescale-data:
+  session-data:

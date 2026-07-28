@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import math
 import shutil
 import socket
 import subprocess
 import time
+import urllib.error
+import urllib.request
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 import psycopg
@@ -206,18 +211,18 @@ def timescale_dsn():
 
 
 @pytest.fixture
-def mosquitto_url(tmp_path: Path):
+def mosquitto_url():
     """A fresh anonymous pit-local MQTT broker in docker."""
     if shutil.which("docker") is None:
         pytest.skip("docker not available")
     port = _free_port()
     name = f"openlaps-test-mosquitto-{uuid.uuid4().hex[:8]}"
-    config = tmp_path / "mosquitto.conf"
-    config.write_text(
-        "listener 1883\nallow_anonymous true\npersistence false\n",
-        encoding="utf-8",
-    )
-    config.chmod(0o644)
+    # Written inside the container rather than bind-mounted from tmp_path: a
+    # confined docker (the snap package, for one) cannot see /tmp and
+    # silently substitutes an empty directory for the file, leaving a broker
+    # that never starts and a test that skips for the wrong reason.
+    config = "listener 1883\nallow_anonymous true\npersistence false\n"
+    encoded = base64.b64encode(config.encode()).decode()
     run = subprocess.run(
         [
             "docker",
@@ -228,9 +233,12 @@ def mosquitto_url(tmp_path: Path):
             name,
             "-p",
             f"127.0.0.1:{port}:1883",
-            "-v",
-            f"{config}:/mosquitto/config/mosquitto.conf:ro",
+            "--entrypoint",
+            "sh",
             _MOSQUITTO_IMAGE,
+            "-c",
+            f"echo {encoded} | base64 -d > /mosquitto/config/mosquitto.conf "
+            "&& exec /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf",
         ],
         capture_output=True,
         text=True,
@@ -252,3 +260,175 @@ def mosquitto_url(tmp_path: Path):
         yield f"mqtt://127.0.0.1:{port}"
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+
+
+# --- the leafnode pair (P3.6) ------------------------------------------------
+
+_LEAF_ALIAS = "vehicle-leaf"
+
+# Short pings on both servers. Disconnecting a docker network removes the
+# interface but leaves the established TCP socket half-open, so a leafnode
+# only notices the peer is gone when its own keepalive times out — two
+# minutes twice over, on the defaults. The deployed configs leave those
+# defaults alone; this is a test-harness concession to not spending five
+# minutes per dropout assertion.
+_PING_CONF = """
+ping_interval: "1s"
+ping_max: 2
+"""
+
+_VEHICLE_CONF = f"""
+server_name: vehicle
+listen: 0.0.0.0:4222
+http: 0.0.0.0:8222
+jetstream {{ domain: veh, store_dir: /data }}
+leafnodes {{ listen: 0.0.0.0:7422 }}
+{_PING_CONF}
+"""
+
+# The remote names the vehicle's alias on the leafnode-only network. When
+# that network is disconnected the name stops resolving, which is exactly
+# the dropout being simulated.
+_PIT_CONF = f"""
+server_name: pit
+listen: 0.0.0.0:4222
+http: 0.0.0.0:8222
+jetstream {{ domain: pit, store_dir: /data }}
+leafnodes {{ remotes: [ {{ url: "nats://{_LEAF_ALIAS}:7422" }} ] }}
+{_PING_CONF}
+"""
+
+
+def _docker(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["docker", *args], capture_output=True, text=True)
+
+
+def _leafz(port: int) -> int:
+    """Established leafnode connections, or -1 while the server is unreachable."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/leafz", timeout=1.0) as response:
+            # `leafs` is the array of connections; `leafnodes` is its length.
+            return int(json.load(response).get("leafnodes", 0))
+    except (urllib.error.URLError, OSError, ValueError):
+        return -1
+
+
+def _await_leafz(port: int, expected: int, *, timeout_s: float = 30.0) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _leafz(port) == expected:
+            return True
+        time.sleep(0.2)
+    return False
+
+
+@dataclass
+class LeafnodePair:
+    """Two JetStream servers in distinct domains, joined by a severable leafnode."""
+
+    vehicle_url: str
+    pit_url: str
+    _vehicle: str
+    _pit_monitor_port: int
+    _leaf_network: str
+
+    def sever(self, *, timeout_s: float = 30.0) -> None:
+        """Cut the link by removing the vehicle from the leafnode-only network.
+
+        Deliberately *not* by disconnecting the network carrying the test
+        client's published ports: `docker network disconnect` takes the port
+        mapping with it, and the assertions would then run against a client
+        that lost its own connection rather than against a severed link.
+        """
+        _docker("network", "disconnect", self._leaf_network, self._vehicle)
+        assert _await_leafz(self._pit_monitor_port, 0, timeout_s=timeout_s), (
+            "pit still reports a leafnode connection after severing"
+        )
+
+    def restore(self, *, timeout_s: float = 60.0) -> None:
+        """Reattach, alias and all — the remote URL resolves it by name."""
+        _docker("network", "connect", "--alias", _LEAF_ALIAS, self._leaf_network, self._vehicle)
+        assert _await_leafz(self._pit_monitor_port, 1, timeout_s=timeout_s), (
+            "leafnode did not re-establish after reconnecting the network"
+        )
+
+
+@pytest.fixture
+def leafnode_pair():
+    """A vehicle/pit `nats-server` pair wired exactly as `deploy/nats/*.conf` wires them.
+
+    Domains `veh`/`pit`, the pit dialling the vehicle, and two docker
+    networks: one carrying only the leafnode, one carrying the published
+    ports the test client uses. Severing touches only the former.
+    """
+    if shutil.which("docker") is None:
+        pytest.skip("docker not available")
+    suffix = uuid.uuid4().hex[:8]
+    client_net = f"openlaps-test-client-{suffix}"
+    leaf_net = f"openlaps-test-leaf-{suffix}"
+    vehicle = f"openlaps-test-veh-{suffix}"
+    pit = f"openlaps-test-pit-{suffix}"
+    ports = {name: _free_port() for name in ("veh", "veh_mon", "pit", "pit_mon")}
+
+    def start(name: str, config: str, client_port: int, monitor_port: int) -> bool:
+        # The config is written *inside* the container rather than
+        # bind-mounted from tmp_path. A confined docker (the snap package,
+        # for one) cannot see /tmp at all and silently substitutes an empty
+        # directory for the file, which surfaces as "is a directory" from a
+        # server that never starts. Nothing here needs a host file.
+        encoded = base64.b64encode(config.encode()).decode()
+        run = _docker(
+            "run",
+            "-d",
+            "--rm",
+            "--name",
+            name,
+            "--network",
+            # The client network is attached first, so the published ports
+            # are mapped through it and survive the leafnode disconnect.
+            client_net,
+            "-p",
+            f"127.0.0.1:{client_port}:4222",
+            "-p",
+            f"127.0.0.1:{monitor_port}:8222",
+            "--entrypoint",
+            "sh",
+            _NATS_IMAGE,
+            "-c",
+            f"echo {encoded} | base64 -d > /nats.conf && exec nats-server -c /nats.conf",
+        )
+        return run.returncode == 0
+
+    def running(name: str) -> bool:
+        return _docker("inspect", "-f", "{{.State.Running}}", name).stdout.strip() == "true"
+
+    try:
+        for network in (client_net, leaf_net):
+            if _docker("network", "create", network).returncode != 0:
+                pytest.skip(f"cannot create docker network {network}")
+        if not start(vehicle, _VEHICLE_CONF, ports["veh"], ports["veh_mon"]):
+            pytest.skip("cannot start vehicle nats container")
+        if not _await_leafz(ports["veh_mon"], 0):
+            pytest.skip(f"vehicle nats did not start: {_docker('logs', vehicle).stderr[-300:]}")
+        if _docker("network", "connect", "--alias", _LEAF_ALIAS, leaf_net, vehicle).returncode:
+            pytest.skip("cannot attach the vehicle to the leafnode network")
+        if not start(pit, _PIT_CONF, ports["pit"], ports["pit_mon"]):
+            pytest.skip("cannot start pit nats container")
+        if not running(pit):
+            pytest.skip(f"pit nats did not start: {_docker('logs', pit).stderr[-300:]}")
+        if _docker("network", "connect", leaf_net, pit).returncode != 0:
+            pytest.skip("cannot attach the pit to the leafnode network")
+        if not _await_leafz(ports["pit_mon"], 1):
+            pytest.skip("leafnode did not establish between the test servers")
+        yield LeafnodePair(
+            vehicle_url=f"nats://127.0.0.1:{ports['veh']}",
+            pit_url=f"nats://127.0.0.1:{ports['pit']}",
+            _vehicle=vehicle,
+            _pit_monitor_port=ports["pit_mon"],
+            _leaf_network=leaf_net,
+        )
+    finally:
+        for name in (pit, vehicle):
+            _docker("rm", "-f", name)
+        for network in (leaf_net, client_net):
+            _docker("network", "rm", network)

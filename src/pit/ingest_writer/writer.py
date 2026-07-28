@@ -314,10 +314,18 @@ class IngestWriter:
         pit's own `channel_map`: the stream is where the producer's truth
         lives, and the agent republishes its registry on an interval
         precisely so a trimmed stream always holds one copy.
+
+        `stream=` is not optional here. The pit's stream is sourced-only and
+        declares no subjects of its own (a subject-declaring copy would
+        double-capture across the leafnode), so it cannot be found by
+        subject lookup — see `deploy/README.md` -> the sourced stream.
         """
         subject = f"tele.{self.settings.vehicle_id}.{REGISTRY_SOURCE_CLASS}"
         subscription = await js.subscribe(
-            subject, ordered_consumer=True, deliver_policy=api.DeliverPolicy.ALL
+            subject,
+            stream=self.settings.stream,
+            ordered_consumer=True,
+            deliver_policy=api.DeliverPolicy.ALL,
         )
         added = 0
         try:

@@ -46,6 +46,7 @@ async def _exercise(nats_url: str, mosquitto_url: str, config_path: Path) -> Non
     settings = LiveDecoderSettings(
         config_path=config_path,
         nats_url=nats_url,
+        stream="TELE",
         mqtt_host=mqtt.hostname or "127.0.0.1",
         mqtt_port=mqtt.port or 1883,
         health_port=0,

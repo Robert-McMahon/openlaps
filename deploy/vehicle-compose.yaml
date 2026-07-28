@@ -1,0 +1,80 @@
+# Vehicle stack: nats-server + the agent, on the car's SBC.
+#
+#     docker compose -f deploy/vehicle-compose.yaml up -d
+#
+# Run it from the repository root with a `.env` beside this file (see
+# example.env). `deploy/systemd/openlaps-agent.service` is the alternative
+# for an SBC running the agent directly, which is what the bench does today.
+#
+# Both services use host networking, and that is not a shortcut. `can0` is a
+# SocketCAN *network interface*: there is no device node to pass through, so
+# the container has to share the host's network namespace to see it. Bring
+# the interface up on the host first -- the agent does not configure it:
+#
+#     sudo ip link set can0 up type can bitrate 1000000
+#
+# Host networking also means the ports below are the host's ports directly;
+# there is no port mapping to get wrong.
+
+name: openlaps-vehicle
+
+services:
+  nats:
+    image: nats:2.12-alpine
+    command: ["-c", "/etc/nats/nats.conf"]
+    network_mode: host
+    volumes:
+      - ./nats/vehicle.conf:/etc/nats/nats.conf:ro
+      # TLS material and the JetStream store both come from outside the
+      # repository. The store must be a real directory with room for
+      # OPENLAPS_TELE_MAX_BYTES -- a small or memory-backed one makes
+      # stream creation fail with err 10047. See deploy/nats/README.md.
+      - ${NATS_TLS_DIR:?set NATS_TLS_DIR in .env}:/etc/nats/tls:ro
+      - ${NATS_STORE_DIR:-/var/lib/openlaps/nats}:/data
+    environment:
+      # Expanded by nats-server itself inside vehicle.conf.
+      NATS_LEAF_PASSWORD: ${NATS_LEAF_PASSWORD:?set NATS_LEAF_PASSWORD in .env}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  agent:
+    image: ${OPENLAPS_IMAGE:-openlaps:local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["openlaps-agent"]
+    network_mode: host
+    devices:
+      # The GPS receiver. Adjust to the real node; a udev rule giving it a
+      # stable name is worth the five minutes on a car that gets rewired.
+      - ${OPENLAPS_SERIAL_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
+    group_add:
+      # Serial devices are group-owned by `dialout` on Debian-family hosts;
+      # without this the agent opens the port and gets EACCES.
+      - ${OPENLAPS_DIALOUT_GID:-20}
+    env_file:
+      - .env
+    environment:
+      # The local server for *this* stack -- the one in this file. With host
+      # networking that is genuinely loopback.
+      OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://127.0.0.1:4222}
+      OPENLAPS_PROFILE: /app/profiles/${OPENLAPS_PROFILE_NAME:-example-club-racer}
+      # Registry and session state are written here rather than beside the
+      # profile, because the profile is mounted read-only and this has to
+      # survive the container.
+      OPENLAPS_STATE_DIR: /var/lib/openlaps/agent
+    volumes:
+      - ../profiles:/app/profiles:ro
+      - agent-state:/var/lib/openlaps/agent
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  agent-state:

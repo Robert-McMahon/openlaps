@@ -64,6 +64,7 @@ class LiveDecoderSettings:
 
     config_path: Path
     nats_url: str
+    stream: str = "TELE_VEHICLE"
     mqtt_host: str = "127.0.0.1"
     mqtt_port: int = 1883
     nats_creds_path: str | None = None
@@ -88,6 +89,9 @@ class LiveDecoderSettings:
         queue_size = int(env.get("OPENLAPS_LIVE_MQTT_QUEUE_SIZE", "1000"))
         port = int(env.get("OPENLAPS_MQTT_PORT", "1883"))
         health_port = int(env.get("OPENLAPS_LIVE_HEALTH_PORT", "8082"))
+        stream = env.get("OPENLAPS_LIVE_STREAM", "TELE_VEHICLE").strip()
+        if not stream:
+            raise ValueError("OPENLAPS_LIVE_STREAM must name the pit's sourced stream")
         if poll_s <= 0:
             raise ValueError("OPENLAPS_LIVE_CONFIG_POLL_S must be greater than zero")
         if queue_size <= 0:
@@ -99,6 +103,7 @@ class LiveDecoderSettings:
         return cls(
             config_path=Path(configured),
             nats_url=env.get("OPENLAPS_NATS_URL", "nats://127.0.0.1:4222").strip(),
+            stream=stream,
             nats_creds_path=env.get("OPENLAPS_NATS_CREDS", "").strip() or None,
             mqtt_host=env.get("OPENLAPS_MQTT_HOST", "127.0.0.1").strip(),
             mqtt_port=port,
@@ -252,6 +257,7 @@ class LiveDecoder:
             await self._scan_registries(js)
             subscription = await js.subscribe(
                 f"tele.{self.config.vehicle}.>",
+                stream=self.settings.stream,
                 ordered_consumer=True,
                 deliver_policy=api.DeliverPolicy.NEW,
             )
@@ -310,6 +316,7 @@ class LiveDecoder:
         subject = f"tele.{self.config.vehicle}.{REGISTRY_SOURCE_CLASS}"
         subscription = await js.subscribe(
             subject,
+            stream=self.settings.stream,
             ordered_consumer=True,
             deliver_policy=api.DeliverPolicy.ALL,
         )

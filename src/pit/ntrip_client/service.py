@@ -63,6 +63,7 @@ class NtripSettings:
     mountpoint: str
     username: str
     password: str
+    stream: str = "TELE_VEHICLE"
     creds_path: str | None = None
     enable_gga: bool = False
     gga_interval_s: float = 10.0
@@ -82,6 +83,9 @@ class NtripSettings:
         mountpoint = env.get("NTRIP_MOUNTPOINT", "").strip()
         if not mountpoint:
             raise ValueError("NTRIP_MOUNTPOINT is required (see example.env)")
+        stream = env.get("OPENLAPS_NTRIP_STREAM", "TELE_VEHICLE").strip()
+        if not stream:
+            raise ValueError("OPENLAPS_NTRIP_STREAM must name the pit's sourced stream")
         return cls(
             nats_url=env.get("OPENLAPS_NATS_URL", "nats://127.0.0.1:4222").strip(),
             vehicle_id=vehicle_id,
@@ -90,6 +94,7 @@ class NtripSettings:
             mountpoint=mountpoint,
             username=env.get("NTRIP_USER", "").strip(),
             password=env.get("NTRIP_PASSWORD", "").strip(),
+            stream=stream,
             creds_path=env.get("OPENLAPS_NATS_CREDS", "").strip() or None,
             enable_gga=env.get("NTRIP_ENABLE_GGA", "0").strip().lower() in ("1", "true", "yes"),
             gga_interval_s=float(env.get("NTRIP_GGA_INTERVAL_S", "10")),
@@ -235,6 +240,7 @@ class NtripService:
                 await self._scan_registry(js, cache, stop)
                 subscription = await js.subscribe(
                     f"tele.{self.settings.vehicle_id}.>",
+                    stream=self.settings.stream,
                     ordered_consumer=True,
                     deliver_policy=api.DeliverPolicy.NEW,
                 )
@@ -258,7 +264,10 @@ class NtripService:
         """Drain the retained catalog so the first live batch decodes."""
         subject = f"tele.{self.settings.vehicle_id}.{REGISTRY_SOURCE_CLASS}"
         subscription = await js.subscribe(
-            subject, ordered_consumer=True, deliver_policy=api.DeliverPolicy.ALL
+            subject,
+            stream=self.settings.stream,
+            ordered_consumer=True,
+            deliver_policy=api.DeliverPolicy.ALL,
         )
         try:
             while not stop.is_set():

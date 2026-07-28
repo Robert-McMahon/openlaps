@@ -74,6 +74,8 @@ class SessionState:
         if driver == self.driver:
             raise SessionError(f"{driver!r} is already the active driver")
         now = _now_ms() if now_ms is None else now_ms
+        if now < self.stint_start_ms:
+            raise SessionError("driver change cannot occur before the active stint started")
         self.stints.append(
             {
                 "driver": self.driver,
@@ -92,6 +94,8 @@ class SessionState:
         if self.status != "active":
             raise SessionError("no active session to end")
         now = _now_ms() if now_ms is None else now_ms
+        if now < self.stint_start_ms:
+            raise SessionError("session end cannot occur before the active stint started")
         self.stints.append(
             {
                 "driver": self.driver,
@@ -126,23 +130,93 @@ class SessionState:
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> SessionState:
-        """Restore state written by ``to_dict``."""
+        """Restore and strictly validate state written by ``to_dict``."""
+        status_value = data.get("status", "none")
+        if not isinstance(status_value, str):
+            raise TypeError("status must be a string")
+        status = status_value.strip().lower()
+        if status == "none":
+            return cls()
+        if status not in {"active", "ended"}:
+            raise ValueError(f"invalid session status {status!r}")
+
+        session_type = _required_string(data, "session_type").lower()
+        if session_type not in SESSION_TYPES:
+            raise ValueError(f"session_type must be one of {SESSION_TYPES}")
+        session_start = _required_integer(data, "session_start")
+        stint_start = _required_integer(data, "stint_start")
+        stint_number = _required_integer(data, "stint_number")
+        if session_start < 0 or stint_start < session_start or stint_number < 1:
+            raise ValueError("invalid session/stint start or stint number")
+
         stints = data.get("stints", [])
         if not isinstance(stints, list):
             raise TypeError("stints must be a list")
+        closed: list[dict[str, object]] = []
+        previous_end = session_start
+        for expected_number, item in enumerate(stints, start=1):
+            if not isinstance(item, dict):
+                raise TypeError("each stint must be an object")
+            number = _required_integer(item, "stint_number")
+            start = _required_integer(item, "start_ms")
+            end = _required_integer(item, "end_ms")
+            if number != expected_number or start < previous_end or end < start:
+                raise ValueError("invalid stint ordering or timestamps")
+            closed.append(
+                {
+                    "driver": _required_string(item, "driver"),
+                    "stint_number": number,
+                    "start_ms": start,
+                    "end_ms": end,
+                }
+            )
+            previous_end = end
+
+        expected_closed = stint_number if status == "ended" else stint_number - 1
+        if len(closed) != expected_closed:
+            raise ValueError("stint history does not match current stint number")
+        driver = _required_string(data, "driver")
+        if status == "active" and stint_start < previous_end:
+            raise ValueError("active stint starts before the previous stint ended")
+        if status == "ended":
+            last = closed[-1]
+            if driver != last["driver"] or stint_start != last["start_ms"]:
+                raise ValueError("ended state does not match its final stint")
+
         return cls(
-            session_id=str(data.get("session_id", "")),
-            session_type=str(data.get("session_type", "")),
-            driver=str(data.get("driver", "")),
-            track_name=str(data.get("track_name", "")),
-            car=str(data.get("car", "")),
-            stint_number=int(data.get("stint_number", 0)),
-            session_start_ms=int(data.get("session_start", 0)),
-            stint_start_ms=int(data.get("stint_start", 0)),
-            status=str(data.get("status", "none")),
-            stints=[dict(item) for item in stints if isinstance(item, dict)],
+            session_id=_required_string(data, "session_id"),
+            session_type=session_type,
+            driver=driver,
+            track_name=_optional_string(data, "track_name"),
+            car=_optional_string(data, "car"),
+            stint_number=stint_number,
+            session_start_ms=session_start,
+            stint_start_ms=stint_start,
+            status=status,
+            stints=closed,
         )
 
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _required_string(data: dict[str, object], key: str) -> str:
+    value = data.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{key} must be a non-empty string")
+    return value.strip()
+
+
+def _optional_string(data: dict[str, object], key: str) -> str:
+    value = data.get(key, "")
+    if not isinstance(value, str):
+        raise TypeError(f"{key} must be a string")
+    return value.strip()
+
+
+def _required_integer(data: dict[str, object], key: str) -> int:
+    value = data.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{key} must be an integer")
+    return value

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import psycopg
@@ -60,6 +61,21 @@ def test_database_retry_queue_survives_restart_and_preserves_each_session(tmp_pa
         ]
 
     asyncio.run(exercise())
+
+
+def test_database_retry_queue_skips_invalid_snapshot_without_losing_valid_one(tmp_path: Path):
+    queue_path = tmp_path / "database-queue.json"
+    valid = SessionState()
+    valid.start_session("race", "Driver A", now_ms=T0)
+    queue_path.write_text(
+        json.dumps([{"status": "active", "session_id": "bad"}, valid.to_dict()]),
+        encoding="utf-8",
+    )
+
+    database = SessionDatabase("postgresql://invalid", VEHICLE, queue_path=queue_path)
+
+    assert database.pending_count == 1
+    assert database.pending_states()[0]["session_id"] == valid.session_id
 
 
 def test_session_with_two_stints_round_trips_to_timescale(timescale_dsn):

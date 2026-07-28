@@ -23,6 +23,8 @@ from pathlib import Path
 
 import psycopg
 
+from pit.session_control.state import SessionState
+
 logger = logging.getLogger(__name__)
 
 _CONNECT_BACKOFF_START_S = 0.5
@@ -88,6 +90,7 @@ class SessionDatabase:
 
     async def record(self, state: dict[str, object]) -> bool:
         """Commit a snapshot now when connected, otherwise queue it for retry."""
+        state = SessionState.from_dict(state).to_dict()
         session_id = _as_str(state.get("session_id"))
         if not session_id:
             return True
@@ -280,11 +283,14 @@ def _load_pending(path: Path | None) -> OrderedDict[str, dict[str, object]]:
             raise ValueError("retry queue must be a JSON array")
         for item in value:
             if not isinstance(item, dict):
-                raise ValueError("retry queue items must be JSON objects")
-            state = dict(item)
-            session_id = _as_str(state.get("session_id"))
-            if not session_id:
-                raise ValueError("queued state requires session_id")
+                logger.warning("session-control: skipping non-object database retry item")
+                continue
+            try:
+                state = SessionState.from_dict(dict(item)).to_dict()
+            except (ValueError, TypeError) as exc:
+                logger.warning("session-control: skipping invalid database retry item: %s", exc)
+                continue
+            session_id = _as_str(state["session_id"])
             pending[session_id] = state
     except FileNotFoundError:
         pass

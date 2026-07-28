@@ -21,6 +21,10 @@ from pit.session_control.state import SESSION_TYPES, SessionError, SessionState
 logger = logging.getLogger(__name__)
 
 
+class SessionPersistenceError(RuntimeError):
+    """A transition could not be made durable and was rolled back."""
+
+
 @dataclass(frozen=True, slots=True)
 class SessionControlSettings:
     """Deploy-time wiring for session-control; see ``example.env``."""
@@ -161,6 +165,7 @@ class SessionController:
     ) -> dict[str, object]:
         """Apply one API action; DB precedes publish whenever it is reachable."""
         async with self._lock:
+            prior_state = self.state.to_dict()
             if action == "start":
                 payload = self.state.start_session(
                     _text(body.get("session_type")),
@@ -175,7 +180,9 @@ class SessionController:
                 payload = self.state.end_session(now_ms=now_ms)
             else:
                 raise SessionError(f"unknown action {action!r}")
-            self.state_file.save(self.state)
+            if not self.state_file.save(self.state):
+                self.state = SessionState.from_dict(prior_state)
+                raise SessionPersistenceError("failed to persist session state")
             await self.database.record(self.state.to_dict())
             self.publisher.submit(payload)
             return payload
@@ -285,6 +292,8 @@ class _SessionHandler(BaseHTTPRequestHandler):
         future = asyncio.run_coroutine_threadsafe(self.controller.act(parts[1], decoded), self.loop)
         try:
             self._send(200, future.result(timeout=5.0))
+        except SessionPersistenceError as exc:
+            self._send(503, {"error": str(exc)})
         except SessionError as exc:
             self._send(409, {"error": str(exc)})
         except TimeoutError:

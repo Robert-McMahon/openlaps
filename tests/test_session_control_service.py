@@ -6,7 +6,14 @@ import asyncio
 import json
 from pathlib import Path
 
-from pit.session_control.service import SessionController, StateFile, load_roster
+import pytest
+
+from pit.session_control.service import (
+    SessionController,
+    SessionPersistenceError,
+    StateFile,
+    load_roster,
+)
 
 T0 = 1_782_900_000_000
 
@@ -51,6 +58,15 @@ def test_state_file_round_trips_and_replaces_atomically(tmp_path: Path):
 def test_corrupt_state_file_is_ignored(tmp_path: Path):
     path = tmp_path / "session.json"
     path.write_text("{broken", encoding="utf-8")
+
+    state = StateFile(path).load()
+
+    assert state.status == "none"
+
+
+def test_structurally_invalid_state_file_is_ignored(tmp_path: Path):
+    path = tmp_path / "session.json"
+    path.write_text(json.dumps({"status": "active"}), encoding="utf-8")
 
     state = StateFile(path).load()
 
@@ -116,6 +132,30 @@ def test_database_outage_does_not_block_publish_or_transition(tmp_path: Path):
         assert payload["status"] == "active"
         assert events == ["database", "publish"]
         assert publisher.payloads[-1] == payload
+
+    asyncio.run(exercise())
+
+
+def test_failed_state_write_rolls_back_without_database_or_publish(tmp_path: Path, monkeypatch):
+    async def exercise() -> None:
+        events: list[str] = []
+        state_file = StateFile(tmp_path / "session.json")
+        monkeypatch.setattr(state_file, "save", lambda _state: False)
+        controller = SessionController(
+            state_file,
+            RecordingDatabase(events),
+            RecordingPublisher(events),
+        )
+
+        with pytest.raises(SessionPersistenceError, match="persist"):
+            await controller.act(
+                "start",
+                {"session_type": "test", "driver": "Driver A"},
+                now_ms=T0,
+            )
+
+        assert controller.state.status == "none"
+        assert events == []
 
     asyncio.run(exercise())
 

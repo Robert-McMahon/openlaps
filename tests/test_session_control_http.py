@@ -115,6 +115,38 @@ def test_http_rejects_invalid_json_and_invalid_transition(tmp_path: Path):
     asyncio.run(exercise())
 
 
+def test_http_returns_unavailable_when_state_cannot_be_persisted(tmp_path: Path, monkeypatch):
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        state_file = StateFile(tmp_path / "session.json")
+        monkeypatch.setattr(state_file, "save", lambda _state: False)
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(state_file, database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/start",
+                {"session_type": "race", "driver": "Driver A"},
+            )
+            assert code == 503
+            assert "persist" in body["error"]
+            assert publisher.published == 0
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
 def _request(url: str, body: dict[str, object] | None = None) -> tuple[int, dict]:
     data = None if body is None else json.dumps(body).encode()
     return _raw_request(url, data)

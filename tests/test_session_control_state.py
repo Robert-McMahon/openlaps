@@ -73,6 +73,9 @@ def test_driver_change_validation():
         state.change_driver("Alice")
     with pytest.raises(SessionError, match="driver is required"):
         state.change_driver("")
+    with pytest.raises(SessionError, match="before the active stint"):
+        state.change_driver("Bob", now_ms=T0 - 1)
+    assert state.stints == []
 
 
 def test_end_session_closes_last_stint():
@@ -91,6 +94,16 @@ def test_end_session_closes_last_stint():
     }
     with pytest.raises(SessionError, match="no active session"):
         state.end_session()
+
+
+def test_end_rejects_time_before_active_stint():
+    state = started()
+
+    with pytest.raises(SessionError, match="before the active stint"):
+        state.end_session(now_ms=T0 - 1)
+
+    assert state.status == "active"
+    assert state.stints == []
 
 
 def test_new_session_after_end():
@@ -126,3 +139,24 @@ def test_roundtrip_serialisation():
     assert restored.stints == state.stints
     restored.end_session(now_ms=T0 + 2 * MIN)
     assert restored.status == "ended"
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"status": "active"},
+        {
+            "status": "active",
+            "session_id": "s-1",
+            "session_type": "race",
+            "driver": "Alice",
+            "stint_number": 1,
+            "session_start": T0,
+            "stint_start": T0,
+            "stints": [{"driver": "Alice"}],
+        },
+    ],
+)
+def test_restore_rejects_structurally_invalid_state(data):
+    with pytest.raises((TypeError, ValueError)):
+        SessionState.from_dict(data)

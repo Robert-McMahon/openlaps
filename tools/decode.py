@@ -23,7 +23,10 @@ Examples (pit machine):
 
 This is a forerunner of the Phase 3 live-decoder service; it shares its
 consumer-side obligations: hard registry_seq equality, scale/offset
-application, and loud rejection of unknown format versions.
+application, and loud rejection of unknown format versions. Those live in
+``pit.registry_cache.RegistryCache``, which was promoted out of this file
+and which the pit services import — there is one copy, and this tool uses
+the same one they do.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import fnmatch
+import logging
 import os
 import sys
 import time
@@ -43,67 +47,11 @@ import nats  # noqa: E402
 from nats.js import api  # noqa: E402
 
 from core.pb import telemetry_pb2 as pb  # noqa: E402
+from pit.registry_cache import RegistryCache  # noqa: E402
 
 MSG_TYPE_HEADER = "Openlaps-Msg-Type"
 DEFAULT_SERVER = os.environ.get("OPENLAPS_NATS_URL", "nats://127.0.0.1:4222")
 DEFAULT_VEHICLE = "example-club-racer"
-
-
-class RegistryCache:
-    """Every ChannelRegistry generation seen on the stream, keyed by seq."""
-
-    def __init__(self) -> None:
-        self._by_seq: dict[int, dict[int, pb.Channel]] = {}
-        self.unknown_seqs: set[int] = set()
-        self.bad_versions: set[int] = set()
-
-    def add(self, payload: bytes) -> int:
-        registry = pb.ChannelRegistry()
-        registry.ParseFromString(payload)
-        self._by_seq[registry.registry_seq] = {channel.id: channel for channel in registry.channels}
-        self.unknown_seqs.discard(registry.registry_seq)
-        return registry.registry_seq
-
-    def decode(self, payload: bytes) -> list[tuple[float, pb.Channel, object]] | None:
-        """Decode one batch to ``(capture_unix_ms, channel, physical_value)``.
-
-        Returns None (and records why) when the batch cannot be decoded:
-        unknown registry_seq or unknown format_version. Both are consumer
-        MUSTs in docs/WIRE_FORMAT.md — never best-effort guess.
-        """
-        batch = pb.SampleBatch()
-        batch.ParseFromString(payload)
-        if batch.format_version not in (0, 1):
-            if batch.format_version not in self.bad_versions:
-                self.bad_versions.add(batch.format_version)
-                print(
-                    f"!! rejecting batch with unknown format_version={batch.format_version}",
-                    file=sys.stderr,
-                )
-            return None
-        channels = self._by_seq.get(batch.registry_seq)
-        if channels is None:
-            if batch.registry_seq not in self.unknown_seqs:
-                self.unknown_seqs.add(batch.registry_seq)
-                print(
-                    f"!! batch references unknown registry_seq={batch.registry_seq}; "
-                    "waiting for its registry to appear on the stream",
-                    file=sys.stderr,
-                )
-            return None
-        decoded = []
-        for sample in batch.samples:
-            channel = channels.get(sample.channel_id)
-            if channel is None:
-                continue
-            kind = sample.WhichOneof("value")
-            value: object = getattr(sample, kind) if kind else None
-            if channel.scale and isinstance(value, (int, float)):
-                # Fixed-point convention: physical = wire * scale + offset.
-                value = value * channel.scale + channel.offset
-            capture_ms = batch.batch_epoch_unix_ms + sample.t_offset_us / 1000.0
-            decoded.append((capture_ms, channel, value))
-        return decoded
 
 
 def _format_value(value: object) -> str:
@@ -227,19 +175,20 @@ async def run(args: argparse.Namespace) -> int:
                 decoded = cache.decode(message.data)
                 if decoded is None:
                     continue
-                for capture_ms, channel, value in decoded:
+                for sample in decoded.samples:
+                    channel = sample.channel
                     if not _matches(channel.name, args.channels):
                         continue
                     if args.watch:
                         counts[channel.name] = counts.get(channel.name, 0) + 1
                         latest[channel.name] = (
                             source_class,
-                            value,
+                            sample.value,
                             channel.units,
                             counts[channel.name],
                         )
                     else:
-                        _print_line(capture_ms, source_class, channel, value)
+                        _print_line(sample.capture_unix_ms, source_class, channel, sample.value)
             if args.watch and time.monotonic() >= next_paint:
                 totals.roll()
                 _print_watch(args.vehicle, totals, latest, cache)
@@ -251,6 +200,9 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # RegistryCache reports consumer-obligation violations through logging;
+    # keep the tool's original "!! ..." shape on stderr.
+    logging.basicConfig(level=logging.WARNING, stream=sys.stderr, format="!! %(message)s")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--server", default=DEFAULT_SERVER, help="NATS URL (default: %(default)s)")
     parser.add_argument(

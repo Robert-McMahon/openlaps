@@ -20,6 +20,7 @@ dependencies = [
 [project.scripts]
 openlaps-agent = "agent.__main__:main"
 openlaps-migrate = "pit.db.__main__:main"
+openlaps-ingest-writer = "pit.ingest_writer.__main__:main"
 
 [project.optional-dependencies]
 dev = [

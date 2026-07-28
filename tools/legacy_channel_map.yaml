@@ -1,0 +1,161 @@
+# Legacy InfluxDB source names -> canonical openlaps channels (P3.8).
+# Derived from docs/CATALOG.md's coverage table; wildcard rows are expanded
+# to the concrete DBC signals so every correction is explicit and reviewable.
+can:
+  ACCELERATOR_PEDAL_POSITION: {channel: car.accel_pedal_pos, units: "%", type: double}
+  AIR_TEMPERATURE: {channel: car.air_temp, units: "K", type: double}
+  AMBIENT_AIR_TEMPERATURE: {channel: car.ambient_air_temp, units: "K", type: double}
+  BAROMETRIC_PRESSURE: {channel: car.baro_pressure, units: "kPa", type: double}
+  BATTERY_VOLTAGE: {channel: car.battery_v, units: "Volts", type: double}
+  BOOST_CONTROL_OUTPUT: {channel: car.boost_control_output, units: "%", type: double}
+  BRAKE_PEDAL_SWITCH: {channel: car.brake_pedal_switch, units: "", type: bool}
+  CALCULATED_AIR_TEMPERATURE: {channel: car.calculated_air_temp, units: "K", type: double}
+  CHECK_ENGINE_LIGHT: {channel: car.check_engine_light, units: "", type: bool}
+  CLUTCH_SWITCH: {channel: car.clutch_switch, units: "", type: bool}
+  COOLANT_PRESSURE: {channel: car.coolant_pressure, units: "kPa", type: double}
+  COOLANT_TEMPERATURE: {channel: car.coolant_temp, units: "K", type: double}
+  DISTANCE_TRIP_METER1: {channel: car.trip_distance_m, units: "m", type: double}
+  DRIVESHAFT_RPM: {channel: car.driveshaft_rpm, units: "RPM", type: double}
+  ECU_TEMPERATURE: {channel: car.ecu_temp, units: "K", type: double}
+  ENGINE_DEMAND: {channel: car.engine_demand, units: "%", type: double}
+  ENGINE_LIMITING_ACTIVE: {channel: car.engine_limiting_active, units: "", type: bool}
+  ENGINE_PROTECTION_REASON_LETTER: {channel: car.engine_protection_reason_letter, units: "", type: int}
+  ENGINE_PROTECTION_REASON_NUMBER: {channel: car.engine_protection_reason_number, units: "", type: int}
+  ENGINE_PROTECTION_SEVERITY_LEVEL: {channel: car.engine_protection_severity, units: "", type: int}
+  ENGINE_SPEED: {channel: car.rpm, units: "RPM", type: double}
+  EXHAUST_MANIFOLD_PRESSURE: {channel: car.exhaust_manifold_pressure, units: "kPa", type: double}
+  FUEL_FLOW: {channel: car.fuel_flow_rate, units: "cc/min", type: double}
+  FUEL_LEVEL: {channel: car.fuel_level, units: "L", type: double}
+  FUEL_PRESSURE: {channel: car.fuel_pressure, units: "kPa", type: double}
+  FUEL_TEMPERATURE: {channel: car.fuel_temp, units: "K", type: double}
+  FUEL_TRIM_LONG_TERM_BANK1: {channel: car.fuel_trim_long_term_bank1, units: "%", type: double}
+  GEAR: {channel: car.gear, units: "", type: int}
+  GEARBOX_OIL_TEMPERATURE: {channel: car.gearbox_oil_temp, units: "K", type: double}
+  GENERIC_OUTPUT_STATES: {channel: car.generic_output_states, units: "", type: int}
+  HEAD_LIGHT_STATE: {channel: car.head_light, units: "", type: bool}
+  HIGH_BEAM_LIGHT_STATE: {channel: car.high_beam_light, units: "", type: bool}
+  IGNITION_ANGLE_BANK1: {channel: car.ignition_angle_bank1, units: "°", type: double}
+  IGNITION_ANGLE_BANK2: {channel: car.ignition_angle_bank2, units: "°", type: double}
+  IGNITION_ANGLE_LEADING: {channel: car.ignition_angle_leading, units: "°", type: double}
+  IMU_ACCEL_X: {channel: car.accel_x, units: "g", type: double}
+  IMU_ACCEL_Y: {channel: car.accel_y, units: "g", type: double}
+  IMU_ACCEL_Z: {channel: car.accel_z, units: "g", type: double}
+  IMU_GYRO_X: {channel: car.gyro_x, units: "deg/s", type: double}
+  IMU_GYRO_Y: {channel: car.gyro_y, units: "deg/s", type: double}
+  IMU_GYRO_Z: {channel: car.gyro_z, units: "deg/s", type: double}
+  IMU_PITCH: {channel: car.pitch, units: "deg", type: double}
+  IMU_ROLL: {channel: car.roll, units: "deg", type: double}
+  IMU_TEMPERATURE: {channel: car.imu_temp, units: "C", type: double}
+  IMU_YAW: {channel: car.yaw, units: "deg", type: double}
+  INJECTION_STAGE1_AVG_TIME: {channel: car.injection_stage1_avg_time, units: "ms", type: double}
+  INJECTION_STAGE1_DUTY_CYCLE: {channel: car.injection_stage1_duty, units: "%", type: double}
+  INJECTOR_PRESSURE_DIFFERENTIAL: {channel: car.injector_pressure_diff, units: "kPa", type: double}
+  KEYPAD_BUTTON_1: {channel: car.keypad_button_1, units: "", type: int}
+  KEYPAD_BUTTON_10: {channel: car.keypad_button_10, units: "", type: int}
+  KEYPAD_BUTTON_11: {channel: car.keypad_button_11, units: "", type: int}
+  KEYPAD_BUTTON_12: {channel: car.keypad_button_12, units: "", type: int}
+  KEYPAD_BUTTON_13: {channel: car.keypad_button_13, units: "", type: int}
+  KEYPAD_BUTTON_14: {channel: car.keypad_button_14, units: "", type: int}
+  KEYPAD_BUTTON_15: {channel: car.keypad_button_15, units: "", type: int}
+  KEYPAD_BUTTON_2: {channel: car.keypad_button_2, units: "", type: int}
+  KEYPAD_BUTTON_3: {channel: car.keypad_button_3, units: "", type: int}
+  KEYPAD_BUTTON_4: {channel: car.keypad_button_4, units: "", type: int}
+  KEYPAD_BUTTON_5: {channel: car.keypad_button_5, units: "", type: int}
+  KEYPAD_BUTTON_6: {channel: car.keypad_button_6, units: "", type: int}
+  KEYPAD_BUTTON_7: {channel: car.keypad_button_7, units: "", type: int}
+  KEYPAD_BUTTON_8: {channel: car.keypad_button_8, units: "", type: int}
+  KEYPAD_BUTTON_9: {channel: car.keypad_button_9, units: "", type: int}
+  KEYPAD_NMT_STATE: {channel: car.keypad_nmt_state, units: "", type: int}
+  KNOCK_LEVEL1: {channel: car.knock_level1, units: "dB", type: double}
+  KNOCK_LEVEL2: {channel: car.knock_level2, units: "dB", type: double}
+  LAMBDA_OVERALL: {channel: car.lambda_overall, units: "λ", type: double}
+  LAMBDA_SENSOR1: {channel: car.lambda1, units: "λ", type: double}
+  LAUNCH_CONTROL_ACTIVE: {channel: car.launch_control_active, units: "", type: bool}
+  LAUNCH_CONTROL_IGNITION_RETARD: {channel: car.launch_control_ign_retard, units: "°", type: double}
+  LEFT_INDICATOR_STATE: {channel: car.left_indicator, units: "", type: bool}
+  MANIFOLD_PRESSURE: {channel: car.map, units: "kPa", type: double}
+  OIL_PRESSURE: {channel: car.oil_pressure, units: "kPa", type: double}
+  OIL_PRESSURE_LIGHT: {channel: car.oil_pressure_light, units: "", type: bool}
+  OIL_TEMPERATURE: {channel: car.oil_temp, units: "K", type: double}
+  PARK_LIGHT_STATE: {channel: car.park_light, units: "", type: bool}
+  PD16A_BATTERY_VOLTAGE: {channel: car.pd16_battery_v, units: "V", type: double}
+  PD16A_CPU_TEMP: {channel: car.pd16_cpu_temp, units: "degC", type: double}
+  PD16A_HCO25_12_TEMP_STATUS: {channel: car.pd16_hco25_12_temp_status, units: "", type: int}
+  PD16A_HCO25_34_TEMP_STATUS: {channel: car.pd16_hco25_34_temp_status, units: "", type: int}
+  PD16A_IGNITION_SWITCH: {channel: car.pd16_ignition_switch, units: "", type: int}
+  PD16A_MAIN_RAIL_TEMP: {channel: car.pd16_main_rail_temp, units: "degC", type: double}
+  PD16A_MAIN_RAIL_TEMP_STATUS: {channel: car.pd16_main_rail_temp_status, units: "", type: int}
+  PD16A_MAIN_RAIL_VOLTAGE: {channel: car.pd16_main_rail_v, units: "V", type: double}
+  PD16A_PROT_RAIL_VOLTAGE: {channel: car.pd16_prot_rail_v, units: "V", type: double}
+  PD16A_THERMISTOR_1_TEMP: {channel: car.pd16_thermistor_1_temp, units: "degC", type: double}
+  PD16A_THERMISTOR_2_TEMP: {channel: car.pd16_thermistor_2_temp, units: "degC", type: double}
+  PD16A_THERMISTOR_3_TEMP: {channel: car.pd16_thermistor_3_temp, units: "degC", type: double}
+  PD16A_TOTAL_CURRENT: {channel: car.pd16_total_current, units: "A", type: double}
+  PD16A_TVS_TEMP_STATUS: {channel: car.pd16_tvs_temp_status, units: "", type: int}
+  PDM_DATA_BYTE_0: {channel: car.pdm_raw_byte_0, units: "", type: int}
+  PDM_DATA_BYTE_1: {channel: car.pdm_raw_byte_1, units: "", type: int}
+  PDM_DATA_BYTE_2: {channel: car.pdm_raw_byte_2, units: "", type: int}
+  PDM_DATA_BYTE_3: {channel: car.pdm_raw_byte_3, units: "", type: int}
+  PRIMARY_FUEL_PUMP_OUTPUT: {channel: car.fuel_primary_pump_output, units: "", type: bool}
+  RIGHT_INDICATOR_STATE: {channel: car.right_indicator, units: "", type: bool}
+  TARGET_BOOST_LEVEL: {channel: car.target_boost, units: "kPa", type: double}
+  TARGET_LAMBDA: {channel: car.target_lambda, units: "λ", type: double}
+  THROTTLE_POSITION: {channel: car.throttle_pos, units: "%", type: double}
+  TOTAL_FUEL_USED: {channel: car.fuel_total_used, units: "cc", type: double}
+  TOTAL_FUEL_USED_TRIP_METER1: {channel: car.fuel_trip_used, units: "cc", type: double}
+  TRACTION_CONTROL_ACTIVE: {channel: car.tc_active, units: "", type: bool}
+  TRACTION_CONTROL_ENABLED: {channel: car.tc_enabled, units: "", type: bool}
+  TRIGGER_COUNTER: {channel: car.trigger_counter, units: "", type: int}
+  TRIGGER_SYNC_LEVEL: {channel: car.trigger_sync_level, units: "", type: int}
+  TRIGGER_SYSTEM_ERROR_COUNT: {channel: car.trigger_error_count, units: "", type: int}
+  VEHICLE_SPEED: {channel: car.vehicle_speed, units: "km/h", type: double}
+  WASTEGATE_PRESSURE: {channel: car.wastegate_pressure, units: "kPa", type: double}
+  WB1_BATTERY_VOLTAGE: {channel: car.wb1_battery_v, units: "V", type: double}
+  WB1_DIAGNOSTIC_1: {channel: car.wb1_diagnostic1, units: "", type: int}
+  WB1_LAMBDA_1: {channel: car.wb1_lambda1, units: "lambda", type: double}
+  WB1_SENSE_RESISTOR_1: {channel: car.wb1_sense_resistor1, units: "ohm", type: double}
+  WHEEL_SPEED_FRONT_LEFT: {channel: car.wheel_speed_fl, units: "km/h", type: double}
+  WHEEL_SPEED_FRONT_RIGHT: {channel: car.wheel_speed_fr, units: "km/h", type: double}
+  WHEEL_SPEED_REAR_LEFT: {channel: car.wheel_speed_rl, units: "km/h", type: double}
+  WHEEL_SPEED_REAR_RIGHT: {channel: car.wheel_speed_rr, units: "km/h", type: double}
+
+gps:
+  heading: {channel: position.heading, units: "deg", type: double}
+  lat: {channel: position.lat, units: "deg", type: double}
+  lon: {channel: position.lon, units: "deg", type: double}
+  # pyubx2 stored the old RMC speed in knots; the canonical channel is km/h.
+  speed: {channel: position.speed, units: "km/h", type: double, factor: 1.852}
+
+system:
+  telemetry/system/radx4/cpu/0: {channel: sys.host.cpu_percent.0, units: "%", type: double}
+  telemetry/system/radx4/cpu/1: {channel: sys.host.cpu_percent.1, units: "%", type: double}
+  telemetry/system/radx4/cpu/2: {channel: sys.host.cpu_percent.2, units: "%", type: double}
+  telemetry/system/radx4/cpu/3: {channel: sys.host.cpu_percent.3, units: "%", type: double}
+  telemetry/system/radx4/virtual_memory: {channel: sys.host.mem_percent, units: "%", type: double}
+  telemetry/system/radx4/swap_memory/percent: {channel: sys.host.swap_percent, units: "%", type: double}
+  telemetry/system/radx4/swap_memory/used: {channel: sys.host.swap_used_bytes, units: "bytes", type: int}
+  telemetry/system/radx4/swap_memory/free: {channel: sys.host.swap_free_bytes, units: "bytes", type: int}
+  telemetry/system/radx4/swap_memory/total: {channel: sys.host.swap_total_bytes, units: "bytes", type: int}
+  telemetry/system/radx4/swap_memory/sin: {channel: sys.host.swap_in_bytes, units: "bytes", type: int}
+  telemetry/system/radx4/swap_memory/sout: {channel: sys.host.swap_out_bytes, units: "bytes", type: int}
+  telemetry/system/psmqtt_status/num_mqtt_disconnects: {channel: sys.legacy.mqtt_disconnects, units: "", type: int}
+  telemetry/system/psmqtt_status/num_tasks_errors: {channel: sys.legacy.task_errors, units: "", type: int}
+  telemetry/system/psmqtt_status/num_tasks_success: {channel: sys.legacy.task_success, units: "", type: int}
+
+# Deliberately absent from `can`: these names must be reported as unmapped.
+unmapped:
+  - GEARBOX_TEMPERATURE  # stale; no matching DBC signal
+  - PD16A_*_PIN_STATE
+  - PD16A_*_RETRY_COUNT
+  - PD16A_HCO*_VOLTAGE
+  - PD16A_HCO*_CURRENT
+  - PD16A_HCO*_LOAD
+  - PD16A_HBO_*_VOLTAGE
+  - PD16A_HBO_*_HS_CURRENT
+  - PD16A_HBO_*_LOAD
+  - PD16A_AVI_*_STATE
+  - PD16A_AVI_*_VOLTAGE
+  - PD16A_SPI_3_STATE
+  - PD16A_SPI_4_STATE
+  - PD16A_SPI_3_VOLTAGE
+  - PD16A_SPI_4_VOLTAGE

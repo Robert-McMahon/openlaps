@@ -99,6 +99,9 @@ class LapMaterialiser:
         if self._highest_lap_number is not None and lap_number < self._highest_lap_number:
             # The engine was rebuilt (agent restart or track switch): sectors
             # buffered for the previous run will never see their lap row.
+            # Adopt the new numbering outright — keeping the old peak would
+            # re-trigger this for every event of the new run until it climbed
+            # back past it, clearing sectors that had just been buffered.
             self.engine_restarts += 1
             logger.info(
                 "laps: lap_number went %d -> %d, discarding %d buffered sector(s)",
@@ -107,7 +110,9 @@ class LapMaterialiser:
                 len(self._sectors),
             )
             self._sectors.clear()
-        self._highest_lap_number = max(lap_number, self._highest_lap_number or 0)
+            self._highest_lap_number = lap_number
+        else:
+            self._highest_lap_number = max(lap_number, self._highest_lap_number or 0)
 
         if event_type == EVENT_SECTOR_COMPLETED:
             self._buffer_sector(lap_number, decoded, at)

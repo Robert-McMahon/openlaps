@@ -517,6 +517,7 @@ class IngestWriter:
         self._flush_due = time.monotonic() + self.settings.flush_interval_s
         if not self._pending_work():
             return True
+        laps_landed = True
         try:
             await self._write(self._rows, self._lap_rows, self._pit_updates)
         except psycopg.OperationalError as exc:
@@ -535,14 +536,30 @@ class IngestWriter:
             # try again without them before giving up on the flush.
             logger.error("ingest-writer: flush rejected (%s); retrying samples only", exc)
             self.health.data_errors += 1
+            laps_landed = False
             try:
                 await self._write(self._rows, [], [])
+            except psycopg.OperationalError as retry_exc:
+                # The connection died during the retry. That is not a refusal
+                # and must not be treated as one: dropping here would ack
+                # messages and advance the cursor over rows no transaction
+                # ever committed. Keep everything and let the retry path run.
+                logger.error(
+                    "ingest-writer: connection lost retrying a rejected flush, "
+                    "keeping %d row(s): %s",
+                    len(self._rows),
+                    retry_exc,
+                )
+                self.health.db_errors += 1
+                await self._reconnect_db()
+                return False
             except psycopg.Error:
                 logger.exception(
                     "ingest-writer: dropping a flush of %d row(s) the database refuses",
                     len(self._rows),
                 )
                 self.health.dropped_flushes += 1
+                self.health.laps_dropped += len(self._lap_rows)
                 self._cursor = max(self._cursor, self._max_seq)
                 for message in self._pending:
                     await self._ack(message)
@@ -550,8 +567,14 @@ class IngestWriter:
                 return False
         self._cursor = max(self._cursor, self._max_seq)
         self.health.observe_flush(len(self._rows), self._cursor)
-        self.health.laps_written += len(self._lap_rows)
-        self.health.sectors_written += sum(len(lap.sectors) for lap in self._lap_rows)
+        if laps_landed:
+            self.health.laps_written += len(self._lap_rows)
+            self.health.sectors_written += sum(len(lap.sectors) for lap in self._lap_rows)
+        else:
+            # The samples landed but the laps in this flush were the rows the
+            # schema refused; counting them as written would make the one
+            # metric an operator checks say the opposite of what happened.
+            self.health.laps_dropped += len(self._lap_rows)
         for message in self._pending:
             await self._ack(message)
         self._discard()

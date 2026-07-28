@@ -44,6 +44,7 @@ class HealthState:
         self.messages_skipped = 0
         self.laps_written = 0
         self.sectors_written = 0
+        self.laps_dropped = 0
         self.malformed_lap_events = 0
         self.unknown_seq_batches = 0
         self.unknown_seq_stalls = 0
@@ -141,6 +142,7 @@ class HealthState:
             "agent_status_age_s": self.agent_status_age_s,
             "laps_written": self.laps_written,
             "sectors_written": self.sectors_written,
+            "laps_dropped": self.laps_dropped,
             "malformed_lap_events": self.malformed_lap_events,
             "unknown_seq_batches": self.unknown_seq_batches,
             "unknown_seq_stalls": self.unknown_seq_stalls,

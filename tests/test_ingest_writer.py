@@ -7,12 +7,14 @@ the vehicle actually produces — no hand-rolled protobuf.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
+import psycopg
 import pytest
 from conftest import EXAMPLE_PROFILE
 
@@ -27,7 +29,8 @@ from core.pb import telemetry_pb2 as pb
 from core.samples import Sample
 from pit.ingest_writer.health import HealthState, serve_health
 from pit.ingest_writer.laps import LapMaterialiser, LapRow, PitStatusUpdate
-from pit.ingest_writer.writer import WriterSettings, rows_from_batch
+from pit.ingest_writer.store import TimescaleStore
+from pit.ingest_writer.writer import IngestWriter, WriterSettings, rows_from_batch
 from pit.registry_cache import REJECT_BAD_VERSION, REJECT_UNKNOWN_SEQ, RegistryCache
 
 VEHICLE = "example-club-racer"
@@ -247,6 +250,26 @@ def test_a_lap_number_regression_discards_the_stale_sector_buffer():
     assert laps.engine_restarts == 1
 
 
+def test_the_run_after_a_regression_keeps_its_own_sectors():
+    """The regression fires once, not on every event below the old peak."""
+    laps = LapMaterialiser(VEHICLE)
+    for lap_number in (5, 6, 7):
+        laps.observe(
+            _event("sector_completed", time_s=lap_number * 100.0, lap=lap_number, sector=1)
+        )
+        laps.observe(_event("lap_completed", time_s=lap_number * 100.0 + 50, lap=lap_number))
+
+    # Agent restarts: numbering returns to 1, well below the previous peak.
+    laps.observe(_event("sector_completed", time_s=900.0, lap=1, sector=1, split_time=40.0))
+    laps.observe(_event("sector_completed", time_s=940.0, lap=1, sector=2, split_time=40.0))
+    lap = laps.observe(_event("lap_completed", time_s=1000.0, lap=1, lap_time=107.0))
+
+    assert laps.engine_restarts == 1, "the restart was counted once per event, not once"
+    assert [sector.sector for sector in lap.sectors] == [1, 2], (
+        "sectors buffered after the restart were discarded by a re-fired regression"
+    )
+
+
 def test_pit_events_become_status_updates():
     laps = LapMaterialiser(VEHICLE)
     update = laps.observe(_event("pit_entry", time_s=500.0, lap=9, pit_status="pit"))
@@ -282,6 +305,108 @@ def test_the_sector_buffer_is_bounded():
         laps.observe(_event("sector_completed", time_s=float(index), lap=1, sector=index))
     lap = laps.observe(_event("lap_completed", time_s=600.0, lap=1))
     assert 0 < len(lap.sectors) <= 64
+
+
+# --- flush failure handling -------------------------------------------------
+
+
+class _StubStore(TimescaleStore):
+    """A store whose flushes fail on demand, for the paths docker can't reach."""
+
+    def __init__(self, *failures: Exception | None) -> None:
+        super().__init__("postgresql://unused")
+        self.failures = list(failures)
+        self.writes: list[int] = []
+
+    async def flush(self, **kwargs) -> None:
+        self.writes.append(len(kwargs["laps"]))
+        failure = self.failures.pop(0) if self.failures else None
+        if failure is not None:
+            raise failure
+
+    async def connect(self) -> None:
+        self.connects += 1
+
+    async def close(self) -> None:
+        return None
+
+
+def _loaded_writer(store: TimescaleStore) -> object:
+    """A writer holding one flush's worth of work, wired to ``store``."""
+    settings = WriterSettings(
+        nats_url="nats://unused", vehicle_id=VEHICLE, dsn="postgresql://unused", health_port=0
+    )
+    writer = IngestWriter(settings, store=store)
+    writer._rows = [(datetime.now(tz=UTC), 1, 4500.0, None)]
+    writer._lap_rows = [
+        LapRow(
+            vehicle_id=VEHICLE,
+            session_id=None,
+            stint_number=None,
+            track_name="Wanneroo",
+            lap_number=4,
+            crossed_at=datetime.now(tz=UTC),
+            lap_time_s=108.8,
+            valid=True,
+            pit_status="track",
+            direction="counterclockwise",
+            sectors=(),
+        )
+    ]
+    writer._max_seq = 99
+    # Shut down immediately if a reconnect is attempted: these tests assert
+    # what the flush does, not how long it waits.
+    writer._stop.set()
+    return writer
+
+
+def test_a_connection_lost_while_retrying_a_rejected_flush_keeps_everything():
+    """OperationalError is not a refusal, even raised from the recovery path.
+
+    Treating it as one would ack the messages and advance the cursor over
+    rows no transaction ever committed — the exact loss the cursor exists
+    to prevent.
+    """
+    store = _StubStore(
+        psycopg.errors.CheckViolation("laps violates a constraint"),
+        psycopg.OperationalError("connection is closed"),
+    )
+    writer = _loaded_writer(store)
+
+    assert asyncio.run(writer._flush()) is False
+    assert store.writes == [1, 0], "expected the full write then the samples-only retry"
+    assert writer.cursor == 0, "the cursor advanced over rows that never committed"
+    assert writer._rows, "the buffer was discarded despite nothing being written"
+    assert writer.health.dropped_flushes == 0
+    assert writer.health.db_errors == 1
+
+
+def test_laps_refused_by_the_schema_are_not_counted_as_written():
+    store = _StubStore(psycopg.errors.CheckViolation("laps violates a constraint"))
+    writer = _loaded_writer(store)
+
+    assert asyncio.run(writer._flush()) is True
+    assert store.writes == [1, 0]
+    assert writer.health.data_errors == 1
+    assert writer.health.laps_written == 0, "a lap the database refused was counted as written"
+    assert writer.health.laps_dropped == 1
+    # The samples themselves did land, so the cursor moves.
+    assert writer.cursor == 99
+    assert writer.health.rows_written == 1
+
+
+def test_a_flush_the_database_will_never_accept_is_dropped_not_retried_forever():
+    store = _StubStore(
+        psycopg.errors.CheckViolation("laps violates a constraint"),
+        psycopg.errors.DataError("timestamp out of range"),
+    )
+    writer = _loaded_writer(store)
+
+    assert asyncio.run(writer._flush()) is False
+    assert writer.health.dropped_flushes == 1
+    assert writer.health.laps_dropped == 1
+    assert writer._rows == [], "a poison flush must not stay buffered forever"
+    assert writer.cursor == 99
 
 
 # --- health -----------------------------------------------------------------

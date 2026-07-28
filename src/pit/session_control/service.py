@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
+import secrets
 import tempfile
+import threading
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from pit.db.dsn import dsn_from_env
 from pit.session_control.database import SessionDatabase
@@ -19,6 +22,19 @@ from pit.session_control.publisher import LatestSessionPublisher
 from pit.session_control.state import SESSION_TYPES, SessionError, SessionState
 
 logger = logging.getLogger(__name__)
+
+_MAX_REQUEST_BODY_BYTES = 64 * 1024
+_REQUEST_TIMEOUT_S = 5.0
+_MAX_HTTP_WORKERS = 32
+
+
+def _is_loopback_host(host: str) -> bool:
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 class SessionPersistenceError(RuntimeError):
@@ -37,7 +53,9 @@ class SessionControlSettings:
     state_file: Path = Path("/data/session-state.json")
     roster_file: Path = Path("/config/roster.json")
     default_track: str = ""
+    http_host: str = "127.0.0.1"
     http_port: int = 8080
+    api_key: str | None = field(default=None, repr=False)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> SessionControlSettings:
@@ -46,6 +64,10 @@ class SessionControlSettings:
         if not vehicle_id:
             raise ValueError("OPENLAPS_VEHICLE_ID is required (see example.env)")
         domain = env.get("OPENLAPS_VEHICLE_JS_DOMAIN", "veh").strip()
+        http_host = env.get("OPENLAPS_SESSION_HOST", "127.0.0.1").strip() or "127.0.0.1"
+        api_key = env.get("OPENLAPS_SESSION_API_KEY", "").strip() or None
+        if not _is_loopback_host(http_host) and api_key is None:
+            raise ValueError("OPENLAPS_SESSION_API_KEY is required for non-loopback HTTP binding")
         port = int(env.get("OPENLAPS_SESSION_PORT", "8080"))
         if not 0 < port < 65_536:
             raise ValueError("OPENLAPS_SESSION_PORT must be between 1 and 65535")
@@ -58,7 +80,9 @@ class SessionControlSettings:
             state_file=Path(env.get("OPENLAPS_SESSION_STATE_FILE", "/data/session-state.json")),
             roster_file=Path(env.get("OPENLAPS_SESSION_ROSTER", "/config/roster.json")),
             default_track=env.get("OPENLAPS_SESSION_DEFAULT_TRACK", "").strip(),
+            http_host=http_host,
             http_port=port,
+            api_key=api_key,
         )
 
 
@@ -183,7 +207,17 @@ class SessionController:
             if not self.state_file.save(self.state):
                 self.state = SessionState.from_dict(prior_state)
                 raise SessionPersistenceError("failed to persist session state")
-            await self.database.record(self.state.to_dict())
+            try:
+                await self.database.record(self.state.to_dict())
+            except Exception as exc:
+                self.state = SessionState.from_dict(prior_state)
+                if not self.state_file.save(self.state):
+                    raise RuntimeError(
+                        "failed to roll back session after retry-queue failure"
+                    ) from exc
+                if isinstance(exc, OSError):
+                    raise SessionPersistenceError("failed to persist database retry queue") from exc
+                raise
             self.publisher.submit(payload)
             return payload
 
@@ -240,6 +274,8 @@ async def run_service(settings: SessionControlSettings, stop: asyncio.Event) -> 
         database,
         publisher,
         settings.http_port,
+        host=settings.http_host,
+        api_key=settings.api_key,
     )
     try:
         await stop.wait()
@@ -255,11 +291,18 @@ class _SessionHandler(BaseHTTPRequestHandler):
     roster_path: Path
     database: object
     publisher: object
+    api_key: str | None
+
+    def setup(self) -> None:
+        super().setup()
+        self.connection.settimeout(_REQUEST_TIMEOUT_S)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        self._send(200, {})
+        self._send(405, {"error": "cross-origin requests are not allowed"})
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._authorized():
+            return
         path = self.path.split("?", maxsplit=1)[0]
         if path == "/session":
             future = asyncio.run_coroutine_threadsafe(self.controller.current(), self.loop)
@@ -281,13 +324,39 @@ class _SessionHandler(BaseHTTPRequestHandler):
         if len(parts) != 2 or parts[0] != "session":
             self._send(404, {"error": "not found"})
             return
+        if not self._authorized():
+            return
+        origin = self.headers.get("Origin")
+        if origin:
+            self._send(403, {"error": "cross-origin request denied"})
+            return
+        if self.headers.get("Transfer-Encoding"):
+            self._send(400, {"error": "Transfer-Encoding is not supported"})
+            return
         try:
             length = int(self.headers.get("Content-Length", "0"))
+            if length < 0:
+                raise ValueError("negative Content-Length")
+            if length > _MAX_REQUEST_BODY_BYTES:
+                self.close_connection = True
+                self._send(413, {"error": "request body too large"})
+                return
+            content_type = self.headers.get_content_type()
+            if length and content_type != "application/json":
+                self._send(415, {"error": "Content-Type must be application/json"})
+                return
             decoded = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(decoded, dict):
                 raise TypeError
-        except (TypeError, ValueError, json.JSONDecodeError):
-            self._send(400, {"error": "invalid JSON body"})
+        except TimeoutError:
+            self.close_connection = True
+            self._send(408, {"error": "request body timeout"})
+            return
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            message = (
+                "invalid Content-Length" if "Content-Length" in str(exc) else "invalid JSON body"
+            )
+            self._send(400, {"error": message})
             return
         future = asyncio.run_coroutine_threadsafe(self.controller.act(parts[1], decoded), self.loop)
         try:
@@ -299,23 +368,63 @@ class _SessionHandler(BaseHTTPRequestHandler):
         except TimeoutError:
             future.cancel()
             self._send(503, {"error": "service busy"})
-        except Exception as exc:  # noqa: BLE001 - HTTP boundary logs unexpected failures
+        except Exception:  # noqa: BLE001 - HTTP boundary logs unexpected failures
             logger.exception("session-control: action failed")
-            self._send(500, {"error": str(exc)})
+            self._send(500, {"error": "internal server error"})
 
     def _send(self, status: int, value: object) -> None:
         body = json.dumps(value, sort_keys=True).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
+    def _authorized(self) -> bool:
+        if self.api_key is None or secrets.compare_digest(
+            self.headers.get("Authorization", ""), f"Bearer {self.api_key}"
+        ):
+            return True
+        self._send(401, {"error": "authentication required"})
+        return False
+
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         logger.debug(format, *args)
+
+
+class BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """Threaded HTTP server with a hard cap on concurrent request workers."""
+
+    daemon_threads = True
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        handler: type[BaseHTTPRequestHandler],
+        *,
+        max_workers: int = _MAX_HTTP_WORKERS,
+    ) -> None:
+        self.max_workers = max_workers
+        self._worker_slots = threading.BoundedSemaphore(max_workers)
+        super().__init__(server_address, handler)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._worker_slots.acquire(blocking=False):
+            try:
+                request.sendall(
+                    b"HTTP/1.1 503 Service Unavailable\r\n"
+                    b"Connection: close\r\nContent-Length: 0\r\n\r\n"
+                )
+            finally:
+                self.shutdown_request(request)
+            return
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._worker_slots.release()
 
 
 def serve_http(
@@ -325,9 +434,12 @@ def serve_http(
     database: object,
     publisher: object,
     port: int,
-    host: str = "",
-) -> ThreadingHTTPServer:
+    host: str = "127.0.0.1",
+    api_key: str | None = None,
+) -> BoundedThreadingHTTPServer:
     """Start the six-endpoint operator API on a daemon thread."""
+    if not _is_loopback_host(host) and api_key is None:
+        raise ValueError("api_key is required for non-loopback HTTP binding")
     handler = type(
         "SessionHandler",
         (_SessionHandler,),
@@ -337,11 +449,10 @@ def serve_http(
             "roster_path": Path(roster_path),
             "database": database,
             "publisher": publisher,
+            "api_key": api_key,
         },
     )
-    server = ThreadingHTTPServer((host, port), handler)
-    import threading
-
+    server = BoundedThreadingHTTPServer((host, port), handler)
     thread = threading.Thread(target=server.serve_forever, name="session-control-http", daemon=True)
     thread.start()
     logger.info("session-control: HTTP API listening on port %d", server.server_port)

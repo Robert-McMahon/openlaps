@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import http.client
 import json
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from pit.session_control.service import SessionController, StateFile, serve_http
 
@@ -147,6 +149,111 @@ def test_http_returns_unavailable_when_state_cannot_be_persisted(tmp_path: Path,
     asyncio.run(exercise())
 
 
+def test_http_rejects_unsafe_request_bodies_and_cross_origin(tmp_path: Path):
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(StateFile(tmp_path / "session.json"), database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            code, body = await asyncio.to_thread(
+                _length_only_request,
+                f"{base}/session/start",
+                65_537,
+            )
+            assert code == 413
+            assert "too large" in body["error"]
+
+            code, body = await asyncio.to_thread(
+                _length_only_request,
+                f"{base}/session/start",
+                -1,
+            )
+            assert code == 400
+            assert "Content-Length" in body["error"]
+
+            request = urllib.request.Request(
+                f"{base}/session/start",
+                data=json.dumps({"session_type": "race", "driver": "Driver A"}).encode(),
+                headers={"Content-Type": "application/json", "Origin": "https://evil.example"},
+                method="POST",
+            )
+            code, body = await asyncio.to_thread(_url_request, request)
+            assert code == 403
+            assert body == {"error": "cross-origin request denied"}
+            assert publisher.published == 0
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
+def test_http_requires_bearer_token_when_configured(tmp_path: Path):
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(StateFile(tmp_path / "session.json"), database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+            api_key="operator-secret",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        body = json.dumps({"session_type": "race", "driver": "Driver A"}).encode()
+        try:
+            code, _ = await asyncio.to_thread(_request, f"{base}/session")
+            assert code == 401
+
+            unauthorized = urllib.request.Request(
+                f"{base}/session/start",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            code, _ = await asyncio.to_thread(_url_request, unauthorized)
+            assert code == 401
+
+            authorized = urllib.request.Request(
+                f"{base}/session/start",
+                data=body,
+                headers={
+                    "Authorization": "Bearer operator-secret",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            code, response = await asyncio.to_thread(_url_request, authorized)
+            assert code == 200
+            assert response["status"] == "active"
+
+            authorized_get = urllib.request.Request(
+                f"{base}/session",
+                headers={"Authorization": "Bearer operator-secret"},
+                method="GET",
+            )
+            code, response = await asyncio.to_thread(_url_request, authorized_get)
+            assert code == 200
+            assert response["status"] == "active"
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
 def _request(url: str, body: dict[str, object] | None = None) -> tuple[int, dict]:
     data = None if body is None else json.dumps(body).encode()
     return _raw_request(url, data)
@@ -162,6 +269,30 @@ def _raw_request(url: str, data: bytes | None) -> tuple[int, dict]:
     try:
         response = urllib.request.urlopen(request, timeout=2)
     except urllib.error.HTTPError as exc:
-        response = exc
+        return exc.code, json.loads(exc.read())
     with response:
         return response.status, json.loads(response.read())
+
+
+def _url_request(request: urllib.request.Request) -> tuple[int, dict]:
+    try:
+        with urllib.request.urlopen(request, timeout=3.0) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+def _length_only_request(url: str, length: int) -> tuple[int, dict]:
+    parsed = urlsplit(url)
+    assert parsed.hostname is not None
+    connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3.0)
+    try:
+        connection.putrequest("POST", parsed.path)
+        connection.putheader("Content-Type", "application/json")
+        connection.putheader("Content-Length", str(length))
+        connection.putheader("Connection", "close")
+        connection.endheaders()
+        response = connection.getresponse()
+        return response.status, json.loads(response.read())
+    finally:
+        connection.close()

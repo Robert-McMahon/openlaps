@@ -101,10 +101,19 @@ class SessionDatabase:
                         self._write_state(self._require(), state),
                         timeout=self._operation_timeout_s,
                     )
-                    if self._pending.pop(session_id, None) is not None:
-                        self._persist_pending()
+                    pending = self._pending.pop(session_id, None)
+                    if pending is not None:
+                        try:
+                            self._persist_pending()
+                        except OSError as exc:
+                            # The DB commit is durable. Retaining this snapshot
+                            # only causes a harmless idempotent replay later.
+                            self._pending[session_id] = pending
+                            logger.error(
+                                "session-control: cannot update database retry queue: %s", exc
+                            )
                     return True
-                except (TimeoutError, psycopg.Error, ValueError, TypeError) as exc:
+                except (TimeoutError, psycopg.OperationalError, psycopg.InterfaceError) as exc:
                     self.errors += 1
                     logger.warning("session-control: database write deferred: %s", exc)
                     await self._drop_connection()
@@ -148,28 +157,39 @@ class SessionDatabase:
                     self._write_state(self._require(), state),
                     timeout=self._operation_timeout_s,
                 )
-            except (TimeoutError, psycopg.Error, ValueError, TypeError) as exc:
+            except (TimeoutError, psycopg.OperationalError, psycopg.InterfaceError) as exc:
                 self.errors += 1
                 logger.warning("session-control: queued database write failed: %s", exc)
                 await self._drop_connection()
                 return False
-            del self._pending[session_id]
-            self._persist_pending()
+            state = self._pending.pop(session_id)
+            try:
+                self._persist_pending()
+            except OSError as exc:
+                self.errors += 1
+                self._pending[session_id] = state
+                logger.error("session-control: cannot update database retry queue: %s", exc)
+                return False
             return True
 
     def _queue(self, state: dict[str, object]) -> None:
         session_id = _as_str(state.get("session_id"))
+        previous = self._pending.get(session_id)
         self._pending[session_id] = copy.deepcopy(state)
-        self._persist_pending()
+        try:
+            self._persist_pending()
+        except OSError:
+            if previous is None:
+                del self._pending[session_id]
+            else:
+                self._pending[session_id] = previous
+            raise
         self._wake.set()
 
     def _persist_pending(self) -> None:
         if self._queue_path is None:
             return
-        try:
-            _save_pending(self._queue_path, list(self._pending.values()))
-        except OSError as exc:
-            logger.error("session-control: cannot persist database retry queue: %s", exc)
+        _save_pending(self._queue_path, list(self._pending.values()))
 
     async def _drop_connection(self) -> None:
         conn, self._conn = self._conn, None
@@ -278,25 +298,18 @@ def _load_pending(path: Path | None) -> OrderedDict[str, dict[str, object]]:
     if path is None:
         return pending
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(value, list):
-            raise ValueError("retry queue must be a JSON array")
-        for item in value:
-            if not isinstance(item, dict):
-                logger.warning("session-control: skipping non-object database retry item")
-                continue
-            try:
-                state = SessionState.from_dict(dict(item)).to_dict()
-            except (ValueError, TypeError) as exc:
-                logger.warning("session-control: skipping invalid database retry item: %s", exc)
-                continue
-            session_id = _as_str(state["session_id"])
-            pending[session_id] = state
+        raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        pass
-    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        logger.warning("session-control: ignoring invalid database retry queue %s: %s", path, exc)
-        pending.clear()
+        return pending
+    value = json.loads(raw)
+    if not isinstance(value, list):
+        raise ValueError("retry queue must be a JSON array")
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("retry queue items must be JSON objects")
+        state = SessionState.from_dict(dict(item)).to_dict()
+        session_id = _as_str(state["session_id"])
+        pending[session_id] = state
     return pending
 
 

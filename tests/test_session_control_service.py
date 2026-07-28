@@ -160,6 +160,64 @@ def test_failed_state_write_rolls_back_without_database_or_publish(tmp_path: Pat
     asyncio.run(exercise())
 
 
+def test_failed_database_retry_queue_does_not_publish(tmp_path: Path):
+    class FailingDatabase:
+        async def record(self, state: dict[str, object]) -> bool:
+            del state
+            raise OSError("disk full")
+
+    async def exercise() -> None:
+        events: list[str] = []
+        state_file = StateFile(tmp_path / "session.json")
+        controller = SessionController(
+            state_file,
+            FailingDatabase(),
+            RecordingPublisher(events),
+        )
+
+        with pytest.raises(SessionPersistenceError, match="database retry queue"):
+            await controller.act(
+                "start",
+                {"session_type": "test", "driver": "Driver A"},
+                now_ms=T0,
+            )
+
+        assert controller.state.status == "none"
+        assert StateFile(state_file.path).load().status == "none"
+        assert events == []
+
+    asyncio.run(exercise())
+
+
+def test_permanent_database_error_rolls_back_transition(tmp_path: Path):
+    class FailingDatabase:
+        async def record(self, state: dict[str, object]) -> bool:
+            del state
+            raise RuntimeError("schema mismatch")
+
+    async def exercise() -> None:
+        events: list[str] = []
+        state_file = StateFile(tmp_path / "session.json")
+        controller = SessionController(
+            state_file,
+            FailingDatabase(),
+            RecordingPublisher(events),
+        )
+
+        with pytest.raises(RuntimeError, match="schema mismatch"):
+            await controller.act(
+                "start",
+                {"session_type": "test", "driver": "Driver A"},
+                now_ms=T0,
+            )
+
+        assert controller.state.status == "none"
+        assert StateFile(state_file.path).load().status == "none"
+        assert events == []
+
+    asyncio.run(exercise())
+
+
 def test_startup_republishes_persisted_current_state(tmp_path: Path):
     async def exercise() -> None:
         events: list[str] = []

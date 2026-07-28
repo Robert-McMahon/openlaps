@@ -7,8 +7,10 @@ import json
 from pathlib import Path
 
 import psycopg
+import pytest
 
 from pit.db.migrate import apply_migrations
+from pit.session_control import database as database_module
 from pit.session_control.database import SessionDatabase, retry_backoff
 from pit.session_control.state import SessionState
 
@@ -63,7 +65,7 @@ def test_database_retry_queue_survives_restart_and_preserves_each_session(tmp_pa
     asyncio.run(exercise())
 
 
-def test_database_retry_queue_skips_invalid_snapshot_without_losing_valid_one(tmp_path: Path):
+def test_database_retry_queue_fails_closed_when_snapshot_is_invalid(tmp_path: Path):
     queue_path = tmp_path / "database-queue.json"
     valid = SessionState()
     valid.start_session("race", "Driver A", now_ms=T0)
@@ -72,10 +74,59 @@ def test_database_retry_queue_skips_invalid_snapshot_without_losing_valid_one(tm
         encoding="utf-8",
     )
 
-    database = SessionDatabase("postgresql://invalid", VEHICLE, queue_path=queue_path)
+    with pytest.raises(ValueError, match="session_type"):
+        SessionDatabase("postgresql://invalid", VEHICLE, queue_path=queue_path)
 
-    assert database.pending_count == 1
-    assert database.pending_states()[0]["session_id"] == valid.session_id
+    assert queue_path.exists()
+
+
+def test_database_retry_queue_write_failure_is_not_reported_as_queued(tmp_path: Path, monkeypatch):
+    async def exercise() -> None:
+        database = SessionDatabase(
+            "postgresql://invalid",
+            VEHICLE,
+            queue_path=tmp_path / "database-queue.json",
+        )
+        state = SessionState()
+        state.start_session("race", "Driver A", now_ms=T0)
+
+        def fail_save(_path, _states):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(database_module, "_save_pending", fail_save)
+        with pytest.raises(OSError, match="disk full"):
+            await database.record(state.to_dict())
+        assert database.pending_count == 0
+
+    asyncio.run(exercise())
+
+
+def test_permanent_database_error_is_not_queued_as_an_outage(tmp_path: Path, monkeypatch):
+    class Connection:
+        closed = False
+
+        async def close(self) -> None:
+            self.closed = True
+
+    async def exercise() -> None:
+        database = SessionDatabase(
+            "postgresql://invalid",
+            VEHICLE,
+            queue_path=tmp_path / "database-queue.json",
+        )
+        database._conn = Connection()  # type: ignore[assignment]
+        state = SessionState()
+        state.start_session("race", "Driver A", now_ms=T0)
+
+        async def fail_write(_conn, _state):
+            raise psycopg.IntegrityError("constraint violation")
+
+        monkeypatch.setattr(database, "_write_state", fail_write)
+        with pytest.raises(psycopg.IntegrityError):
+            await database.record(state.to_dict())
+        assert database.pending_count == 0
+
+    asyncio.run(exercise())
 
 
 def test_session_with_two_stints_round_trips_to_timescale(timescale_dsn):

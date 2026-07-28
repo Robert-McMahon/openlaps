@@ -6,8 +6,8 @@ referenced specs. Phase 1 (design docs, wire format, example profile) and
 Phase 2 (core, collectors, timing port, vehicle agent + JetStream publisher)
 are complete and committed.
 
-**Done so far in this phase: P3.0, P3.1, P3.2, P3.3, P3.4, P3.5, P3.7.
-Outstanding: P3.6 and P3.8.** The pit database schema and migration applier
+**Done so far in this phase: P3.0, P3.1, P3.2, P3.3, P3.4, P3.5, P3.7, P3.8.
+Outstanding: P3.6.** The pit database schema and migration applier
 are in `src/pit/db/` and documented in `docs/PIT_SCHEMA.md`; the
 ingest-writer is in `src/pit/ingest_writer/`; and `RegistryCache` — the
 shared decode half — now lives in `src/pit/registry_cache.py`, imported by
@@ -21,10 +21,11 @@ both the pit services and `tools/decode.py`. The live-decoder is in
 `[project.scripts]` entry points and all their environment variables are
 already documented in `example.env`.
 
-**P3.8 (historical importer) has not been started** — `tools/import_legacy.py`
-and `tools/legacy_channel_map.yaml` do not exist. Its brief is unchanged and
-still valid; it depends only on P3.1 and P3.2, both of which shipped as
-specified, so it can be picked up independently of P3.6.
+**P3.8 (historical importer) is complete** — `tools/import_legacy.py` streams
+the legacy gzip exports through generation-zero synthetic channel mappings in
+`tools/legacy_channel_map.yaml`, with dry-run accounting, bounded batching, and
+transactional resume checkpoints. Its brief remains below as the shipped
+implementation and acceptance record.
 
 The briefs below have been updated where implementation changed what a later
 package should do; those places say so explicitly.

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import psycopg
@@ -31,6 +32,28 @@ logger = logging.getLogger(__name__)
 
 # (time, channel_key, value, value_text)
 SampleRow = tuple[datetime, int, float | None, str | None]
+
+
+@dataclass(frozen=True, slots=True)
+class SyntheticChannel:
+    """One generation-0 channel created outside the wire registry."""
+
+    name: str
+    units: str
+    value_type: int
+    source_ref: str
+
+
+@dataclass(frozen=True, slots=True)
+class LegacySectorRow:
+    """A legacy split resolved to the first completed lap at/after its crossing."""
+
+    vehicle_id: str
+    track_name: str | None
+    sector: int
+    split_time_s: float | None
+    crossed_at: datetime
+
 
 _FLUSH_TABLE = "_sample_flush"
 
@@ -75,6 +98,19 @@ RETURNING lap_id
 _UPSERT_SECTOR = """
 INSERT INTO lap_sectors (lap_id, sector, split_time_s, crossed_at)
 VALUES (%s, %s, %s, %s)
+ON CONFLICT (lap_id, sector) DO UPDATE
+SET split_time_s = EXCLUDED.split_time_s, crossed_at = EXCLUDED.crossed_at
+"""
+
+_UPSERT_LEGACY_SECTOR = """
+INSERT INTO lap_sectors (lap_id, sector, split_time_s, crossed_at)
+SELECT lap_id, %s, %s, %s
+FROM laps
+WHERE vehicle_id = %s
+  AND track_name IS NOT DISTINCT FROM %s
+  AND crossed_at >= %s
+ORDER BY crossed_at ASC
+LIMIT 1
 ON CONFLICT (lap_id, sector) DO UPDATE
 SET split_time_s = EXCLUDED.split_time_s, crossed_at = EXCLUDED.crossed_at
 """
@@ -195,6 +231,58 @@ class TimescaleStore:
                 )
         return keys
 
+    async def upsert_synthetic_channels(
+        self, vehicle_id: str, channels: Sequence[SyntheticChannel]
+    ) -> dict[str, int]:
+        """Register non-wire channels under reserved registry generation zero."""
+        conn = self._require()
+        keys: dict[str, int] = {}
+        async with conn.transaction():
+            # The composite FK on channel_map makes this ordering mandatory.
+            await conn.execute(
+                "INSERT INTO channel_registry (vehicle_id, registry_seq, created) "
+                "VALUES (%s, 0, NULL) ON CONFLICT (vehicle_id, registry_seq) DO NOTHING",
+                (vehicle_id,),
+            )
+            for channel in channels:
+                row = await (
+                    await conn.execute(
+                        "INSERT INTO channels (vehicle_id, name, units, value_type) "
+                        "VALUES (%s, %s, %s, %s) ON CONFLICT (vehicle_id, name) DO NOTHING "
+                        "RETURNING channel_key",
+                        (vehicle_id, channel.name, channel.units, channel.value_type),
+                    )
+                ).fetchone()
+                if row is None:
+                    row = await (
+                        await conn.execute(
+                            "SELECT channel_key FROM channels WHERE vehicle_id = %s AND name = %s",
+                            (vehicle_id, channel.name),
+                        )
+                    ).fetchone()
+                assert row is not None
+                channel_key = int(row[0])
+                keys[channel.name] = channel_key
+                # channel_key is database-wide unique and stable, making it a
+                # collision-free synthetic wire id for generation zero.
+                await conn.execute(
+                    "INSERT INTO channel_map (vehicle_id, registry_seq, wire_id, channel_key, "
+                    'source_ref, units, value_type, scale, "offset") '
+                    "VALUES (%s, 0, %s, %s, %s, %s, %s, 0, 0) "
+                    "ON CONFLICT (vehicle_id, registry_seq, wire_id) DO UPDATE "
+                    "SET channel_key = EXCLUDED.channel_key, source_ref = EXCLUDED.source_ref, "
+                    "units = EXCLUDED.units, value_type = EXCLUDED.value_type",
+                    (
+                        vehicle_id,
+                        channel_key,
+                        channel_key,
+                        channel.source_ref,
+                        channel.units,
+                        channel.value_type,
+                    ),
+                )
+        return keys
+
     async def flush(
         self,
         *,
@@ -204,6 +292,7 @@ class TimescaleStore:
         consumer: str,
         stream: str,
         stream_seq: int,
+        legacy_sectors: Sequence[LegacySectorRow] = (),
     ) -> None:
         """Write one flush's worth of work and advance the cursor, atomically."""
         conn = self._require()
@@ -218,6 +307,18 @@ class TimescaleStore:
                     await cur.execute(_INSERT_SAMPLES)
             for lap in laps:
                 await self._write_lap(conn, lap)
+            for sector in legacy_sectors:
+                await conn.execute(
+                    _UPSERT_LEGACY_SECTOR,
+                    (
+                        sector.sector,
+                        sector.split_time_s,
+                        sector.crossed_at,
+                        sector.vehicle_id,
+                        sector.track_name,
+                        sector.crossed_at,
+                    ),
+                )
             for update in pit_updates:
                 await conn.execute(
                     _UPDATE_PIT_STATUS, (update.pit_status, update.vehicle_id, update.at)

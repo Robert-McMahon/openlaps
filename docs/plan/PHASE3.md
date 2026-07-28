@@ -6,17 +6,28 @@ referenced specs. Phase 1 (design docs, wire format, example profile) and
 Phase 2 (core, collectors, timing port, vehicle agent + JetStream publisher)
 are complete and committed.
 
-**Done so far in this phase: P3.0, P3.1, P3.2, P3.3, P3.4.** The pit database
-schema and migration applier are in `src/pit/db/` and documented in
-`docs/PIT_SCHEMA.md`; the ingest-writer is in `src/pit/ingest_writer/`; and
-`RegistryCache` — the shared decode half — now lives in
-`src/pit/registry_cache.py`, imported by both the pit services and
-`tools/decode.py`. The live-decoder is in `src/pit/live_decoder/`, with its
-pit-side view configuration in `deploy/pit-config/live-decoder.yaml`.
-Session-control is in `src/pit/session_control/`, with the example roster in
-the example vehicle profile. The briefs below have been updated where
-implementation changed what a later package should do; those places say so
-explicitly.
+**Done so far in this phase: P3.0, P3.1, P3.2, P3.3, P3.4, P3.5, P3.7.
+Outstanding: P3.6 and P3.8.** The pit database schema and migration applier
+are in `src/pit/db/` and documented in `docs/PIT_SCHEMA.md`; the
+ingest-writer is in `src/pit/ingest_writer/`; and `RegistryCache` — the
+shared decode half — now lives in `src/pit/registry_cache.py`, imported by
+both the pit services and `tools/decode.py`. The live-decoder is in
+`src/pit/live_decoder/`, with its pit-side view configuration in
+`deploy/pit-config/live-decoder.yaml`. Session-control is in
+`src/pit/session_control/`, with the example roster at
+`profiles/example-club-racer/session-roster.json`. The ntrip-client is in
+`src/pit/ntrip_client/`, and the replay harness and lap simulator are
+`tools/replay.py` and `tools/lap_simulator.py`. All five services have
+`[project.scripts]` entry points and all their environment variables are
+already documented in `example.env`.
+
+**P3.8 (historical importer) has not been started** — `tools/import_legacy.py`
+and `tools/legacy_channel_map.yaml` do not exist. Its brief is unchanged and
+still valid; it depends only on P3.1 and P3.2, both of which shipped as
+specified, so it can be picked up independently of P3.6.
+
+The briefs below have been updated where implementation changed what a later
+package should do; those places say so explicitly.
 
 Phase 2 froze the producer contract. Phase 3 builds everything that consumes
 it, plus the deployment and tooling needed to run both ends together on the
@@ -118,6 +129,10 @@ deserve the strongest model available plus a review pass** — P3.2 owns
 exactly-once-in-effect ingest, P3.6 owns the leafnode/JetStream-domain
 topology that ADR 0002 calls "the single biggest unvalidated assumption in
 the whole rewrite".
+
+Everything except P3.6 and P3.8 has landed. P3.6 is now on the critical path
+alone, and it turns out to carry a small amount of *code* as well as deploy
+material — see "What changed since this brief was written" in that section.
 
 ---
 
@@ -642,7 +657,84 @@ one paragraph — this package writes the rest), ADR 0002 (leafnode + sourced
 stream; "leafnode behaviour over a lossy, half-duplex link under real RF
 conditions is the single biggest unvalidated assumption in the whole
 rewrite"), `docs/WIRE_FORMAT.md` (stream configs). `deploy/` currently holds
-only `.gitkeep`; everything here is greenfield.
+only `pit-config/live-decoder.yaml` (shipped by P3.3); everything else here
+is greenfield.
+
+### What changed since this brief was written
+
+P3.2–P3.5 and P3.7 have all shipped. Three things that follow from what they
+built change the shape of this package — read these before the topology
+section, because one of them makes this package a code change as well as a
+deploy change.
+
+**1. The sourced stream is invisible to subject-based consumer lookup, and
+three shipped services depend on that lookup.** This is the blocking item.
+`nats-py`'s `js.subscribe(subject, ...)` resolves the stream by calling
+`$JS.API.STREAM.NAMES` with a subject filter
+(`nats/js/manager.py::find_stream_name_by_subject`) whenever no `stream=`
+argument is given. The server matches that filter against a stream's declared
+`subjects` — and `TELE_VEHICLE` declares none, because it must not (see the
+double-capture measurement below). The lookup therefore returns nothing and
+the call raises `NotFoundError`.
+
+Measured against a real two-server leafnode pair with domains `veh`/`pit` and
+a sourced-only `TELE_VEHICLE`: sourcing delivered all messages and
+`js.subscribe(..., stream="TELE_VEHICLE")` and `js.pull_subscribe(...,
+stream="TELE_VEHICLE")` both worked, while `find_stream_name_by_subject` and
+bare `js.subscribe(...)` both raised `NotFoundError`.
+
+Five call sites subscribe without `stream=` and will fail at startup against
+the deployed topology:
+
+| Call site | What it is |
+| --- | --- |
+| `src/pit/ingest_writer/writer.py:319` | registry warm-up scan |
+| `src/pit/live_decoder/service.py:253` | the live batch subscription |
+| `src/pit/live_decoder/service.py:311` | registry warm-up scan |
+| `src/pit/ntrip_client/service.py:236` | GGA position feed (only when `NTRIP_ENABLE_GGA=1`) |
+| `src/pit/ntrip_client/service.py:260` | registry warm-up scan |
+
+Only `IngestWriter._subscribe` (`writer.py:369`) passes `stream=` today,
+which is why P3.2's own durable consumer is the one path that would have
+worked. Every integration test passes because the tests publish into a
+single-server `TELE` that *does* declare `tele.<vehicle>.>`; the topology
+this package builds is the first place the difference shows up.
+
+**This package therefore owns a small code change**, and it belongs here
+rather than as a retrofit to each service, because the stream name is
+deploy-time wiring and this is the package that defines it:
+
+- Pass `stream=` on all five call sites.
+- Give `LiveDecoderSettings` and `NtripSettings` a `stream` field defaulted
+  to `TELE_VEHICLE`, read from `OPENLAPS_LIVE_STREAM` and
+  `OPENLAPS_NTRIP_STREAM`, matching `WriterSettings.stream` /
+  `OPENLAPS_INGEST_STREAM`, which already exist and already default correctly.
+- Document all three in `example.env` alongside the existing ingest entry, and
+  say in `deploy/README.md` that they must name the pit's sourced stream —
+  a service pointed at a stream that doesn't exist fails loudly at startup,
+  which is the desired outcome.
+- Extend each service's existing unit tests for the new setting, and cover
+  the real failure in the compose test below.
+
+This is wiring, not behaviour: it requires no change to `proto/telemetry.proto`,
+the subjects, or the agent, so it stays inside the frozen-wire-format rule.
+
+**2. ADR 0002's core assumption holds at the logic level.** The same probe
+severed the leafnode, published 200 messages to the vehicle's `TELE`, and
+reconnected. The pit's `TELE_VEHICLE` caught up to the full count with **zero
+missing, zero duplicate, and order preserved**. That is not a substitute for
+the compose-level test specified below — it used a container network
+disconnect, not a lossy half-duplex radio — but the sourcing logic is no
+longer the open question. What remains unvalidated is purely RF, and that is
+Phase 4's garage bench test.
+
+**3. "No `subjects` on the sourced stream" is now a measurement, not a
+judgement call.** A pit stream configured with both `sources` *and*
+`subjects: [tele.<vehicle>.>]` was created alongside the leafnode; ten
+messages published once to the vehicle grew it by **twenty**. The leafnode
+propagates the subject to the pit server as core NATS, so the pit stream
+captures each message directly *and* again through sourcing. Keep the sourced
+stream subject-less.
 
 **The topology, stated precisely** — get this wrong and nothing else works:
 
@@ -658,15 +750,26 @@ only `.gitkeep`; everything here is greenfield.
   (likewise). The pit owns **`TELE_VEHICLE`**, a *sourced-only* stream:
   `{"name":"TELE_VEHICLE","sources":[{"name":"TELE","external":{"api":"$JS.veh.API"}}]}`.
   It declares **no `subjects` of its own** — a sourced stream that also
-  claims `tele.>` would double-capture. Subjects are preserved through
-  sourcing, so pit consumers filter on `tele.<vehicle>.>` from
-  `TELE_VEHICLE`.
+  claims `tele.>` double-captures, measured at exactly 2× (see change 3
+  above). Subjects are preserved through sourcing, so pit consumers filter on
+  `tele.<vehicle>.>` from `TELE_VEHICLE` — but they must **name the stream
+  explicitly**, because a subject-less stream cannot be found by subject
+  (change 1 above). `TELE_VEHICLE` is named nowhere in `docs/` today; this
+  package adds it to `docs/WIRE_FORMAT.md` beside the `TELE` and `CMD`
+  definitions, since it is now part of the deployed stream topology and pit
+  services take its name as configuration.
 - Pit retention is **not** the vehicle's 72 h: Timescale is the archive and
   the pit stream is a buffer. Size it by disk with a modest age cap and
   document the reasoning next to the value.
 - `cmd.<vehicle>.session` flows pit → vehicle by session-control publishing
   into the vehicle's domain (`nc.jetstream(domain="veh")`), not by mirroring.
-  One direction, one stream, no reconciliation.
+  One direction, one stream, no reconciliation. **Validated**: a cross-domain
+  publish from the pit client landed in the vehicle's `CMD` at seq 1 on the
+  probe pair. The domain string is coupled across two files —
+  `OPENLAPS_VEHICLE_JS_DOMAIN` (default `veh`, read by
+  `SessionControlSettings.from_env`) must equal the `jetstream { domain: … }`
+  in `nats/vehicle.conf`. Say so where both are defined; a mismatch is a
+  silent publish failure into a domain that doesn't exist.
 - `rtcm.<vehicle>` is **core NATS** and must be captured by no stream on
   either side. Assert this in a test rather than trusting the config.
 
@@ -701,12 +804,29 @@ only `.gitkeep`; everything here is greenfield.
   an entrypoint step in each service, which would have four containers
   racing the same DDL on every restart. It belongs in `deploy/README.md`'s
   bring-up order too, immediately after the database is healthy.
-- **Give each service a distinct health port** and put the map in
-  `deploy/README.md`; three services defaulting to 8080 is a bad first
-  hour. `ingest-writer` already defaults to **8081**
-  (`OPENLAPS_INGEST_HEALTH_PORT`); suggested for the rest —
-  `session-control` **8080** (it is the operator-facing API, not just
-  health), `live-decoder` **8082**, `ntrip-client` **8083**.
+- **The health port map is already settled in code** — this package only has
+  to publish it in `deploy/README.md` and wire the ports in
+  `pit-compose.yaml`. Every service shipped with a distinct default:
+
+  | Service | Port | Variable |
+  | --- | --- | --- |
+  | `session-control` | 8080 | `OPENLAPS_SESSION_PORT` (operator API *and* `/health`) |
+  | `ingest-writer` | 8081 | `OPENLAPS_INGEST_HEALTH_PORT` |
+  | `live-decoder` | 8082 | `OPENLAPS_LIVE_HEALTH_PORT` |
+  | `ntrip-client` | 8083 | `OPENLAPS_NTRIP_HEALTH_PORT` |
+
+- **session-control has deploy-time constraints the original brief predates.**
+  It binds `OPENLAPS_SESSION_HOST` (default `127.0.0.1`), and
+  `SessionControlSettings.from_env` **refuses to start** on a non-loopback
+  bind without `OPENLAPS_SESSION_API_KEY`. A container must bind `0.0.0.0` to
+  be reachable, so the API key is *mandatory* in `pit-compose.yaml` — not
+  optional, and not something to discover at first bring-up. Document it in
+  `deploy/README.md` as a required secret. It also needs two mounts, both of
+  which default to absolute container paths: a writable volume for
+  `OPENLAPS_SESSION_STATE_FILE` (`/data/session-state.json` — restart
+  continuity depends on it surviving the container) and a read-only mount for
+  `OPENLAPS_SESSION_ROSTER` (`/config/roster.json`), whose source in this repo
+  is `profiles/example-club-racer/session-roster.json`.
 - Note that `OPENLAPS_NATS_URL` means *the local server for this stack*:
   the vehicle server in `vehicle-compose.yaml`, the pit server in
   `pit-compose.yaml`. Same variable name, two different stacks, one `.env`
@@ -714,33 +834,81 @@ only `.gitkeep`; everything here is greenfield.
   services at the car.
 - `mosquitto/mosquitto.conf` — pit-local, websockets listener, no bridge to
   anywhere. It must be impossible for this broker to reach the radio.
-- `pit-config/live-decoder.yaml` — the P3.3 live view config, mounted
-  read-only into the live-decoder container. Ship a sensible starting set
-  (position, a handful of engine channels, `lap.*`, `timing.*`,
-  `sys.agent.status`) and document in `deploy/README.md` that editing this
-  file is the normal way to change what the garage watches — no restart
-  required, no vehicle-side change.
+- `pit-config/live-decoder.yaml` — **already shipped by P3.3** with exactly
+  the starting set this brief asked for (position, `car.rpm`, `car.accel_*`,
+  `car.coolant_temp`, `lap.*`, `timing.*`, `sys.agent.status`). Nothing to
+  write: mount it read-only at the path `OPENLAPS_LIVE_CONFIG` names, and
+  document in `deploy/README.md` that editing this file is the normal way to
+  change what the garage watches — no restart required, no vehicle-side
+  change. The mount must be a **bind mount of the file's directory**, not a
+  single-file bind: the reload path is an mtime poll plus SIGHUP, and an
+  editor that writes via rename leaves a single-file bind pointing at the old
+  inode.
 - Dockerfiles for the four pit services (one shared multi-stage image with
-  four entry points is preferable to four images).
+  four entry points is preferable to four images). All five entry points —
+  including `openlaps-migrate` — are already declared in
+  `[project.scripts]`, so the image needs no per-service command wrapper.
 - `systemd/openlaps-agent.service` — the SBC alternative to compose, since
   the bench runs the agent directly today.
-- Extend `example.env` with every new variable in the same commit, grouped
-  by service, with the same commented style as the existing file.
+- **`example.env` is nearly complete already** — P3.2–P3.5 each extended it
+  in their own commit, so every service variable is present and grouped. This
+  package adds only what it introduces: the three stream-name variables from
+  change 1 (`OPENLAPS_LIVE_STREAM`, `OPENLAPS_NTRIP_STREAM`, alongside the
+  existing `OPENLAPS_INGEST_STREAM`), and whatever the compose/NATS files
+  need beyond the three `NATS_*` TLS/creds paths already stubbed at the top.
+  Do not duplicate entries that exist.
 - `deploy/README.md` — bring-up order, how to verify each hop
   (`nats stream ls`, `nats stream report`, `tools/decode.py --watch`,
-  `mosquitto_sub`, a SQL row count), and how to tear down.
+  `mosquitto_sub`, a SQL row count), and how to tear down. `tools/replay.py`
+  (P3.7) is now the way to drive a bring-up without a car — reference it in
+  the verification steps.
+- **One small doc-truth fix while you are here.** `docs/WIRE_FORMAT.md:67`
+  and `:82` both state that `TELE` sets `duplicate_window` explicitly to 2
+  minutes "rather than relying on the server default", but
+  `src/agent/publisher.py:292` does not set it at all. The behaviour is
+  identical today because the server default *is* 2 minutes — which is
+  precisely the coupling the doc says it is avoiding. Add
+  `duplicate_window=120` to the `TELE` `StreamConfig` so the doc becomes
+  true. It converges through the existing
+  `add_stream`-then-`update_stream` path and changes no observable behaviour.
 
 **Tests:** a compose-level integration test marked skip-if-no-docker that
 brings up **both** stacks on one host (the vehicle NATS and pit NATS in
 separate containers, leafnode between them), publishes real batches into the
 vehicle's `TELE`, and asserts they appear in the pit's `TELE_VEHICLE` and
 then as Timescale rows. Then the recovery case that is the whole point of
-ADR 0002: **sever the leafnode** (disconnect the pit container from the
-network), keep publishing to the vehicle, reconnect, and assert the pit
-catches up with **no gap and no duplicates** — resuming by sequence, exactly
-as `docs/ARCHITECTURE.md` → "Link dropout and recovery" describes. Also
-assert `rtcm.>` is captured by no stream, and that a session published at
-the pit reaches a vehicle-side consumer.
+ADR 0002: **sever the leafnode**, keep publishing to the vehicle, reconnect,
+and assert the pit catches up with **no gap and no duplicates** — resuming by
+sequence, exactly as `docs/ARCHITECTURE.md` → "Link dropout and recovery"
+describes. Also assert `rtcm.>` is captured by no stream, and that a session
+published at the pit reaches a vehicle-side consumer.
+
+Three notes from the probe run that shaped this brief, so the test does not
+have to rediscover them:
+
+- **Sever the leafnode by disconnecting a container from a leafnode-only
+  docker network**, not by disconnecting the container that the test client
+  talks to. `docker network disconnect` drops the published port mapping with
+  it, so the test loses its own connection and the assertions run against a
+  dead client. Put both servers on two networks — one carrying only the
+  leafnode (reached via a `--network-alias` the remote URL names), one
+  carrying the test client's published ports — and disconnect only the
+  leafnode network. Reconnect with `--alias` to restore it.
+- The gap/duplicate assertion is worth making on **payloads, not counts**:
+  read every message back through `js.subscribe(..., stream="TELE_VEHICLE",
+  deliver_policy=ALL)` and assert the exact set, no duplicates, and order. A
+  count-only assertion passes on a stream that dropped one message and
+  duplicated another.
+- **Assert the failure mode from change 1 directly**: a bare
+  `js.subscribe("tele.<vehicle>.>")` against the pit raises `NotFoundError`
+  while the `stream=`-qualified form succeeds. That is a one-line regression
+  test for the whole class of bug, and it is what stops a future service from
+  quietly reintroducing it.
+
+Beyond the container level, the test that actually earns this package is
+bringing up both real stacks and confirming all four pit services reach a
+healthy `/health` against the sourced stream — that is where change 1 would
+have surfaced, and where anything else the deploy topology breaks will too.
 
 ---
 

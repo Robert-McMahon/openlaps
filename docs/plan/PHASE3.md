@@ -219,14 +219,27 @@ ingest time; history then survives any number of catalog edits.
   - `laps(lap_id PK, vehicle_id, session_id FK NULL, stint_id FK NULL,
     track_name, lap_number INT, crossed_at TIMESTAMPTZ, lap_time_s DOUBLE
     PRECISION NULL, valid BOOLEAN, pit_status TEXT, direction TEXT,
-    UNIQUE(vehicle_id, session_id, lap_number))` — nullable session/stint FKs
-    because laps are recorded whether or not a session is open.
+    UNIQUE(vehicle_id, crossed_at))` — nullable session/stint FKs
+    because laps are recorded whether or not a session is open. **The unique
+    key is the crossing instant, not the lap number** (corrected during
+    implementation): `lap_number` is in-memory timing-engine state scoped to
+    one agent run and one track, and is *not* reset by a session change, so
+    an agent restart mid-session replays lap numbers 1..k under the same
+    `session_id` — keying on it would silently overwrite the earlier laps.
+    One car cannot complete two laps at the same instant, and redelivery or
+    a re-import presents the same instant, so `(vehicle_id, crossed_at)`
+    converges exactly where it should. Nothing mints a synthetic session for
+    unattributed laps; with this key, attribution is not needed for
+    correctness.
   - `lap_sectors(lap_id FK, sector INT, split_time_s, crossed_at,
     PK(lap_id, sector))`.
   - `ingest_cursor(consumer TEXT PK, stream TEXT, stream_seq BIGINT,
     updated TIMESTAMPTZ)` — P3.2's idempotency anchor, see that brief.
 - Indexes: `samples(channel_key, time DESC)` as the hypertable's working
-  index; `laps(vehicle_id, crossed_at DESC)`.
+  index; `laps(session_id, lap_number)` for the session-scoped lookups
+  `v_laps` exists for. No separate `laps(vehicle_id, crossed_at DESC)` — the
+  unique constraint's index leads with exactly those columns and Postgres
+  scans it backwards for free.
 - Compression: `ALTER TABLE samples SET (timescaledb.compress,
   timescaledb.compress_segmentby = 'channel_key',
   timescaledb.compress_orderby = 'time DESC')` plus a compression policy at
@@ -304,8 +317,18 @@ half: `tools/decode.py`.
   row; `SECTOR_COMPLETED` appends a `lap_sectors` row; `PIT_ENTRY`/
   `PIT_EXIT` update `pit_status`. Session/stint FKs resolve from the stamped
   `session_id`/`stint_number` where present, and are left NULL where not —
-  a lap with no session is still a lap. Upsert on the unique key so replay
+  a lap with no session is still a lap, and a stamped `session_id` with no
+  `sessions` row yet (session-control's own write still queued behind an
+  outage) is written NULL rather than failing the whole flush on the FK.
+  Upsert on the unique key — `(vehicle_id, crossed_at)`, see P3.1 — so replay
   and the historical importer (P3.8) converge rather than duplicate.
+  **Do not key laps on `lap_number`**: it restarts at 1 on an agent restart
+  or a track switch, within the same session. Sector events arrive before the
+  lap they belong to (the final `SECTOR_COMPLETED` is emitted in the same
+  list as `LAP_COMPLETED`, earlier ones during the lap), so buffer them in
+  memory keyed by `lap_number` and write `lap_sectors` once the lap row
+  exists; discard the buffer when `lap_number` regresses, which is the
+  restart signal.
 - **Health.** A pit-local health surface, not a telemetry channel (per
   P3.0): log at 1 Hz and expose via a `/health` HTTP endpoint —
   ingest lag (using `batch_epoch_mono_ns` deltas per
@@ -740,8 +763,11 @@ schema uses seconds.
   and one query answers across both. Document this convention in
   `docs/PIT_SCHEMA.md`.
 - Old `lap` rows convert to `laps`/`lap_sectors` with ms→s conversion,
-  upserting on the same unique key P3.2 uses so live ingest and import
-  converge rather than duplicate.
+  upserting on the same unique key P3.2 uses — `(vehicle_id, crossed_at)`,
+  which the legacy nanosecond timestamps supply directly — so a re-run of the
+  import converges rather than duplicating. Legacy laps carry no session, and
+  nothing synthesises one: with this key, imports spanning several events
+  cannot collide even though their lap numbers repeat.
 - Unmapped names are counted and reported, never silently dropped — the
   same principle `docs/AGENT_DESIGN.md` applies to the catalog.
 

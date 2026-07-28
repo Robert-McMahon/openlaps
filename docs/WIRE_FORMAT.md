@@ -341,6 +341,15 @@ Plus, whenever the active session (`src/agent/session.py`, stamped from
 when non-`None` in the current session state, so a lap recorded with no
 session open carries none of them.
 
+**`lap_number` is not a key.** It lives in the timing engine's in-memory
+state (`src/timing/timing_core.py` — set to 1 on the first line crossing,
+incremented per lap), is never persisted, and is not reset by a session
+change. It *is* reset whenever the engine is rebuilt, which
+`src/agent/timing_app.py` does on a track switch, and which an agent restart
+does implicitly. So lap numbers repeat within a single session across a
+restart; a consumer storing laps must key them on something else (the pit
+schema uses the crossing instant — see `docs/PIT_SCHEMA.md`).
+
 **Consumers must tolerate unknown keys** — this schema is expected to grow
 (new session-stamp keys, new event metadata) without a wire-format version
 bump, since it travels inside an already-versioned `SampleBatch.Sample`

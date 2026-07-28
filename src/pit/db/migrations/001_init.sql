@@ -162,13 +162,19 @@ CREATE TABLE stints (
 -- nullable because laps are recorded whether or not a session is open — a
 -- lap with no session is still a lap.
 --
--- The unique key is NULLS NOT DISTINCT so that ON CONFLICT converges for
--- session-less laps too; with the default (distinct) NULL semantics a replay
--- or a re-run of the historical importer would insert duplicates instead of
--- upserting. Consequence, documented in docs/PIT_SCHEMA.md: for session-less
--- laps the key degenerates to (vehicle_id, lap_number), so bulk imports
--- spanning multiple events should supply a session_id to keep their lap
--- numbering apart.
+-- The unique key is (vehicle_id, crossed_at), NOT (…, lap_number): one car
+-- cannot complete two laps at the same instant, whereas `lap_number` is not
+-- unique for anything. It lives in TimingEngine.state, in memory, scoped to
+-- one agent run and one track (src/timing/timing_core.py sets it to 1 on the
+-- first crossing; src/agent/timing_app.py rebuilds the engine on a track
+-- switch), and it is never reset by a session change. So an agent restart
+-- mid-session replays lap numbers 1..k under the *same* session_id — keying
+-- on it would silently overwrite the earlier laps.
+--
+-- Keying on the crossing instant instead means upserts converge exactly
+-- where they should — writer redelivery and importer re-runs present the
+-- same crossing time — and never merge laps that only happen to share a
+-- number.
 CREATE TABLE laps (
     lap_id     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     vehicle_id TEXT        NOT NULL,
@@ -181,10 +187,14 @@ CREATE TABLE laps (
     valid      BOOLEAN     NOT NULL DEFAULT TRUE,
     pit_status TEXT,
     direction  TEXT,
-    UNIQUE NULLS NOT DISTINCT (vehicle_id, session_id, lap_number)
+    UNIQUE (vehicle_id, crossed_at)
 );
 
-CREATE INDEX laps_vehicle_crossed_idx ON laps (vehicle_id, crossed_at DESC);
+-- The unique constraint's index is (vehicle_id, crossed_at), which Postgres
+-- scans backwards for free, so it already serves the newest-laps-first query
+-- and no separate laps(vehicle_id, crossed_at DESC) index is warranted. What
+-- it doesn't serve is the session-scoped lookup v_laps is built for.
+CREATE INDEX laps_session_idx ON laps (session_id, lap_number);
 
 CREATE TABLE lap_sectors (
     lap_id       BIGINT      NOT NULL REFERENCES laps (lap_id) ON DELETE CASCADE,

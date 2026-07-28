@@ -139,7 +139,7 @@ reads them, to resolve lap foreign keys.
 
 | Table | Key | Holds |
 | --- | --- | --- |
-| `laps` | `lap_id` (identity), unique `(vehicle_id, session_id, lap_number)` | One row per completed lap: `track_name`, `crossed_at`, `lap_time_s`, `valid`, `pit_status`, `direction` |
+| `laps` | `lap_id` (identity), unique `(vehicle_id, crossed_at)` | One row per completed lap: `session_id`, `stint_id`, `track_name`, `lap_number`, `lap_time_s`, `valid`, `pit_status`, `direction` |
 | `lap_sectors` | `(lap_id, sector)` | `split_time_s`, `crossed_at` |
 
 Materialised by the ingest-writer from `lap.event` samples
@@ -147,24 +147,47 @@ Materialised by the ingest-writer from `lap.event` samples
 also stored in `samples` as raw JSON, so nothing is lost if the
 materialisation ever needs redoing.
 
+**`lap_number` is a label, not a key.** It lives in `TimingEngine.state`, in
+memory, scoped to one agent run and one track: it starts at 1 on the first
+line crossing, increments per lap, is never persisted, and is **not** reset
+by a session change — but *is* reset when the engine is rebuilt, which
+happens on an agent restart or a track switch. So an agent restart
+mid-session replays lap numbers 1..k under the same `session_id`.
+
+The unique key is therefore **`(vehicle_id, crossed_at)`**: one car cannot
+complete two laps at the same instant. That key upserts correctly in exactly
+the cases that matter —
+
+- writer redelivery after a crash presents the same `lap.event` payload, so
+  the same crossing time, so `ON CONFLICT` converges;
+- a re-run of the historical importer reads the same source line, likewise;
+- an agent restart, a track switch, or a second event on another day produce
+  different crossing times, so nothing collides.
+
+It deliberately does not merge the same physical lap arriving through two
+different pipelines (a legacy import and a Phase 4 replay of the same event):
+those are two records with different provenance and crossing times computed
+by different code, and keeping both visible is more useful than silently
+overwriting one with the other.
+
 `session_id` and `stint_id` are **nullable**: laps are recorded whether or
-not a session is open, and a lap with no session is still a lap. Two
-consequences worth knowing:
+not a session is open, and a lap with no session is still a lap. Nothing
+mints a synthetic session to fill the gap — with `crossed_at` as the key,
+attribution is not needed for correctness, and an invented session would
+show up as noise in `v_laps` and in any session picker built on it. An
+unattributed lap is found by time range and track, which is how anyone would
+look for it.
 
-- The unique key is declared `NULLS NOT DISTINCT`, so `ON CONFLICT`
-  converges for session-less laps too. With Postgres's default NULL
-  semantics a replay, or a re-run of the historical importer, would insert
-  duplicates rather than upserting. The cost is that for session-less laps
-  the key degenerates to `(vehicle_id, lap_number)` — a bulk import spanning
-  several events on one vehicle should supply a `session_id` per event to
-  keep their lap numbering apart.
-- `laps.session_id` is a real foreign key, checked at insert time (there is
-  no deferral that would help: the row must exist at commit either way).
-  A writer that has a stamped `session_id` with no `sessions` row yet — a
-  session-control DB write still queued behind an outage — must insert the
-  lap with `session_id` NULL rather than let the whole flush fail.
+One ordering obligation for writers: `laps.session_id` is a real foreign key,
+checked at insert time (there is no deferral that would help — the row must
+exist at commit either way). A writer holding a stamped `session_id` with no
+`sessions` row yet — a session-control DB write still queued behind an
+outage — must insert the lap with `session_id` NULL rather than let the whole
+flush fail.
 
-The secondary index is `laps(vehicle_id, crossed_at DESC)`.
+The unique constraint's index also serves newest-laps-first queries (Postgres
+scans it backwards for free); `laps(session_id, lap_number)` serves the
+session-scoped lookups `v_laps` exists for.
 
 ### Ingest bookkeeping
 

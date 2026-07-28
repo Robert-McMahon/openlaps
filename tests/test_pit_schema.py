@@ -226,43 +226,82 @@ def test_compression_policy_exists_and_a_compressed_chunk_still_answers(migrated
     assert (total, largest) == (500, 499.0)
 
 
-def test_laps_upsert_converges_with_and_without_a_session(migrated):
-    driver = migrated.execute(
-        "INSERT INTO drivers (name) VALUES ('Driver A') RETURNING driver_id"
+_LAP_UPSERT = (
+    "INSERT INTO laps (vehicle_id, session_id, stint_id, track_name, lap_number, crossed_at, "
+    "lap_time_s, valid, pit_status, direction) "
+    "VALUES (%s, %s, %s, 'Wanneroo', %s, %s, %s, TRUE, 'track', 'counterclockwise') "
+    "ON CONFLICT (vehicle_id, crossed_at) DO UPDATE "
+    "SET lap_time_s = EXCLUDED.lap_time_s, lap_number = EXCLUDED.lap_number, "
+    "session_id = EXCLUDED.session_id, stint_id = EXCLUDED.stint_id"
+)
+
+
+def _open_session(conn: psycopg.Connection, session_id: str = "s-1") -> int:
+    """A session with one stint; returns the stint_id."""
+    driver = conn.execute(
+        "INSERT INTO drivers (name) VALUES ('Driver A') "
+        "ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING driver_id"
     ).fetchone()[0]
     started = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
-    migrated.execute(
+    conn.execute(
         "INSERT INTO sessions (session_id, vehicle_id, session_type, track_name, car, started, "
-        "status) VALUES ('s-1', %s, 'practice', 'Wanneroo', 'club-racer', %s, 'active')",
-        (VEHICLE, started),
+        "status) VALUES (%s, %s, 'practice', 'Wanneroo', 'club-racer', %s, 'active')",
+        (session_id, VEHICLE, started),
     )
-    stint = migrated.execute(
+    return conn.execute(
         "INSERT INTO stints (session_id, stint_number, driver_id, started) "
-        "VALUES ('s-1', 1, %s, %s) RETURNING stint_id",
-        (driver, started),
+        "VALUES (%s, 1, %s, %s) RETURNING stint_id",
+        (session_id, driver, started),
     ).fetchone()[0]
 
-    upsert = (
-        "INSERT INTO laps (vehicle_id, session_id, stint_id, track_name, lap_number, crossed_at, "
-        "lap_time_s, valid, pit_status, direction) "
-        "VALUES (%s, %s, %s, 'Wanneroo', %s, %s, %s, TRUE, 'track', 'counterclockwise') "
-        "ON CONFLICT (vehicle_id, session_id, lap_number) DO UPDATE "
-        "SET lap_time_s = EXCLUDED.lap_time_s, crossed_at = EXCLUDED.crossed_at"
-    )
-    crossed = datetime(2026, 7, 27, 1, 2, tzinfo=UTC)
+
+def test_laps_upsert_converges_with_and_without_a_session(migrated):
+    stint = _open_session(migrated)
+    sessioned = datetime(2026, 7, 27, 1, 2, tzinfo=UTC)
+    unsessioned = datetime(2026, 7, 27, 3, 40, tzinfo=UTC)
+    # Redelivery presents the same crossing instant, so a replay converges.
     for _ in range(2):
-        migrated.execute(upsert, (VEHICLE, "s-1", stint, 4, crossed, 108.842))
+        migrated.execute(_LAP_UPSERT, (VEHICLE, "s-1", stint, 4, sessioned, 108.842))
         # A lap with no session open is still a lap, and must also converge.
-        migrated.execute(upsert, (VEHICLE, None, None, 4, crossed, 109.101))
+        migrated.execute(_LAP_UPSERT, (VEHICLE, None, None, 4, unsessioned, 109.101))
 
     rows = migrated.execute(
         "SELECT session_id, lap_number, lap_time_s, driver, session_type, stint_number "
-        "FROM v_laps ORDER BY session_id NULLS LAST"
+        "FROM v_laps ORDER BY crossed_at"
     ).fetchall()
     assert rows == [
         ("s-1", 4, 108.842, "Driver A", "practice", 1),
         (None, 4, 109.101, None, None, None),
     ]
+
+
+def test_an_agent_restart_replaying_lap_numbers_does_not_overwrite(migrated):
+    """lap_number restarts at 1 on an agent restart; the session_id does not."""
+    stint = _open_session(migrated)
+    first_run = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    for lap in range(1, 4):
+        migrated.execute(
+            _LAP_UPSERT, (VEHICLE, "s-1", stint, lap, first_run + timedelta(minutes=2 * lap), 108.8)
+        )
+    # Same session, engine rebuilt, numbering back to 1.
+    second_run = datetime(2026, 7, 27, 1, 30, tzinfo=UTC)
+    for lap in range(1, 4):
+        migrated.execute(
+            _LAP_UPSERT,
+            (VEHICLE, "s-1", stint, lap, second_run + timedelta(minutes=2 * lap), 107.4),
+        )
+
+    laps = migrated.execute(
+        "SELECT lap_number, lap_time_s FROM laps ORDER BY crossed_at"
+    ).fetchall()
+    assert laps == [(1, 108.8), (2, 108.8), (3, 108.8), (1, 107.4), (2, 107.4), (3, 107.4)]
+
+
+def test_two_vehicles_may_cross_at_the_same_instant(migrated):
+    crossed = datetime(2026, 7, 27, 1, 2, tzinfo=UTC)
+    migrated.execute(_LAP_UPSERT, (VEHICLE, None, None, 4, crossed, 108.8))
+    migrated.execute(_LAP_UPSERT, ("other-car", None, None, 9, crossed, 95.2))
+    assert migrated.execute("SELECT count(*) FROM laps").fetchone()[0] == 2
 
 
 def test_samples_has_no_foreign_key(migrated):

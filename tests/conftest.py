@@ -21,6 +21,7 @@ WANNEROO_KML = EXAMPLE_PROFILE / "tracks" / "Wanneroo.kml"
 _M_PER_DEG_LAT = 111_320.0
 _NATS_IMAGE = "nats:2.12-alpine"
 _TIMESCALE_IMAGE = "timescale/timescaledb:latest-pg17"
+_MOSQUITTO_IMAGE = "eclipse-mosquitto:2"
 _LAP_POINT_ORDER = ("StartFinish", "Sector1", "Sector2")
 
 
@@ -200,5 +201,54 @@ def timescale_dsn():
         if not ready:
             pytest.skip("timescale container did not become ready")
         yield dsn
+    finally:
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+
+
+@pytest.fixture
+def mosquitto_url(tmp_path: Path):
+    """A fresh anonymous pit-local MQTT broker in docker."""
+    if shutil.which("docker") is None:
+        pytest.skip("docker not available")
+    port = _free_port()
+    name = f"openlaps-test-mosquitto-{uuid.uuid4().hex[:8]}"
+    config = tmp_path / "mosquitto.conf"
+    config.write_text(
+        "listener 1883\nallow_anonymous true\npersistence false\n",
+        encoding="utf-8",
+    )
+    config.chmod(0o644)
+    run = subprocess.run(
+        [
+            "docker",
+            "run",
+            "-d",
+            "--rm",
+            "--name",
+            name,
+            "-p",
+            f"127.0.0.1:{port}:1883",
+            "-v",
+            f"{config}:/mosquitto/config/mosquitto.conf:ro",
+            _MOSQUITTO_IMAGE,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if run.returncode != 0:
+        pytest.skip(f"cannot start mosquitto container: {run.stderr.strip()[:200]}")
+    try:
+        deadline = time.monotonic() + 20.0
+        ready = False
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=1.0):
+                    ready = True
+                    break
+            except OSError:
+                time.sleep(0.1)
+        if not ready:
+            pytest.skip("mosquitto container did not become ready")
+        yield f"mqtt://127.0.0.1:{port}"
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)

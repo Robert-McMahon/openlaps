@@ -1,0 +1,21 @@
+# Pit-side live gauge selection. First matching rule wins; an unmatched
+# channel is not published. Editing this file is picked up without a restart.
+vehicle: example-club-racer
+
+defaults:
+  max_hz: 10          # per-channel ceiling; 0 means unlimited
+  total_max_hz: 500   # aggregate safety valve; 0 means unlimited
+
+channels:
+  - match: "position.*"
+  - match: "car.rpm"
+    max_hz: 20
+  - match: "car.accel_*"
+    max_hz: 5
+  - match: "car.coolant_temp"
+    max_hz: 1
+  - match: "lap.*"
+    max_hz: 0          # rare events: publish every one
+  - match: "timing.*"
+  - match: "sys.agent.status"
+    max_hz: 1

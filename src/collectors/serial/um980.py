@@ -27,6 +27,7 @@ SENTENCE_COMMANDS = {
     "GLL": "GPGLL",
     "ZDA": "GPZDA",
 }
+COMMAND_FORMAT = "CONFIG CMDFORMAT 1"
 
 
 class SerialPort(Protocol):
@@ -72,15 +73,17 @@ class UM980Driver:
         """Apply startup settings, failing on the first bad acknowledgement."""
         if not self._settings.configure_on_start:
             return
-        for command in self._commands:
-            try:
-                result = self._send_command(command)
-            except OSError as exc:
-                raise UM980ConfigurationError(f"UM980 command {command!r} failed: {exc}") from exc
-            if not result.ok:
-                raise UM980ConfigurationError(
-                    f"UM980 command {command!r} failed: {result.response}"
-                )
+        command = COMMAND_FORMAT
+        try:
+            result = self._send_command(command)
+            if result.response == "timeout":
+                result = self._send_command(command, checksummed=True)
+            self._require_ok(result, command)
+            for command in self._commands:
+                result = self._send_command(command, checksummed=True)
+                self._require_ok(result, command)
+        except OSError as exc:
+            raise UM980ConfigurationError(f"UM980 command {command!r} failed: {exc}") from exc
 
     def write_rtcm(self, payload: bytes) -> int:
         """Write one correction payload unchanged to the receiver."""
@@ -89,17 +92,26 @@ class UM980Driver:
         with self._write_lock:
             return self._write_all(payload)
 
-    def _send_command(self, command: str) -> CommandResult:
+    def _send_command(self, command: str, *, checksummed: bool = False) -> CommandResult:
         with self._write_lock:
             self._port.reset_input_buffer()
-            self._write_all(command.encode("ascii") + b"\r\n")
+            wire_command = _checksummed_command(command) if checksummed else command
+            self._write_all(wire_command.encode("ascii") + b"\r\n")
             deadline = time.monotonic() + self._ack_timeout_s
             while time.monotonic() < deadline:
                 line = self._port.readline(513).decode("ascii", errors="replace").strip()
-                result = parse_command_response(line)
+                try:
+                    result = parse_command_response(line, verify_checksum=checksummed)
+                except ValueError as exc:
+                    return CommandResult(command, False, str(exc))
                 if result is not None and result.command.upper() == command.upper():
                     return result
         return CommandResult(command, False, "timeout")
+
+    @staticmethod
+    def _require_ok(result: CommandResult, command: str) -> None:
+        if not result.ok:
+            raise UM980ConfigurationError(f"UM980 command {command!r} failed: {result.response}")
 
     def _write_all(self, payload: bytes) -> int:
         written = 0
@@ -111,33 +123,52 @@ class UM980Driver:
         return written
 
 
-def parse_command_response(line: str) -> CommandResult | None:
+def parse_command_response(line: str, *, verify_checksum: bool = False) -> CommandResult | None:
     """Parse a UM980 ``$command,...,response: ...`` acknowledgement.
 
-    Ported verbatim from the predecessor's bench-proven parser: any trailing
-    ``*hh`` checksum is stripped but deliberately NOT verified — the real
-    receiver's ``$command`` acknowledgements do not validate under plain
-    NMEA XOR (found on the bench 2026-07-27; an earlier port of this
-    function added strict verification and broke startup configuration
-    against actual hardware). Per the Unicore manual this is because the
-    module defaults to abbreviated ASCII (``CONFIG CMDFORMAT 0``, no
-    checksums); verified command framing requires configuring
-    ``CONFIG CMDFORMAT 1`` first and sending ``$CMD*hh`` — a deliberate
-    follow-up, not something to bolt back onto unchecksummed mode.
-    Anything that is not a command ack returns None so callers keep
-    scanning the interleaved NMEA stream.
+    In the receiver's default abbreviated mode, any trailing ``*hh`` field is
+    stripped but deliberately not verified. That is the predecessor's
+    bench-proven behaviour: strict verification in this mode broke real
+    hardware because the field is not a meaningful XOR checksum. After
+    ``CONFIG CMDFORMAT 1``, ``verify_checksum`` requires the manual's ASCII
+    command XOR: all characters between ``$`` and ``*``. Anything that is not
+    a command acknowledgement returns ``None`` so callers keep scanning the
+    interleaved NMEA stream.
     """
     if not line.startswith("$command,"):
         return None
     body = line[len("$command,") :]
     star = body.rfind("*")
     if star != -1:
+        if verify_checksum:
+            _verify_checksum(line)
         body = body[:star]
+    elif verify_checksum:
+        raise ValueError("missing UM980 acknowledgement checksum")
     command, separator, response = body.rpartition(",response:")
     if not separator or not command.strip():
         return None
     status = response.strip()
     return CommandResult(command.strip(), status.upper() == "OK", status)
+
+
+def _checksummed_command(command: str) -> str:
+    return f"${command}*{_xor_checksum(command):02X}"
+
+
+def _verify_checksum(line: str) -> None:
+    body, separator, supplied_checksum = line[1:].rpartition("*")
+    if not separator or len(supplied_checksum) != 2:
+        raise ValueError("invalid UM980 acknowledgement checksum field")
+    if supplied_checksum.upper() != f"{_xor_checksum(body):02X}":
+        raise ValueError("invalid UM980 acknowledgement checksum")
+
+
+def _xor_checksum(body: str) -> int:
+    checksum = 0
+    for character in body:
+        checksum ^= ord(character)
+    return checksum
 
 
 def _startup_commands(settings: DriverSettings) -> tuple[str, ...]:

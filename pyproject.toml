@@ -6,6 +6,7 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.13"
 dependencies = [
+    "aiomqtt>=2.3",
     "cantools>=42.0.3",
     "nats-py>=2.15.0",
     "protobuf>=5.28",
@@ -22,6 +23,7 @@ openlaps-agent = "agent.__main__:main"
 openlaps-migrate = "pit.db.__main__:main"
 openlaps-ingest-writer = "pit.ingest_writer.__main__:main"
 openlaps-ntrip-client = "pit.ntrip_client.__main__:main"
+openlaps-live-decoder = "pit.live_decoder.__main__:main"
 
 [project.optional-dependencies]
 dev = [

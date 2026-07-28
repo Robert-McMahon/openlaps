@@ -1,0 +1,13 @@
+{
+  "drivers": [
+    "Driver A",
+    "Driver B",
+    "Driver C"
+  ],
+  "session_types": [
+    "practice",
+    "qualifying",
+    "race",
+    "test"
+  ]
+}

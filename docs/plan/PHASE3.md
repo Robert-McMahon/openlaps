@@ -6,15 +6,17 @@ referenced specs. Phase 1 (design docs, wire format, example profile) and
 Phase 2 (core, collectors, timing port, vehicle agent + JetStream publisher)
 are complete and committed.
 
-**Done so far in this phase: P3.0, P3.1, P3.2, P3.3.** The pit database
+**Done so far in this phase: P3.0, P3.1, P3.2, P3.3, P3.4.** The pit database
 schema and migration applier are in `src/pit/db/` and documented in
 `docs/PIT_SCHEMA.md`; the ingest-writer is in `src/pit/ingest_writer/`; and
 `RegistryCache` — the shared decode half — now lives in
 `src/pit/registry_cache.py`, imported by both the pit services and
 `tools/decode.py`. The live-decoder is in `src/pit/live_decoder/`, with its
-pit-side view configuration in `deploy/pit-config/live-decoder.yaml`. The
-briefs below have been updated where implementation changed what a later
-package should do; those places say so explicitly.
+pit-side view configuration in `deploy/pit-config/live-decoder.yaml`.
+Session-control is in `src/pit/session_control/`, with the example roster in
+the example vehicle profile. The briefs below have been updated where
+implementation changed what a later package should do; those places say so
+explicitly.
 
 Phase 2 froze the producer contract. Phase 3 builds everything that consumes
 it, plus the deployment and tooling needed to run both ends together on the

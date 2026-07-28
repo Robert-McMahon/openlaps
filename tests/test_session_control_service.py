@@ -1,0 +1,138 @@
+"""Session-control persistence and transition orchestration tests."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+
+from pit.session_control.service import SessionController, StateFile, load_roster
+
+T0 = 1_782_900_000_000
+
+
+class RecordingDatabase:
+    def __init__(self, events: list[str], *, succeeds: bool = True) -> None:
+        self.events = events
+        self.succeeds = succeeds
+        self.states: list[dict[str, object]] = []
+
+    async def record(self, state: dict[str, object]) -> bool:
+        self.events.append("database")
+        self.states.append(state)
+        return self.succeeds
+
+
+class RecordingPublisher:
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+        self.payloads: list[dict[str, object]] = []
+
+    def submit(self, payload: dict[str, object]) -> None:
+        self.events.append("publish")
+        self.payloads.append(payload)
+
+
+def test_state_file_round_trips_and_replaces_atomically(tmp_path: Path):
+    path = tmp_path / "nested" / "session.json"
+    state_file = StateFile(path)
+    state = state_file.load()
+    state.start_session("race", "Driver A", now_ms=T0)
+
+    state_file.save(state)
+
+    restored = state_file.load()
+    assert restored.session_id == state.session_id
+    assert restored.driver == "Driver A"
+    assert restored.status == "active"
+    assert list(path.parent.glob(f".{path.name}.*")) == []
+
+
+def test_corrupt_state_file_is_ignored(tmp_path: Path):
+    path = tmp_path / "session.json"
+    path.write_text("{broken", encoding="utf-8")
+
+    state = StateFile(path).load()
+
+    assert state.status == "none"
+
+
+def test_load_roster_returns_configured_placeholders(tmp_path: Path):
+    path = tmp_path / "roster.json"
+    path.write_text(
+        json.dumps(
+            {
+                "drivers": ["Driver A", "Driver B"],
+                "session_types": ["practice", "race"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_roster(path) == {
+        "drivers": ["Driver A", "Driver B"],
+        "session_types": ["practice", "race"],
+    }
+
+
+def test_happy_path_records_database_before_publish_and_persists(tmp_path: Path):
+    async def exercise() -> None:
+        events: list[str] = []
+        state_file = StateFile(tmp_path / "session.json")
+        database = RecordingDatabase(events)
+        publisher = RecordingPublisher(events)
+        controller = SessionController(state_file, database, publisher)
+
+        payload = await controller.act(
+            "start",
+            {
+                "session_type": "race",
+                "driver": "Driver A",
+                "track_name": "Wanneroo",
+                "car": "Car 7",
+            },
+            now_ms=T0,
+        )
+
+        assert events == ["database", "publish"]
+        assert database.states[0]["session_id"] == payload["session_id"]
+        assert publisher.payloads == [payload]
+        assert state_file.load().session_id == payload["session_id"]
+
+    asyncio.run(exercise())
+
+
+def test_database_outage_does_not_block_publish_or_transition(tmp_path: Path):
+    async def exercise() -> None:
+        events: list[str] = []
+        database = RecordingDatabase(events, succeeds=False)
+        publisher = RecordingPublisher(events)
+        controller = SessionController(StateFile(tmp_path / "session.json"), database, publisher)
+
+        payload = await controller.act(
+            "start", {"session_type": "test", "driver": "Driver A"}, now_ms=T0
+        )
+
+        assert payload["status"] == "active"
+        assert events == ["database", "publish"]
+        assert publisher.payloads[-1] == payload
+
+    asyncio.run(exercise())
+
+
+def test_startup_republishes_persisted_current_state(tmp_path: Path):
+    async def exercise() -> None:
+        events: list[str] = []
+        state_file = StateFile(tmp_path / "session.json")
+        state = state_file.load()
+        state.start_session("practice", "Driver A", now_ms=T0)
+        state_file.save(state)
+        publisher = RecordingPublisher(events)
+        controller = SessionController(state_file, RecordingDatabase(events), publisher)
+
+        controller.republish_current()
+
+        assert len(publisher.payloads) == 1
+        assert publisher.payloads[0]["session_id"] == state.session_id
+
+    asyncio.run(exercise())

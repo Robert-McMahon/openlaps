@@ -170,6 +170,16 @@ pit — is a separate, pit-local health concern owned by ingest-writer
 (P3.2)'s `/health` endpoint, not a telemetry channel that crosses the
 radio.
 
+That `/health` lag figure is **relative, not absolute**: the vehicle's and
+the pit's monotonic clocks share no epoch, so `batch_epoch_mono_ns` cannot
+yield a true one-way latency (`WIRE_FORMAT.md` → Timestamp scheme). What it
+reports is how far transit has degraded from the best recently observed —
+~0 when the link is healthy, climbing the moment the pit falls behind —
+alongside a naive wall-clock `wall_lag_ms` that is only as trustworthy as
+the vehicle's GPS-disciplined clock. Anything wanting absolute source-to-row
+latency has to measure it end to end with a shared time reference, which is
+Phase 4's bench work, not something this endpoint can answer.
+
 Overload behaves the same way as outage: if offered load exceeds link
 capacity on a bad-RF day, the pit stream lags rather than dropping. Live
 dashboards fall behind (and say so); history is complete once the stream

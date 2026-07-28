@@ -6,6 +6,14 @@ referenced specs. Phase 1 (design docs, wire format, example profile) and
 Phase 2 (core, collectors, timing port, vehicle agent + JetStream publisher)
 are complete and committed.
 
+**Done so far in this phase: P3.0, P3.1, P3.2.** The pit database schema and
+migration applier are in `src/pit/db/` and documented in
+`docs/PIT_SCHEMA.md`; the ingest-writer is in `src/pit/ingest_writer/`; and
+`RegistryCache` — the shared decode half — now lives in
+`src/pit/registry_cache.py`, imported by both the pit services and
+`tools/decode.py`. The briefs below have been updated where implementation
+changed what a later package should do; those places say so explicitly.
+
 Phase 2 froze the producer contract. Phase 3 builds everything that consumes
 it, plus the deployment and tooling needed to run both ends together on the
 bench. Validation & cutover (timing parity against the June-2025 event,
@@ -391,9 +399,20 @@ work measures where a real dashboard actually degrades.
   `DeliverPolicy.NEW` — this service is live-only and must never replay a
   backlog. Same registry-recovery preamble as `tools/decode.py:186`
   (drain `tele.<vehicle>.catalog` first so the very first batch decodes).
-  Share `RegistryCache` with P3.2 by lifting it into
-  `src/pit/registry_cache.py` and importing it from both; do not maintain
-  two copies.
+  **`RegistryCache` already lives in `src/pit/registry_cache.py`** — P3.2
+  promoted it there and `tools/decode.py` imports it too, so import it and
+  change nothing. Its API: `add(payload)` / `add_registry(registry)`,
+  `known(seq)`, and `decode(payload) -> DecodedBatch | None` where
+  `DecodedBatch.samples` are `DecodedSample(capture_unix_ms, channel,
+  value)` with `scale`/`offset` already applied. Use
+  `decode_or_reason(payload)` if you need to tell an unknown generation
+  (`REJECT_UNKNOWN_SEQ`) from an unknown payload shape
+  (`REJECT_BAD_VERSION`) — for a live-only service both simply mean "do not
+  publish", so `decode()` is probably enough. `MSG_TYPE_HEADER`,
+  `MSG_TYPE_REGISTRY` and `REGISTRY_SOURCE_CLASS` are exported from the
+  same module; don't redefine them.
+- **No database.** This service reads NATS and writes MQTT — it never
+  touches Timescale, and it must not gain a dependency on `pit.db`.
 - **`config.py`** — pydantic models for a pit-side live view config, in the
   same strict style as `src/core/config.py` (`extra="forbid"`, frozen,
   fail-fast with precise errors). Shape:
@@ -522,7 +541,28 @@ calls out as the replacement for the MQTT retained flag.
   `stints` and `drivers` rows to Timescale on each transition — this is the
   service that owns those tables; P3.2 only reads them to resolve lap FKs.
   A DB outage must not block the NATS publish or the HTTP response: queue
-  the row write and retry.
+  the row write and retry. Get the connection string from
+  `pit.db.dsn.dsn_from_env` (P3.1) rather than reading `TIMESCALE_*`
+  again.
+- **The contract with P3.2**, now that the writer exists — get these wrong
+  and every lap is silently unattributed, with no error anywhere:
+  - The writer resolves a lap's session by `sessions.session_id = ` the
+    `session_id` **stamped into the `lap.event` payload**, and its stint by
+    `(session_id, stint_number)` on `stints`. Whatever `session_id` this
+    service publishes to `cmd.<vehicle>.session` must be exactly the
+    `session_id` it writes to the `sessions` table.
+  - `sessions.session_type` and `sessions.status` are CHECK-constrained to
+    the pinned payload vocabularies (`practice|qualifying|race|test`,
+    `none|active|ended`); `stints.driver_id` is `NOT NULL` and references
+    `drivers`, so the driver row has to be upserted first.
+  - **Write the database rows before publishing to NATS** whenever the
+    database is reachable. The agent stamps the new `session_id` onto lap
+    events the moment the CMD message lands, and a lap completing before
+    the `sessions` row exists is written with NULL FKs and is *not*
+    backfilled (`docs/PIT_SCHEMA.md` -> Laps). Queue-and-retry stays the
+    behaviour for an outage; it should not be the behaviour for the happy
+    path. If unattributed laps during an outage turn out to matter, a
+    backfill pass is a deliberate addition — raise it, don't assume it.
 - `config/roster.json` equivalent under the profile or a mounted config dir,
   listing drivers and session types for the operator UI. No real names in
   the repo — the example profile gets placeholder drivers.
@@ -648,6 +688,26 @@ only `.gitkeep`; everything here is greenfield.
   (websockets), `ingest-writer`, `live-decoder`, `session-control`,
   `ntrip-client`. **No Grafana** (locked decision 3). Healthchecks and
   `depends_on: condition: service_healthy` for the DB.
+- **Migrations are a bring-up step, not a service.** The schema is applied
+  by `openlaps-migrate` (P3.1: plain SQL files plus an applier, safe to
+  re-run, serialised on an advisory lock). Every pit service that touches
+  the database assumes it has already run. Model it as a one-shot
+  `openlaps-migrate` container that the DB-dependent services declare
+  `depends_on: condition: service_completed_successfully` against — not as
+  an entrypoint step in each service, which would have four containers
+  racing the same DDL on every restart. It belongs in `deploy/README.md`'s
+  bring-up order too, immediately after the database is healthy.
+- **Give each service a distinct health port** and put the map in
+  `deploy/README.md`; three services defaulting to 8080 is a bad first
+  hour. `ingest-writer` already defaults to **8081**
+  (`OPENLAPS_INGEST_HEALTH_PORT`); suggested for the rest —
+  `session-control` **8080** (it is the operator-facing API, not just
+  health), `live-decoder` **8082**, `ntrip-client` **8083**.
+- Note that `OPENLAPS_NATS_URL` means *the local server for this stack*:
+  the vehicle server in `vehicle-compose.yaml`, the pit server in
+  `pit-compose.yaml`. Same variable name, two different stacks, one `.env`
+  each — worth a sentence in `deploy/README.md` so nobody points the pit
+  services at the car.
 - `mosquitto/mosquitto.conf` — pit-local, websockets listener, no bridge to
   anywhere. It must be impossible for this broker to reach the radio.
 - `pit-config/live-decoder.yaml` — the P3.3 live view config, mounted
@@ -760,8 +820,18 @@ schema uses seconds.
 - Imported channels are registered in `channels` under a synthetic
   registry generation (`registry_seq = 0`, `vehicle_id` from `--vehicle`)
   so historical and live data share one `channel_key` per canonical name
-  and one query answers across both. Document this convention in
-  `docs/PIT_SCHEMA.md`.
+  and one query answers across both. `docs/PIT_SCHEMA.md` already reserves
+  generation 0 for exactly this. Note the ordering the schema enforces:
+  `channel_map` has a composite FK to `channel_registry`, so the
+  `(vehicle_id, 0)` row must be inserted **before** any generation-0
+  mapping — and the live registry generations start at 1, so nothing
+  collides.
+- Reuse P3.2's write path rather than writing a second one:
+  `pit.ingest_writer.store.TimescaleStore` already does the `COPY` into a
+  temp table, the `INSERT ... SELECT`, the lap upsert on
+  `(vehicle_id, crossed_at)`, the sector upsert and the session/stint FK
+  resolution. If the importer needs something it doesn't have, add it
+  there so both callers get it.
 - Old `lap` rows convert to `laps`/`lap_sectors` with ms→s conversion,
   upserting on the same unique key P3.2 uses — `(vehicle_id, crossed_at)`,
   which the legacy nanosecond timestamps supply directly — so a re-run of the

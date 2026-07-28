@@ -34,6 +34,11 @@ Postgres advisory lock rather than racing each other's DDL.
 Adding a migration means adding `002_*.sql`; existing files are never edited
 once applied anywhere.
 
+Every pit service assumes the schema is already there — none of them
+migrate on startup, which would have several containers racing the same DDL
+on every restart. Applying migrations is a bring-up step that runs once,
+after the database is healthy and before anything that writes to it.
+
 ## The registry-generation resolution rule
 
 This is the rule the whole channel side of the schema exists to enforce.
@@ -65,7 +70,9 @@ guess — `tools/decode.py` is the reference implementation.
 `registry_seq = 0` is **reserved for synthetic, non-wire channels**: the
 historical importer registers imported channels under generation 0 so
 imported and live data share one `channel_key` per canonical name. Live
-registries start at 1.
+registries start at 1, so the two can never collide. `channel_map` carries
+a composite foreign key to `channel_registry`, so a `(vehicle_id, 0)` row
+has to exist before any generation-0 mapping is inserted.
 
 ## Tables
 

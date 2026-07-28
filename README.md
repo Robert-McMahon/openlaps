@@ -8,14 +8,27 @@ DBCs, sensors, and track — is just a configuration profile on top of a
 generic core; `profiles/example-club-racer/` is a real one, checked in as
 documentation.
 
-This repo is in early bootstrap — design docs are complete; implementation
-is next. Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), then:
+The vehicle side is built — collectors, channel catalog, timing engine and
+the JetStream publisher all run — and the pit side is in progress: the
+TimescaleDB schema and the ingest-writer have landed, the remaining pit
+services and the deploy stacks have not. Start with
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), then:
 
 - [`docs/WIRE_FORMAT.md`](docs/WIRE_FORMAT.md) — subjects, streams, protobuf schema
 - [`docs/AGENT_DESIGN.md`](docs/AGENT_DESIGN.md) — vehicle agent internals
 - [`docs/CATALOG.md`](docs/CATALOG.md) — configuration profiles and channel naming
+- [`docs/PIT_SCHEMA.md`](docs/PIT_SCHEMA.md) — the pit database and its stable read surface
 - [`docs/LINK_BUDGET.md`](docs/LINK_BUDGET.md) — measured bandwidth vs. radio capacity
 - [`docs/adr/`](docs/adr/) — decision records
+
+Entry points, all configured from the environment
+([`example.env`](example.env)):
+
+| Command | Runs |
+| --- | --- |
+| `openlaps-agent` | The vehicle agent (collectors → catalog → timing → JetStream) |
+| `openlaps-migrate` | Applies the pit database schema; a bring-up step, not a service |
+| `openlaps-ingest-writer` | The pit's durable consumer: JetStream → TimescaleDB |
 
 ## License
 

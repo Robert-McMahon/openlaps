@@ -80,3 +80,30 @@ making it easier to manage.
   MQTT-Live Grafana panels still depend on the separate `live-decoder` path
   introduced under ADR 0002, not on Timescale, so "live" and "historical"
   remain two different code paths in Grafana — accepted here, not solved.
+
+## Amendment (2026-07-28)
+
+This ADR's decision sketched the sample table as
+`samples (time, channel_id, value)`. The schema built under it
+(`src/pit/db/migrations/001_init.sql`) differs in two ways that matter, and
+`docs/PIT_SCHEMA.md` — not this paragraph — is the authority on it.
+
+**It is `channel_key`, never `channel_id`.** `Channel.id` on the wire is
+only meaningful within one `registry_seq`; a catalog reload renumbers it
+(`proto/telemetry.proto`). Storing it would make history undecodable after
+any catalog edit. `channels.channel_key` is a database-side identity that
+outlives every generation, and `channel_map` resolves
+`(vehicle_id, registry_seq, wire_id) -> channel_key` at ingest time. The
+"registry history" this ADR asked the `channels` table to carry lives in
+those two tables rather than one.
+
+**There are two value columns**, `value DOUBLE PRECISION NULL` and
+`value_text TEXT NULL`. Almost every channel is numeric, but a few
+(`lap.event`, `sys.agent.status`) are STRING-typed, and one hypertable with
+a mostly-NULL text column beat both alternatives considered: a typed column
+per wire type, and a separate events table with its own write and query
+paths for ~0.1% of rows.
+
+Nothing else in the decision changed: one pit-side Timescale instance, a
+`samples` hypertable, and ordinary relational tables for sessions, stints,
+drivers and laps written by the ingest-writer.

@@ -22,6 +22,7 @@ dependencies = [
 openlaps-agent = "agent.__main__:main"
 openlaps-migrate = "pit.db.__main__:main"
 openlaps-ingest-writer = "pit.ingest_writer.__main__:main"
+openlaps-ntrip-client = "pit.ntrip_client.__main__:main"
 openlaps-live-decoder = "pit.live_decoder.__main__:main"
 
 [project.optional-dependencies]

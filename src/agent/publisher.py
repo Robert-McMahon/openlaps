@@ -48,6 +48,7 @@ DEFAULT_TELE_MAX_AGE_S = 72 * 3600
 DEFAULT_TELE_MAX_BYTES = 8 * 1024 * 1024 * 1024
 DEFAULT_REGISTRY_INTERVAL_S = 300.0
 _PUBLISH_TIMEOUT_S = 5.0
+_TELE_DUPLICATE_WINDOW_S = 120.0
 _RETRY_BACKOFF_S = 1.0
 _CONNECT_BACKOFF_START_S = 0.5
 _CONNECT_BACKOFF_MAX_S = 15.0
@@ -296,6 +297,10 @@ class JetStreamPublisher:
             retention=api.RetentionPolicy.LIMITS,
             max_age=self._tele_max_age_s,
             max_bytes=self._tele_max_bytes,
+            # Set explicitly rather than left on the server default, which is
+            # the same 2 minutes today: docs/WIRE_FORMAT.md -> Deduplication
+            # promises this value does not shift if that default does.
+            duplicate_window=_TELE_DUPLICATE_WINDOW_S,
             num_replicas=1,
         )
         cmd = api.StreamConfig(

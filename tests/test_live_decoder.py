@@ -349,6 +349,20 @@ def test_settings_validate_deploy_wiring(tmp_path):
         LiveDecoderSettings.from_env({"OPENLAPS_LIVE_MQTT_QUEUE_SIZE": "0"}, config_path=path)
 
 
+def test_settings_name_the_pit_sourced_stream(tmp_path):
+    """The sourced stream declares no subjects, so it must be named outright."""
+    path = tmp_path / "live.yaml"
+    assert LiveDecoderSettings.from_env({}, config_path=path).stream == "TELE_VEHICLE"
+    assert (
+        LiveDecoderSettings.from_env(
+            {"OPENLAPS_LIVE_STREAM": "TELE_SPARE"}, config_path=path
+        ).stream
+        == "TELE_SPARE"
+    )
+    with pytest.raises(ValueError, match="OPENLAPS_LIVE_STREAM"):
+        LiveDecoderSettings.from_env({"OPENLAPS_LIVE_STREAM": "  "}, config_path=path)
+
+
 def test_mqtt_down_drops_without_queueing_or_blocking(tmp_path):
     health = HealthState()
     sink = MqttSink(

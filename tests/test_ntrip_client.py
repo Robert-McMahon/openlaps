@@ -217,6 +217,17 @@ def test_settings_default_port_and_gga_disabled():
     assert settings.enable_gga is False
 
 
+def test_settings_name_the_pit_sourced_stream():
+    """The GGA position feed reads a subject-less sourced stream by name."""
+    base = {"OPENLAPS_VEHICLE_ID": VEHICLE, "NTRIP_HOST": "x", "NTRIP_MOUNTPOINT": "y"}
+    assert NtripSettings.from_env(base).stream == "TELE_VEHICLE"
+    assert NtripSettings.from_env({**base, "OPENLAPS_NTRIP_STREAM": "TELE_SPARE"}).stream == (
+        "TELE_SPARE"
+    )
+    with pytest.raises(ValueError, match="OPENLAPS_NTRIP_STREAM"):
+        NtripSettings.from_env({**base, "OPENLAPS_NTRIP_STREAM": "  "})
+
+
 def test_settings_require_a_vehicle_id():
     with pytest.raises(ValueError, match="OPENLAPS_VEHICLE_ID"):
         NtripSettings.from_env({"NTRIP_HOST": "x", "NTRIP_MOUNTPOINT": "y"})

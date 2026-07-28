@@ -210,6 +210,14 @@ creds files, TLS material, database and dashboard passwords, NTRIP account —
 arrive via environment/mounted files documented in `example.env`; none exist
 in this repository.
 
+The two servers run **distinct JetStream domains** (`veh`, `pit`), which is
+what makes cross-server JetStream addressing possible over the leafnode: the
+pit sources the vehicle's `TELE` into its own `TELE_VEHICLE`, and
+session-control publishes into the vehicle's domain from a connection to its
+own local server. `deploy/README.md` is the operational reference — bring-up
+order, how to verify each hop, and the one thing to get right about the
+sourced stream.
+
 ## Document map
 
 - `WIRE_FORMAT.md` — subjects, streams, protobuf schema, registry lifecycle, timestamps
@@ -217,4 +225,5 @@ in this repository.
 - `CATALOG.md` — profile schema (`vehicle.yaml`, `catalog.yaml`), naming convention, worked examples
 - `PIT_SCHEMA.md` — the pit database: tables, registry resolution, chunking/compression, stable views
 - `LINK_BUDGET.md` — measured bandwidth model vs. radio capacity
+- `../deploy/README.md` — the two stacks, the leafnode topology, bring-up and verification
 - `adr/` — decision records with alternatives considered

@@ -133,7 +133,10 @@ async def run(args: argparse.Namespace) -> int:
     # batches are decodable from the very first message we see.
     catalog_subject = f"tele.{args.vehicle}.catalog"
     recovery = await js.subscribe(
-        catalog_subject, ordered_consumer=True, deliver_policy=api.DeliverPolicy.ALL
+        catalog_subject,
+        stream=args.stream,
+        ordered_consumer=True,
+        deliver_policy=api.DeliverPolicy.ALL,
     )
     try:
         while True:
@@ -146,7 +149,10 @@ async def run(args: argparse.Namespace) -> int:
 
     policy = api.DeliverPolicy.ALL if args.all else api.DeliverPolicy.NEW
     subscription = await js.subscribe(
-        f"tele.{args.vehicle}.>", ordered_consumer=True, deliver_policy=policy
+        f"tele.{args.vehicle}.>",
+        stream=args.stream,
+        ordered_consumer=True,
+        deliver_policy=policy,
     )
     print(
         f"connected to {args.server}, watching tele.{args.vehicle}.> "
@@ -207,6 +213,16 @@ def main() -> int:
     parser.add_argument("--server", default=DEFAULT_SERVER, help="NATS URL (default: %(default)s)")
     parser.add_argument(
         "--vehicle", default=DEFAULT_VEHICLE, help="vehicle id (default: %(default)s)"
+    )
+    parser.add_argument(
+        "--stream",
+        default=None,
+        help=(
+            "stream to consume from. Omit against the vehicle server, whose TELE "
+            "declares tele.<vehicle>.> and so is findable by subject. Required "
+            "against the pit, whose sourced TELE_VEHICLE declares no subjects "
+            "(--stream TELE_VEHICLE)"
+        ),
     )
     parser.add_argument(
         "--channels",

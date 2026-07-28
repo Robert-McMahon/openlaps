@@ -6,8 +6,8 @@ referenced specs. Phase 1 (design docs, wire format, example profile) and
 Phase 2 (core, collectors, timing port, vehicle agent + JetStream publisher)
 are complete and committed.
 
-**Done so far in this phase: P3.0, P3.1, P3.2, P3.3, P3.4, P3.5, P3.7.
-Outstanding: P3.6 and P3.8.** The pit database schema and migration applier
+**Done so far in this phase: P3.0, P3.1, P3.2, P3.3, P3.4, P3.5, P3.6, P3.7.
+Outstanding: P3.8 alone.** The pit database schema and migration applier
 are in `src/pit/db/` and documented in `docs/PIT_SCHEMA.md`; the
 ingest-writer is in `src/pit/ingest_writer/`; and `RegistryCache` — the
 shared decode half — now lives in `src/pit/registry_cache.py`, imported by
@@ -130,9 +130,13 @@ exactly-once-in-effect ingest, P3.6 owns the leafnode/JetStream-domain
 topology that ADR 0002 calls "the single biggest unvalidated assumption in
 the whole rewrite".
 
-Everything except P3.6 and P3.8 has landed. P3.6 is now on the critical path
-alone, and it turns out to carry a small amount of *code* as well as deploy
-material — see "What changed since this brief was written" in that section.
+Everything except P3.8 has landed. P3.6 shipped `deploy/` in full — both
+compose stacks, both `nats-server` configs, the sourced-stream provisioner,
+the shared image, the mosquitto config, the systemd unit and
+`deploy/README.md` — plus the `stream=` wiring its brief identified and a
+leafnode-pair integration test (`tests/test_deploy_topology.py`) that
+exercises the dropout ADR 0002 rests on. P3.8 depends only on P3.1 and P3.2
+and can be picked up on its own.
 
 ---
 

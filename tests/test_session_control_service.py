@@ -12,6 +12,7 @@ from pit.session_control.service import (
     SessionController,
     SessionPersistenceError,
     StateFile,
+    _wait_for_stop_or_task_failure,
     load_roster,
 )
 
@@ -214,6 +215,24 @@ def test_permanent_database_error_rolls_back_transition(tmp_path: Path):
         assert controller.state.status == "none"
         assert StateFile(state_file.path).load().status == "none"
         assert events == []
+
+    asyncio.run(exercise())
+
+
+def test_background_task_failure_is_propagated():
+    async def exercise() -> None:
+        async def fail() -> None:
+            await asyncio.sleep(0)
+            raise RuntimeError("permanent database error")
+
+        stop = asyncio.Event()
+        task = asyncio.create_task(fail(), name="session-database")
+
+        with pytest.raises(RuntimeError, match="session-database failed") as caught:
+            await _wait_for_stop_or_task_failure(stop, (task,))
+
+        assert isinstance(caught.value.__cause__, RuntimeError)
+        assert "permanent database error" in str(caught.value.__cause__)
 
     asyncio.run(exercise())
 

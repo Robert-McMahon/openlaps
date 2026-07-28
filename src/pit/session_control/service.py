@@ -235,6 +235,31 @@ def _text(value: object) -> str:
     return value if isinstance(value, str) else ""
 
 
+async def _wait_for_stop_or_task_failure(
+    stop: asyncio.Event,
+    tasks: tuple[asyncio.Task[None], ...],
+) -> None:
+    """Return on requested shutdown; propagate unexpected worker exits."""
+    stop_task = asyncio.create_task(stop.wait(), name="session-control-stop")
+    try:
+        done, _ = await asyncio.wait(
+            {stop_task, *tasks},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if stop_task in done:
+            return
+        worker = next(task for task in tasks if task in done)
+        if worker.cancelled():
+            raise RuntimeError(f"{worker.get_name()} was unexpectedly cancelled")
+        error = worker.exception()
+        if error is not None:
+            raise RuntimeError(f"{worker.get_name()} failed") from error
+        raise RuntimeError(f"{worker.get_name()} exited unexpectedly")
+    finally:
+        stop_task.cancel()
+        await asyncio.gather(stop_task, return_exceptions=True)
+
+
 async def run_service(settings: SessionControlSettings, stop: asyncio.Event) -> None:
     """Run DB retry, latest-value publisher, and operator HTTP API."""
     database = SessionDatabase(
@@ -278,11 +303,14 @@ async def run_service(settings: SessionControlSettings, stop: asyncio.Event) -> 
         api_key=settings.api_key,
     )
     try:
-        await stop.wait()
+        await _wait_for_stop_or_task_failure(stop, (database_task, publisher_task))
     finally:
-        await asyncio.to_thread(server.shutdown)
-        server.server_close()
-        await asyncio.gather(database_task, publisher_task)
+        stop.set()
+        try:
+            await asyncio.to_thread(server.shutdown)
+        finally:
+            server.server_close()
+            await asyncio.gather(database_task, publisher_task, return_exceptions=True)
 
 
 class _SessionHandler(BaseHTTPRequestHandler):

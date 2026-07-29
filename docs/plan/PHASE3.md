@@ -131,13 +131,14 @@ exactly-once-in-effect ingest, P3.6 owns the leafnode/JetStream-domain
 topology that ADR 0002 calls "the single biggest unvalidated assumption in
 the whole rewrite".
 
-Everything except P3.8 has landed. P3.6 shipped `deploy/` in full — both
-compose stacks, both `nats-server` configs, the sourced-stream provisioner,
-the shared image, the mosquitto config, the systemd unit and
+**Everything has landed; this phase is complete.** P3.6 shipped `deploy/` in
+full — both compose stacks, both `nats-server` configs, the sourced-stream
+provisioner, the shared image, the mosquitto config, the systemd unit and
 `deploy/README.md` — plus the `stream=` wiring its brief identified and a
 leafnode-pair integration test (`tests/test_deploy_topology.py`) that
-exercises the dropout ADR 0002 rests on. P3.8 depends only on P3.1 and P3.2
-and can be picked up on its own.
+exercises the dropout ADR 0002 rests on. P3.8 landed last, meeting its
+acceptance gate against the June-2025 corpus. See `PHASE4.md` for what
+follows.
 
 ---
 
@@ -1037,9 +1038,12 @@ conversion. Full-history import is supported but not a Phase 3 gate.
 
 ## After Phase 3
 
-Phase 4 is validation & cutover, and its briefs should be written once Phase
-3 integration reveals what they need — the same discipline `PHASE2.md`
-applied to this document. The shape is already known:
+**Phase 4 is now briefed in `docs/plan/PHASE4.md`.** Its scope narrowed
+during the writing: Phase 4 is **bench validation plus timing parity only**,
+and Grafana plus cutover moved to Phase 5, to be briefed once the bench
+reports — the same discipline `PHASE2.md` applied to this document. The
+shape anticipated here was otherwise right, and is recorded below as
+written:
 
 - **Timing parity.** Replay the June-2025 event through the new stack and
   compare against `exports/timing_validation_june2025.csv`. The predecessor

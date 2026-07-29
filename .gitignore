@@ -14,11 +14,14 @@ dist/
 *.pem
 *.key
 
-# Live/private profile data — only the example profile is public.
+# Live/private profile data — only the example profile and the Phase 4 bench
+# variant of it are public.
 # (order matters: un-ignore the dir, then its contents)
 profiles/*
 !profiles/example-club-racer/
 !profiles/example-club-racer/**
+!profiles/example-club-racer-bench/
+!profiles/example-club-racer-bench/**
 
 # Agent runtime state (written beside the profile by default) — must come
 # after the profile un-ignore rules above, or those re-include it.

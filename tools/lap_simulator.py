@@ -54,6 +54,12 @@ M_PER_DEG_LAT = 111_320.0
 DEFAULT_GPS_HZ = 20.0
 DEFAULT_NOISE_M = 0.015
 
+# How far before the start/finish line each loop begins, in metres (the path is
+# resampled at 1 m, so this is also a point count). See
+# `_started_before_the_line`: enough that no fix rate can land the opening
+# crossing on a segment endpoint.
+START_LEAD_IN_M = 5
+
 Point = tuple[float, float]
 
 
@@ -163,7 +169,30 @@ def build_path(
             lo = bulge
         else:
             hi = bulge
-    return path, path_length(path)
+    return _started_before_the_line(path), path_length(path)
+
+
+def _started_before_the_line(path: list[Point]) -> list[Point]:
+    """Roll the closed loop back so it begins *approaching* start/finish.
+
+    The first anchor is the start/finish midpoint, so the loop used to begin
+    exactly on the line -- and a segment whose first point lies on the line is
+    a degenerate intersection: `segment_intersection` needs ``0 <= t <= 1``,
+    and float64 can put it a whisker either side. Detecting the opening
+    crossing was therefore a coin toss, and for a long time the toss was
+    rigged: `rmc_sentence` rounded coordinates to 0.185 m, which reliably
+    nudged that first point clear of the line. Widening the encoder for P4.6
+    removed the nudge, the opening crossing started being missed, and lap 1
+    came out invalid because timing then began mid-lap at Sector1.
+
+    Starting a few metres short of the line makes the first segment span it
+    unambiguously at any fix rate, with nothing resting on rounding. The loop
+    is closed and resampled at 1 m, so this is a rotation: same path, same
+    length, different entry point.
+    """
+    if len(path) <= START_LEAD_IN_M:
+        return path
+    return path[-START_LEAD_IN_M:] + path[:-START_LEAD_IN_M]
 
 
 def speed_profile(

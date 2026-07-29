@@ -55,24 +55,18 @@ _OFFSET_PROBES = 256
 # The floor below which two timing spreads are not distinguishable by this
 # method, computed from the method and not from any result.
 #
-# A replay's positions reach the timing engine through `rmc_sentence`, which
-# writes coordinates as 4 decimal places of arc-minutes. One step is
-# 1e-4/60 deg = 1.667e-6 deg; in latitude that is 0.185 m, so a re-encoded
-# coordinate sits within +/-0.093 m of the value the dump actually holds. The
-# car crosses Wanneroo's start/finish at a measured median 40.7 m/s (8 149
-# fixes within 10 m of the line), putting +/-2.3 ms on an interpolated
-# crossing instant; a lap time is the difference of two independent
-# crossings, so about +/-3.2 ms RMS and 4.6 ms at the extreme.
+# Crossing instants are unix epochs near 1.75e9, where one float64 ulp is
+# 2^-22 = 0.24 us. Nothing compared here -- the export's own columns, the
+# `lap.event` payloads, the arithmetic between them -- can resolve finer than
+# a few of those, so a bare `<=` on a sample quantile would be deciding a
+# commissioning gate on representation noise.
 #
-# This is the *harness's* loss, not the receiver's: none of the June-2025
-# dump's decoded latitudes sit on a 4-decimal arc-minute grid, so the real
-# receiver's output was finer. It is in the measured path all the same, which
-# is what makes it the floor -- see `rmc_sentence`, which is the lever if a
-# tighter figure is ever wanted.
-#
-# 5 ms is therefore the resolution of the comparison itself. Two spreads that
-# differ by less than this differ by less than the ruler.
-QUANTISATION_FLOOR_S = 0.005
+# 1 us is a couple of ulp, and it is the whole allowance. This was 5 ms while
+# `rmc_sentence` rounded replayed coordinates to 0.185 m; widening that
+# encoder removed the error it was allowing for, and the measured P4.6
+# residuals fell to 0.24 us median (`docs/bench/timing-parity.md`). A floor
+# that large would now be hiding four orders of magnitude of room.
+RESOLUTION_FLOOR_S = 1e-6
 
 
 @dataclass(frozen=True, slots=True)
@@ -440,7 +434,7 @@ def evaluate_gate(report: dict[str, object]) -> dict[str, object]:
     return {
         "checks": checks,
         "pass": all(checks.values()),
-        "quantisation_floor_s": QUANTISATION_FLOOR_S,
+        "resolution_floor_s": RESOLUTION_FLOOR_S,
         # Reported so the floor can never hide anything: this is the same
         # comparison with no allowance at all.
         "strict": {
@@ -463,15 +457,15 @@ def evaluate_gate(report: dict[str, object]) -> dict[str, object]:
 def _no_worse(measured: float | None, reference: float | None) -> bool:
     """Whether ``measured`` is no worse than ``reference`` *within the ruler*.
 
-    A bare ``<=`` on a sample quantile would turn sub-millisecond noise into a
-    failed commissioning gate. `QUANTISATION_FLOOR_S` is what this method can
-    resolve, derived from the RMC encoding rather than from any run's numbers;
-    the un-allowanced comparison is reported alongside so both readings are
-    visible.
+    A bare ``<=`` on a sample quantile would let float64 representation noise
+    fail a commissioning gate. `RESOLUTION_FLOOR_S` is what this method can
+    resolve, derived from the epoch arithmetic rather than from any run's
+    numbers; the un-allowanced comparison is reported alongside so both
+    readings are visible.
     """
     if measured is None or reference is None:
         return False
-    return measured <= reference + QUANTISATION_FLOOR_S
+    return measured <= reference + RESOLUTION_FLOOR_S
 
 
 def _strictly_no_worse(measured: float | None, reference: float | None) -> bool:
@@ -552,7 +546,7 @@ def render(report: dict[str, object]) -> str:
             f"{stats['matched']:>8} {stats['missing']:>8} {stats['extra']:>6}  "
             f"{_fmt(stats['residual_s'])}"
         )
-    lines.extend(["", f"gate (resolution floor {gate['quantisation_floor_s'] * 1000:.0f} ms)"])
+    lines.extend(["", f"gate (resolution floor {gate['resolution_floor_s'] * 1e6:.0f} us)"])
     checks = gate["checks"]
     assert isinstance(checks, dict)
     for name, passed in checks.items():
@@ -565,18 +559,24 @@ def render(report: dict[str, object]) -> str:
         verdict = "pass" if strict[f"lap_time_{quantile}"] else "FAIL"
         lines.append(
             f"    [{verdict}] lap_time_{quantile} "
-            f"({'n/a' if excess is None else f'{excess * 1000:+.1f} ms vs the predecessor'})"
+            f"({'n/a' if excess is None else f'{excess * 1e6:+.1f} us vs the predecessor'})"
         )
     lines.append(f"  => {'PASS' if gate['pass'] else 'FAIL'}")
     return "\n".join(lines)
 
 
 def _fmt(stats: object) -> str:
+    """One distribution, in milliseconds to microsecond resolution.
+
+    Seconds to four places rendered every P4.6 figure as `0.0000` once the
+    replay started agreeing with the reference to within a float64 ulp, which
+    is a bad way to report the headline result.
+    """
     if not isinstance(stats, dict) or not stats.get("n"):
         return "n=0"
     return (
-        f"n={stats['n']} mean={stats['mean']:+.4f} p50={stats['abs_p50']:.4f} "
-        f"p95={stats['abs_p95']:.4f} max={stats['abs_max']:.4f}"
+        f"n={stats['n']} mean={stats['mean'] * 1e3:+.4f} p50={stats['abs_p50'] * 1e3:.4f} "
+        f"p95={stats['abs_p95'] * 1e3:.4f} max={stats['abs_max'] * 1e3:.4f} ms"
     )
 
 

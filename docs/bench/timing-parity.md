@@ -7,14 +7,18 @@ is the only Phase 4 package that could be done first.
 **Result: 768 lap completions, 2 354 sector crossings and 39 pit crossings, and
 every one of them matches the predecessor's own replay of the same event — no
 missing crossing, no extra crossing, identical lap numbering, and lap times
-agreeing to a median of 1.2 ms.**
+agreeing to a median of 0.24 µs.**
+
+That last figure is not a typo and not a tolerance: 0.24 µs is *one float64
+ulp* at unix-epoch magnitude (2⁻²² s at 1.75e9). The two systems' crossing
+instants are identical to the last bit their timestamps can represent.
 
 | | |
 | --- | --- |
 | Manifest | [`timing-parity.manifest.json`](timing-parity.manifest.json) |
 | Run | 2026-07-29, vehicle SBC 192.168.12.176, both stacks on one host |
 | Event | Wanneroo Raceway, 13–14 June 2025, 24 h 39 m |
-| Gate | **pass** |
+| Gate | **pass**, with no allowance used |
 
 ## What was actually tested, and what was not
 
@@ -123,7 +127,8 @@ being comparable; a separate id keeps both.
 **3 511 492 batches submitted, 0 dropped**, matching an offline dry run of the
 same trace batch for batch. The vehicle's `TELE` and the pit's `TELE_VEHICLE`
 both ended at 3 511 493 messages (the batches plus one registry), sourcing lag
-0.
+0. Ingest finished with `unknown_seq_batches`, `bad_version_batches`,
+`dropped_flushes`, `samples_dropped` and `laps_dropped` all zero.
 
 Two changes to the replay tool were needed and are part of this work package:
 
@@ -169,11 +174,15 @@ Every timing line, against the predecessor's replay:
 
 | line | openlaps | predecessor | matched | missing | extra | residual p50 / p95 / max |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| StartFinish | 768 | 768 | 768 | 0 | 0 | 0.9 / 2.4 / 7.8 ms |
-| Sector1 | 793 | 793 | 793 | 0 | 0 | 1.1 / 2.8 / 5.8 ms |
-| Sector2 | 793 | 793 | 793 | 0 | 0 | 0.8 / 2.1 / 6.3 ms |
-| PitEntry | 19 | 19 | 19 | 0 | 0 | 5.7 / 10.5 / 14.0 ms |
-| PitExit | 20 | 20 | 20 | 0 | 0 | 3.2 / 5.6 / 7.8 ms |
+| StartFinish | 768 | 768 | 768 | 0 | 0 | 0.24 / 0.48 / 0.95 µs |
+| Sector1 | 793 | 793 | 793 | 0 | 0 | 0.24 / 0.48 / 0.72 µs |
+| Sector2 | 793 | 793 | 793 | 0 | 0 | 0.48 / 1.43 / 3.10 µs |
+| PitEntry | 19 | 19 | 19 | 0 | 0 | 0.24 / 0.72 / 0.72 µs |
+| PitExit | 20 | 20 | 20 | 0 | 0 | 0.24 / 0.72 / 0.95 µs |
+
+Every residual is a small multiple of 0.238 µs, which is one float64 ulp at
+these epochs. The crossing instants are not merely close; they are the same
+numbers.
 
 The acceptance criterion names **769 `StartFinish`, 793 `Sector1`, 794
 `Sector2`, 19 `PitEntry`, 20 `PitExit`** crossings in the export. Two of those
@@ -193,15 +202,19 @@ the reference system itself produced.
 
 | comparison | n | mean | p50 | p95 | max |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| **openlaps vs the predecessor's replay** | 768 | −0.0 ms | **1.2 ms** | **3.8 ms** | **7.7 ms** |
-| openlaps vs the live system | 767 | +0.0 ms | 14.7 ms | 44.8 ms | 67.2 ms |
-| *predecessor's replay vs the live system* | 767 | +0.0 ms | *14.3 ms* | *44.9 ms* | *66.1 ms* |
+| **openlaps vs the predecessor's replay** | 768 | −0.0000 ms | **0.0002 ms** | **0.0007 ms** | **0.0012 ms** |
+| openlaps vs the live system | 767 | +0.0189 ms | 14.2975 ms | 44.8536 ms | 66.1148 ms |
+| *predecessor's replay vs the live system* | 767 | +0.0189 ms | *14.2979 ms* | *44.8538 ms* | *66.1153 ms* |
 
 The first row is the parity measurement: same input, same engine lineage,
-agreeing to a median of **1.2 ms** over 768 laps. The second and third rows are
-the same quantity measured twice against the same live baseline, and they are
-the same distribution — 0.4 ms apart at p50, 0.05 ms at p95, 1.1 ms at the
-extreme.
+agreeing over 768 laps to **0.24 µs** — one float64 ulp.
+
+The second and third rows are the same quantity measured twice against the same
+live baseline. They now agree to **0.5 µs at p50 and 0.2 µs at p95**: openlaps
+disagrees with the car's live system by exactly as much as the predecessor's
+own replay did, because it is computing the same numbers. The live system's
+own ~14 ms median offset from either replay is a property of the live system,
+and neither replay improves on it or is charged for it.
 
 Lap numbering is identical on all 768 laps: the offset histogram is a single
 bucket, `{0: 768}`.
@@ -214,47 +227,65 @@ bucket, `{0: 768}`.
 | no extra lap completions | pass (0) |
 | identical lap numbering | pass (`{0: 768}`) |
 | no missing or extra crossings, any line | pass |
-| lap-time p50 no worse than the predecessor | pass, **+0.4 ms** |
-| lap-time p95 no worse than the predecessor | pass, −0.05 ms |
+| lap-time p50 no worse than the predecessor | pass, **−0.5 µs** |
+| lap-time p95 no worse than the predecessor | pass, −0.2 µs |
 
-**On a bare `<=` the p50 check fails by 0.4 ms**, and the tool reports that
-explicitly rather than burying it: `[FAIL] lap_time_p50 (+0.4 ms vs the
-predecessor)` prints under a "without the floor" heading on every run.
+The gate carries a **1 µs resolution floor**, and this run does not use it:
+both quantile checks pass on a bare `<=` as well, which the tool prints on
+every run under a "without the floor" heading. The floor exists so that
+float64 representation noise cannot fail a commissioning gate — crossing
+instants are unix epochs near 1.75e9 where one ulp is 2⁻²² = 0.24 µs, and 1 µs
+is a couple of those. It is derived from the arithmetic, not from any result.
 
-The gate allows a **5 ms resolution floor**, derived from the method rather
-than from this run's numbers. It comes from one step in the replay harness,
-and it is worth being exact about which:
+### How this figure was won, because it was not free
+
+The first run of this package produced a very different number: **p50 1.2 ms**
+against the predecessor's replay, and a gate that needed a **5 ms** allowance
+to pass. Both came from one line of the harness.
 
 `tools/replay.py` re-encodes each already-decoded trace row into a synthetic
 `$GPRMC` sentence (`rmc_sentence`) so that the **real** serial collector and
-the **real** NMEA decoder are in the measured path. That sentence writes
-coordinates as 4 decimal places of arc-minutes. One step is 1e-4/60° =
-1.667e-6°, which in latitude is 0.185 m, so a re-encoded coordinate reaches
-the timing engine within ±0.093 m of the value the dump holds. The car crosses
-Wanneroo's start/finish at a measured median **40.7 m/s** (8 149 fixes within
-10 m of the line; p95 43.1 m/s), which puts ±2.3 ms on an interpolated
-crossing instant — and a lap time is the difference of two independent
-crossings, so about ±3.2 ms RMS and 4.6 ms at the extreme.
+the **real** NMEA decoder sit in the measured path. That sentence wrote
+coordinates as 4 decimal places of arc-minutes — 1e-4/60° = 0.185 m in
+latitude — so every replayed position reached the timing engine on a ~0.19 m
+grid. At the measured median **40.7 m/s** the car crosses start/finish (8 149
+fixes within 10 m of the line), ±0.093 m is ±2.3 ms on an interpolated
+crossing, and a lap time is the difference of two of them: ~±3.2 ms RMS. That
+is the whole of the 1.2 ms p50 and the 3.8 ms p95.
 
-**This is the harness's loss, not the receiver's, and the distinction matters.**
-Sampling 20 000 fixes from the dump, *none* of the UM980's decoded latitudes
-sit on a 4-decimal arc-minute grid and only ~3% sit on a 7-decimal one: the
-receiver's own output was considerably finer than what the replay re-encodes
-it to. So the replay is quantising more coarsely than the live path did. It is
-in the measured path all the same, which is what makes it the floor.
+**It was the harness's loss, not the receiver's.** Rounding the dump's decoded
+coordinates to 4 decimal places of arc-minutes reproduces *none* of them, and
+to 7 places only ~3%; they round-trip exactly only at 9. The values behave as
+continuous float64 — there was no NMEA text grid to match, only a width at
+which the encoder stopped adding error of its own. The replay was quantising
+more coarsely than the live path ever had.
 
-That the floor is real is visible in the result itself: the measured
-openlaps-versus-predecessor-replay lap-time spread is p50 1.2 ms, p95 3.8 ms,
-max 7.7 ms — which is the arithmetic above, near enough. **Essentially the
-whole of the residual disagreement between the two replays is this one
-re-encoding step, and the timing engine contributes almost nothing to it.**
-Widening the two coordinate fields in `rmc_sentence` is the lever if a tighter
-parity figure is ever wanted.
+`rmc_sentence` now writes `COORD_DECIMALS = 9` places, at which the
+encode/decode pair is transparent to float64 (worst observed round-trip error
+over 28 600 real fixes: 4e-10 m). The run above is the same replay through the
+same stack with that one change, and the residual fell by four orders of
+magnitude, to the representation limit.
 
-Two spreads that differ by 0.4 ms therefore differ by less than the ruler.
-That is the justification, and it is the whole of it — a strict quantile
-inequality on 767 samples would be reporting noise as a commissioning
-failure.
+The lesson is worth keeping: **a bench harness that models a real device's
+limitations by accident will charge those limitations to the thing it is
+measuring.** Modelling receiver quantisation is a reasonable thing to do on
+purpose; inheriting it from a format string is not.
+
+Two smaller things fell out of the change and are recorded here because they
+are the sort of thing that gets rediscovered:
+
+- **`tools/lap_simulator.py` was relying on the rounding.** Its synthetic loop
+  began exactly on the start/finish line, and a segment whose first point lies
+  on the line is a degenerate intersection — `segment_intersection` needs
+  `0 <= t <= 1` and float64 can land either side. The 0.185 m rounding had
+  been reliably nudging that first point clear. With a transparent encoder the
+  opening crossing started being missed, timing began mid-lap at Sector1, and
+  lap 1 came out invalid. The loop now starts 5 m short of the line so the
+  first segment spans it outright.
+- **The widened sentence is 82 bytes at its longest over this event**, which
+  is exactly the NMEA 0183 ceiling. Nothing here enforces that limit — these
+  sentences are built and consumed in-process — but it is one decimal from
+  mattering, and there is a test pinning it.
 
 ### Second opinion: P3.8's import
 
@@ -294,14 +325,16 @@ co-timing: no redelivery duplicated anything.
 
 ## An unplanned durability test
 
-The docker daemon restarted mid-run and stopped every container, including the
+During the **first** run of this package (the one with the 4-decimal encoder),
+the docker daemon restarted mid-run and stopped every container, including the
 ingest-writer, with roughly 3 M messages already on the pit stream.
 
 Restarting it was the entire recovery. It resumed from `ingest_cursor`,
 drained the backlog, and finished at cursor 3 511 493 — the exact message count
 on both streams — with **zero missing crossings, zero duplicates and no
 republish from the vehicle**. Nothing was re-run and nothing was reconciled by
-hand.
+hand. The run reported above did not need it: it completed in one process, and
+its totals are identical to the interrupted one's.
 
 This was not planned and it is not a substitute for P4.4, which severs an RF
 path rather than a process. It is recorded because it happened and because it
@@ -316,13 +349,11 @@ is the same claim P4.4 will test properly.
 - **No absolute latency.** The run has no shared time reference with June 2025
   and does not need one; source-to-row latency is P4.3's measurement under
   P4.2's clock discipline.
-- **Position is quantised at ~0.19 m** by `rmc_sentence` on the way in — a
-  loss the *harness* introduces, not one the receiver imposed: the dump's own
-  coordinates are finer than the 4-decimal arc-minute grid the replay
-  re-encodes them to. It is the floor on how closely this replay can reproduce
-  a crossing instant, it accounts for essentially all of the residual
-  disagreement with the predecessor's replay, and it is why the gate carries a
-  5 ms allowance. Widening those two fields would shrink both.
+- **The result is agreement with the predecessor's *replay*, not with ground
+  truth.** Both replays consume the same recorded GPS, so a fix the receiver
+  got wrong is a fix both engines time identically. This package says the
+  timing engine was ported faithfully; it says nothing about GPS accuracy, and
+  nothing here could.
 - **The registry generation is 1** because the parity vehicle id is new. A pit
   that had already seen other generations for this id would reject batches with
   `unknown_seq_batches` until it rescanned; the clean slate before the run

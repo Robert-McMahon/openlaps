@@ -15,6 +15,8 @@ import io
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parents[1] / "tools"))
 
 import extract_gps_trace as extract  # noqa: E402
@@ -160,9 +162,43 @@ def test_rows_survive_the_rmc_round_trip_the_replay_puts_them_through(tmp_path: 
             )
         )
         assert values, "every extracted fix must decode as an active RMC"
-        # The round trip is lossy by ~1.7e-6 deg (~0.19 m): `rmc_sentence`
-        # writes 4 decimal places of arc-minutes. That is the harness's limit,
-        # not the receiver's -- the real dump's coordinates are finer -- and it
-        # is what sets the parity gate's floor (docs/bench/timing-parity.md).
-        assert abs(values["serial0:um980.RMC.lat"] - float(row["lat"])) < 2e-6
-        assert abs(values["serial0:um980.RMC.lon"] - float(row["lon"])) < 2e-6
+        assert values["serial0:um980.RMC.lat"] == pytest.approx(float(row["lat"]), abs=1e-11)
+        assert values["serial0:um980.RMC.lon"] == pytest.approx(float(row["lon"]), abs=1e-11)
+
+
+def test_the_rmc_round_trip_adds_no_position_error_of_its_own():
+    """P4.6's parity figure is only as good as this encoder is transparent.
+
+    `rmc_sentence` used to write 4 decimal places of arc-minutes -- 0.185 m in
+    latitude -- and that rounding turned out to be essentially the whole of
+    openlaps' disagreement with the predecessor's replay of the same event
+    (`docs/bench/timing-parity.md`). At `COORD_DECIMALS` the encode/decode
+    pair is transparent to float64, so what the parity run measures is the
+    timing engine rather than a format string.
+    """
+    decoder = NmeaDecoder("serial0", "um980")
+    # Wanneroo, and the awkward hemispheres: negative latitude and a longitude
+    # needing all three degree digits are exactly what the event uses.
+    for lat, lon in (
+        (-31.6636216573, 115.786789209),
+        (-31.66365182734, 115.78679120983),
+        (31.6636216573, -115.786789209),
+        (0.0, 0.0),
+    ):
+        values = dict(decoder.decode(rmc_sentence(lat, lon, 97.96, 148.7)))
+
+        assert values["serial0:um980.RMC.lat"] == pytest.approx(lat, abs=1e-11)
+        assert values["serial0:um980.RMC.lon"] == pytest.approx(lon, abs=1e-11)
+
+
+def test_the_widened_sentence_still_fits_the_nmea_length_limit():
+    """82 bytes including CRLF, and the widened fields land exactly on it.
+
+    Nothing in this repository enforces the limit -- these sentences are built
+    and consumed in-process by `NmeaDecoder` -- but sitting one byte inside a
+    real standard's ceiling is worth knowing before someone adds a decimal or
+    a field and puts it outside.
+    """
+    fastest = rmc_sentence(-31.66398764417, 115.78895628766, 210.0, 269.9)
+
+    assert len(fastest) <= 82

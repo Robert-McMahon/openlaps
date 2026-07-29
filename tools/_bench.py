@@ -40,6 +40,17 @@ MAX_PUBLISH_SLEEP_S = 5.0
 MAX_PUBLISH_LAG_MS = 2_000.0
 MAX_PUBLISH_STALL_S = 30.0
 
+# Decimal places of arc-minutes in `rmc_sentence`'s coordinate fields.
+#
+# Nine, because that is what round-trips the June-2025 dump exactly: rounding
+# its decoded coordinates to 8 places reproduces 33% of latitudes and to 7
+# places 3%, while 9 reproduces all of them. Those values are not on any NMEA
+# text grid -- they behave as continuous float64 -- so there is no receiver
+# field width to match, only a width at which this encoder stops contributing
+# error. One place here is 1e-9/60 deg, about 1.9 um.
+COORD_DECIMALS = 9
+_COORD_WIDTH = COORD_DECIMALS + 3  # "mm." plus the decimals
+
 
 def load_catalog(
     profile_dir: str | Path, *, vehicle: str | None, state_dir: str | Path | None
@@ -128,26 +139,22 @@ def _await_publisher(publisher: JetStreamPublisher) -> None:
 def rmc_sentence(lat: float, lon: float, speed_kmh: float, heading_deg: float) -> bytes:
     """Encode one ``$GPRMC`` fix (speed converts km/h -> knots per the format).
 
-    **The coordinate fields carry 4 decimal places of arc-minutes, and that is
-    a lossy step, not a neutral one.** One place is 1e-4/60 deg = 0.185 m in
-    latitude, so a replayed position reaches the timing engine on a ~0.19 m
-    grid. It is not what the car's own receiver did: sampling the June-2025
-    dump, *none* of its decoded latitudes sit on a 4-decimal arc-minute grid
-    and only ~3% sit on a 7-decimal one, so the UM980's output was
-    considerably finer than this.
+    The coordinate fields carry `COORD_DECIMALS` places of arc-minutes, which
+    is deliberately finer than any receiver emits: this encoder's job is to
+    carry a *recorded* position into the real NMEA decoder without adding
+    error of its own, not to imitate a receiver's field width.
 
-    The cost is measured. P4.6's parity replay disagrees with the
-    predecessor's replay of the same event by p50 1.2 ms / p95 3.8 ms of lap
-    time (`docs/bench/timing-parity.md`), and +/-0.093 m at the ~40.7 m/s the
-    car crosses start/finish is +/-2.3 ms per crossing -- so essentially the
-    whole of that disagreement is this format. Widening these two fields is
-    the lever if a tighter parity figure is ever wanted; nothing in the
-    timing engine is.
+    That distinction was learned the expensive way. The fields were 4 decimal
+    places -- one place is 0.185 m in latitude -- and P4.6's parity replay
+    then disagreed with the predecessor's replay of the same event by p50
+    1.2 ms of lap time, essentially all of it this rounding. Modelling a
+    receiver's own quantisation is a worthwhile thing to do *on purpose*; it
+    is a bad thing to inherit by accident from a format string.
     """
     ns, alat = ("N", lat) if lat >= 0 else ("S", -lat)
     ew, alon = ("E", lon) if lon >= 0 else ("W", -lon)
-    lat_field = f"{int(alat):02d}{(alat - int(alat)) * 60:07.4f}"
-    lon_field = f"{int(alon):03d}{(alon - int(alon)) * 60:07.4f}"
+    lat_field = f"{int(alat):02d}{(alat - int(alat)) * 60:0{_COORD_WIDTH}.{COORD_DECIMALS}f}"
+    lon_field = f"{int(alon):03d}{(alon - int(alon)) * 60:0{_COORD_WIDTH}.{COORD_DECIMALS}f}"
     speed_kn = speed_kmh / 1.852
     body = (
         f"GPRMC,000000.00,A,{lat_field},{ns},{lon_field},{ew},"

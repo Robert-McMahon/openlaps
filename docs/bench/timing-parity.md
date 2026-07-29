@@ -222,17 +222,39 @@ explicitly rather than burying it: `[FAIL] lap_time_p50 (+0.4 ms vs the
 predecessor)` prints under a "without the floor" heading on every run.
 
 The gate allows a **5 ms resolution floor**, derived from the method rather
-than from this run's numbers. `rmc_sentence` writes coordinates as 4 decimal
-places of arc-minutes — the format a real receiver emits, so it is the fidelity
-a replay is entitled to claim and no more. One step is 1e-4/60° = 1.667e-6°,
-which in latitude is 0.185 m, so a rounded coordinate sits within ±0.093 m of
-the truth. At Wanneroo's start/finish the car is doing about 150 km/h =
-41.7 m/s, putting ±2.2 ms on an interpolated crossing instant; a lap time is
-the difference of two independent crossings, so about 4.4 ms at the extreme.
+than from this run's numbers. It comes from one step in the replay harness,
+and it is worth being exact about which:
 
-Two spreads that differ by 0.4 ms differ by less than the ruler. That is the
-justification, and it is the whole of it — a strict quantile inequality on 767
-samples would be reporting noise as a commissioning failure.
+`tools/replay.py` re-encodes each already-decoded trace row into a synthetic
+`$GPRMC` sentence (`rmc_sentence`) so that the **real** serial collector and
+the **real** NMEA decoder are in the measured path. That sentence writes
+coordinates as 4 decimal places of arc-minutes. One step is 1e-4/60° =
+1.667e-6°, which in latitude is 0.185 m, so a re-encoded coordinate reaches
+the timing engine within ±0.093 m of the value the dump holds. The car crosses
+Wanneroo's start/finish at a measured median **40.7 m/s** (8 149 fixes within
+10 m of the line; p95 43.1 m/s), which puts ±2.3 ms on an interpolated
+crossing instant — and a lap time is the difference of two independent
+crossings, so about ±3.2 ms RMS and 4.6 ms at the extreme.
+
+**This is the harness's loss, not the receiver's, and the distinction matters.**
+Sampling 20 000 fixes from the dump, *none* of the UM980's decoded latitudes
+sit on a 4-decimal arc-minute grid and only ~3% sit on a 7-decimal one: the
+receiver's own output was considerably finer than what the replay re-encodes
+it to. So the replay is quantising more coarsely than the live path did. It is
+in the measured path all the same, which is what makes it the floor.
+
+That the floor is real is visible in the result itself: the measured
+openlaps-versus-predecessor-replay lap-time spread is p50 1.2 ms, p95 3.8 ms,
+max 7.7 ms — which is the arithmetic above, near enough. **Essentially the
+whole of the residual disagreement between the two replays is this one
+re-encoding step, and the timing engine contributes almost nothing to it.**
+Widening the two coordinate fields in `rmc_sentence` is the lever if a tighter
+parity figure is ever wanted.
+
+Two spreads that differ by 0.4 ms therefore differ by less than the ruler.
+That is the justification, and it is the whole of it — a strict quantile
+inequality on 767 samples would be reporting noise as a commissioning
+failure.
 
 ### Second opinion: P3.8's import
 
@@ -294,10 +316,13 @@ is the same claim P4.4 will test properly.
 - **No absolute latency.** The run has no shared time reference with June 2025
   and does not need one; source-to-row latency is P4.3's measurement under
   P4.2's clock discipline.
-- **Position is quantised at ~0.19 m** by the RMC encoding on the way in. That
-  is the same quantisation a real receiver imposes, but it is a floor on how
-  closely any replay can reproduce a crossing instant, and it is why the gate
-  carries a 5 ms allowance.
+- **Position is quantised at ~0.19 m** by `rmc_sentence` on the way in — a
+  loss the *harness* introduces, not one the receiver imposed: the dump's own
+  coordinates are finer than the 4-decimal arc-minute grid the replay
+  re-encodes them to. It is the floor on how closely this replay can reproduce
+  a crossing instant, it accounts for essentially all of the residual
+  disagreement with the predecessor's replay, and it is why the gate carries a
+  5 ms allowance. Widening those two fields would shrink both.
 - **The registry generation is 1** because the parity vehicle id is new. A pit
   that had already seen other generations for this id would reject batches with
   `unknown_seq_batches` until it rescanned; the clean slate before the run

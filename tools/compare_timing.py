@@ -56,13 +56,19 @@ _OFFSET_PROBES = 256
 # method, computed from the method and not from any result.
 #
 # A replay's positions reach the timing engine through `rmc_sentence`, which
-# writes coordinates as 4 decimal places of arc-minutes -- the format a real
-# receiver emits, so this is fidelity the parity run is entitled to claim and
-# no more. One step is 1e-4/60 deg = 1.667e-6 deg; in latitude that is
-# 0.185 m, so a rounded coordinate sits within +/-0.093 m of the truth. At
-# Wanneroo's start/finish the car is doing about 150 km/h = 41.7 m/s, which
-# puts +/-2.2 ms on an interpolated crossing instant, and a lap time is the
-# difference of two independent crossings: about 4.4 ms at the extreme.
+# writes coordinates as 4 decimal places of arc-minutes. One step is
+# 1e-4/60 deg = 1.667e-6 deg; in latitude that is 0.185 m, so a re-encoded
+# coordinate sits within +/-0.093 m of the value the dump actually holds. The
+# car crosses Wanneroo's start/finish at a measured median 40.7 m/s (8 149
+# fixes within 10 m of the line), putting +/-2.3 ms on an interpolated
+# crossing instant; a lap time is the difference of two independent
+# crossings, so about +/-3.2 ms RMS and 4.6 ms at the extreme.
+#
+# This is the *harness's* loss, not the receiver's: none of the June-2025
+# dump's decoded latitudes sit on a 4-decimal arc-minute grid, so the real
+# receiver's output was finer. It is in the measured path all the same, which
+# is what makes it the floor -- see `rmc_sentence`, which is the lever if a
+# tighter figure is ever wanted.
 #
 # 5 ms is therefore the resolution of the comparison itself. Two spreads that
 # differ by less than this differ by less than the ruler.

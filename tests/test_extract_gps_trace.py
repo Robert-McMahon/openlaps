@@ -160,8 +160,9 @@ def test_rows_survive_the_rmc_round_trip_the_replay_puts_them_through(tmp_path: 
             )
         )
         assert values, "every extracted fix must decode as an active RMC"
-        # The sentence carries 4 decimal places of arc-minutes (~0.19 m), which
-        # is the format a real receiver emits and therefore the fidelity the
-        # parity run is entitled to claim -- no more.
+        # The round trip is lossy by ~1.7e-6 deg (~0.19 m): `rmc_sentence`
+        # writes 4 decimal places of arc-minutes. That is the harness's limit,
+        # not the receiver's -- the real dump's coordinates are finer -- and it
+        # is what sets the parity gate's floor (docs/bench/timing-parity.md).
         assert abs(values["serial0:um980.RMC.lat"] - float(row["lat"])) < 2e-6
         assert abs(values["serial0:um980.RMC.lon"] - float(row["lon"])) < 2e-6

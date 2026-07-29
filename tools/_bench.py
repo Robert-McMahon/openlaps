@@ -126,7 +126,24 @@ def _await_publisher(publisher: JetStreamPublisher) -> None:
 
 
 def rmc_sentence(lat: float, lon: float, speed_kmh: float, heading_deg: float) -> bytes:
-    """Encode one ``$GPRMC`` fix (speed converts km/h -> knots per the format)."""
+    """Encode one ``$GPRMC`` fix (speed converts km/h -> knots per the format).
+
+    **The coordinate fields carry 4 decimal places of arc-minutes, and that is
+    a lossy step, not a neutral one.** One place is 1e-4/60 deg = 0.185 m in
+    latitude, so a replayed position reaches the timing engine on a ~0.19 m
+    grid. It is not what the car's own receiver did: sampling the June-2025
+    dump, *none* of its decoded latitudes sit on a 4-decimal arc-minute grid
+    and only ~3% sit on a 7-decimal one, so the UM980's output was
+    considerably finer than this.
+
+    The cost is measured. P4.6's parity replay disagrees with the
+    predecessor's replay of the same event by p50 1.2 ms / p95 3.8 ms of lap
+    time (`docs/bench/timing-parity.md`), and +/-0.093 m at the ~40.7 m/s the
+    car crosses start/finish is +/-2.3 ms per crossing -- so essentially the
+    whole of that disagreement is this format. Widening these two fields is
+    the lever if a tighter parity figure is ever wanted; nothing in the
+    timing engine is.
+    """
     ns, alat = ("N", lat) if lat >= 0 else ("S", -lat)
     ew, alon = ("E", lon) if lon >= 0 else ("W", -lon)
     lat_field = f"{int(alat):02d}{(alat - int(alat)) * 60:07.4f}"

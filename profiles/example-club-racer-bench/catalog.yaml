@@ -1,0 +1,197 @@
+# profiles/example-club-racer/catalog.yaml
+#
+# Channel catalog for the example profile: maps every source-native CAN
+# signal and serial/GNSS field this car currently records to a canonical
+# channel name. See docs/CATALOG.md for the schema, naming convention, and
+# the full old-config -> canonical coverage table.
+#
+# `from` addresses a source signal as "<bus-or-serial>:<device>.<MESSAGE>.<SIGNAL>"
+# (CAN) or "<serial>:<driver>.<SENTENCE>.<field>" (serial) or "host:<metric>".
+# `units` is the physical unit as decoded (kept as reported by the DBC/decoder;
+# note the Haltech ECU reports temperatures in Kelvin while the FDI IMU reports
+# its own board temperature in Celsius -- a real-world inconsistency this catalog
+# deliberately does not paper over, since consumers should read `units`, not assume).
+# `type` defaults to double; set explicitly for bool/int/string channels.
+# `rbe` (report-by-exception) is a link/store filter: {deadband, min_interval,
+# max_interval}. It never applies to the timing engine's pre-RBE tap.
+#
+# Naming: every on-vehicle sensor/actuator reading lives in a flat `car.*`
+# namespace (see docs/CATALOG.md) -- no engine/chassis/wheels/fuel/electrics
+# sub-domains. `position.*` (GNSS), `sys.*` (host/agent health, not mapped
+# here) and `lap.*`/`timing.*` (timing-engine outputs, reserved, never
+# mappable) are the only namespaces outside `car.*`.
+
+channels:
+
+  # ---- ECU: Haltech Elite (device: haltech) -- engine/drivetrain-control readings ----
+  car.air_temp: { from: "can0:haltech.TEMPERATURE1.AIR_TEMPERATURE", units: "K" }
+  car.ambient_air_temp: { from: "can0:haltech.AMBIENT.AMBIENT_AIR_TEMPERATURE", units: "K" }
+  car.baro_pressure: { from: "can0:haltech.MISC4.BAROMETRIC_PRESSURE", units: "kPa" }
+  car.boost_control_output: { from: "can0:haltech.PWM_OUTPUT.BOOST_CONTROL_OUTPUT", units: "%" }
+  car.calculated_air_temp: { from: "can0:haltech.MISC14.CALCULATED_AIR_TEMPERATURE", units: "K" }
+  car.check_engine_light: { from: "can0:haltech.MISC5.CHECK_ENGINE_LIGHT", type: bool }
+  car.coolant_pressure: { from: "can0:haltech.ENGINE1.COOLANT_PRESSURE", units: "kPa" }
+  car.coolant_temp: { from: "can0:haltech.TEMPERATURE1.COOLANT_TEMPERATURE", units: "K" }
+  car.ecu_temp: { from: "can0:haltech.ECU_TEMPERATURE.ECU_TEMPERATURE", units: "K" }
+  car.engine_demand: { from: "can0:haltech.ENGINE2.ENGINE_DEMAND", units: "%" }
+  car.engine_limiting_active: { from: "can0:haltech.MISC2.ENGINE_LIMITING_ACTIVE", type: bool }
+  car.engine_protection_reason_letter: { from: "can0:haltech.MISC13.ENGINE_PROTECTION_REASON_LETTER", type: int }
+  car.engine_protection_reason_number: { from: "can0:haltech.MISC13.ENGINE_PROTECTION_REASON_NUMBER", type: int }
+  car.engine_protection_severity: { from: "can0:haltech.MISC13.ENGINE_PROTECTION_SEVERITY_LEVEL", type: int }
+  car.exhaust_manifold_pressure: { from: "can0:haltech.MISC11.EXHAUST_MANIFOLD_PRESSURE", units: "kPa" }
+  car.fuel_pressure: { from: "can0:haltech.ENGINE2.FUEL_PRESSURE", units: "kPa" }
+  car.fuel_temp: { from: "can0:haltech.TEMPERATURE1.FUEL_TEMPERATURE", units: "K" }
+  car.gear: { from: "can0:haltech.MISC10.GEAR", type: int }
+  car.gearbox_oil_temp: { from: "can0:haltech.TEMPERATURE2.GEARBOX_OIL_TEMPERATURE", units: "K" }
+  car.ignition_angle_bank1: { from: "can0:haltech.MISC9.IGNITION_ANGLE_BANK1", units: "°" }
+  car.ignition_angle_bank2: { from: "can0:haltech.MISC9.IGNITION_ANGLE_BANK2", units: "°" }
+  car.ignition_angle_leading: { from: "can0:haltech.ENGINE3.IGNITION_ANGLE_LEADING", units: "°" }
+  car.injection_stage1_avg_time: { from: "can0:haltech.INJECTION_TIME.INJECTION_STAGE1_AVG_TIME", units: "ms" }
+  car.injection_stage1_duty: { from: "can0:haltech.ENGINE3.INJECTION_STAGE1_DUTY_CYCLE", units: "%" }
+  car.injector_pressure_diff: { from: "can0:haltech.MISC11.INJECTOR_PRESSURE_DIFFERENTIAL", units: "kPa" }
+  car.knock_level1: { from: "can0:haltech.KNOCK.KNOCK_LEVEL1", units: "dB" }
+  car.knock_level2: { from: "can0:haltech.KNOCK.KNOCK_LEVEL2", units: "dB" }
+  car.lambda1: { from: "can0:haltech.WIDEBAND1.LAMBDA_SENSOR1", units: "λ" }
+  car.lambda_overall: { from: "can0:haltech.MISC10.LAMBDA_OVERALL", units: "λ" }
+  car.launch_control_active: { from: "can0:haltech.MISC5.LAUNCH_CONTROL_ACTIVE", type: bool }
+  car.launch_control_ign_retard: { from: "can0:haltech.MISC2.LAUNCH_CONTROL_IGNITION_RETARD", units: "°" }
+  car.map: { from: "can0:haltech.ENGINE1.MANIFOLD_PRESSURE", units: "kPa" }
+  car.oil_pressure: { from: "can0:haltech.ENGINE2.OIL_PRESSURE", units: "kPa" }
+  car.oil_pressure_light: { from: "can0:haltech.MISC5.OIL_PRESSURE_LIGHT", type: bool }
+  car.oil_temp: { from: "can0:haltech.TEMPERATURE1.OIL_TEMPERATURE", units: "K" }
+  car.rpm: { from: "can0:haltech.ENGINE1.ENGINE_SPEED", units: "RPM" }
+  car.target_boost: { from: "can0:haltech.MISC4.TARGET_BOOST_LEVEL", units: "kPa" }
+  car.target_lambda: { from: "can0:haltech.GENERIC3.TARGET_LAMBDA", units: "λ" }
+  car.throttle_pos: { from: "can0:haltech.ENGINE1.THROTTLE_POSITION", units: "%" }
+  car.trigger_counter: { from: "can0:haltech.TRIGGER.TRIGGER_COUNTER", type: int }
+  car.trigger_error_count: { from: "can0:haltech.TRIGGER.TRIGGER_SYSTEM_ERROR_COUNT", type: int }
+  car.trigger_sync_level: { from: "can0:haltech.TRIGGER.TRIGGER_SYNC_LEVEL", type: int }
+  car.wastegate_pressure: { from: "can0:haltech.ENGINE2.WASTEGATE_PRESSURE", units: "kPa" }
+
+  # ---- ECU: WB1 CAN wideband (device: wideband) ----
+  car.wb1_battery_v: { from: "can0:wideband.WB1_LAMBDA.WB1_BATTERY_VOLTAGE", units: "V" }
+  car.wb1_diagnostic1: { from: "can0:wideband.WB1_LAMBDA.WB1_DIAGNOSTIC_1", type: int }
+  car.wb1_lambda1: { from: "can0:wideband.WB1_LAMBDA.WB1_LAMBDA_1", units: "lambda" }
+  car.wb1_sense_resistor1: { from: "can0:wideband.WB1_LAMBDA.WB1_SENSE_RESISTOR_1", units: "ohm" }
+
+  # ---- ECU: driver-input switches (device: haltech) ----
+  car.accel_pedal_pos: { from: "can0:haltech.MISC11.ACCELERATOR_PEDAL_POSITION", units: "%" }
+  car.brake_pedal_switch: { from: "can0:haltech.MISC5.BRAKE_PEDAL_SWITCH", type: bool }
+  car.clutch_switch: { from: "can0:haltech.MISC5.CLUTCH_SWITCH", type: bool }
+  car.tc_active: { from: "can0:haltech.MISC5.TRACTION_CONTROL_ACTIVE", type: bool }
+  car.tc_enabled: { from: "can0:haltech.MISC5.TRACTION_CONTROL_ENABLED", type: bool }
+
+  # ---- ECU: wheel-speed sensors + ECU-derived vehicle/driveline speed ----
+  car.driveshaft_rpm: { from: "can0:haltech.MISC6.DRIVESHAFT_RPM", units: "RPM" }
+  car.wheel_speed_fl: { from: "can0:haltech.WHEEL_SPEED.WHEEL_SPEED_FRONT_LEFT", units: "km/h" }
+  car.wheel_speed_fr: { from: "can0:haltech.WHEEL_SPEED.WHEEL_SPEED_FRONT_RIGHT", units: "km/h" }
+  car.wheel_speed_rl: { from: "can0:haltech.WHEEL_SPEED.WHEEL_SPEED_REAR_LEFT", units: "km/h" }
+  car.wheel_speed_rr: { from: "can0:haltech.WHEEL_SPEED.WHEEL_SPEED_REAR_RIGHT", units: "km/h" }
+  car.trip_distance_m: { from: "can0:haltech.TRIP_METER.DISTANCE_TRIP_METER1", units: "m" }
+  car.vehicle_speed: { from: "can0:haltech.MISC3.VEHICLE_SPEED", units: "km/h" }
+
+  # ---- ECU: fuel system ----
+  car.fuel_flow_rate: { from: "can0:haltech.FUEL_FLOW.FUEL_FLOW", units: "cc/min" }
+  car.fuel_level: { from: "can0:haltech.FUEL_LEVEL.FUEL_LEVEL", units: "L" }
+  car.fuel_primary_pump_output: { from: "can0:haltech.MISC12.PRIMARY_FUEL_PUMP_OUTPUT", type: bool }
+  car.fuel_total_used: { from: "can0:haltech.MISC12.TOTAL_FUEL_USED", units: "cc" }
+  car.fuel_trim_long_term_bank1: { from: "can0:haltech.FUEL_TRIM.FUEL_TRIM_LONG_TERM_BANK1", units: "%" }
+  car.fuel_trip_used: { from: "can0:haltech.TRIP_METER.TOTAL_FUEL_USED_TRIP_METER1", units: "cc" }
+
+  # ---- ECU: electrical system -- battery, lighting, raw PDM diagnostic bytes ----
+  car.battery_v: { from: "can0:haltech.MISC4.BATTERY_VOLTAGE", units: "Volts" }
+  car.generic_output_states: { from: "can0:haltech.MISC14.GENERIC_OUTPUT_STATES", type: int }
+  car.head_light: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.HEAD_LIGHT_STATE", type: bool }
+  car.high_beam_light: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.HIGH_BEAM_LIGHT_STATE", type: bool }
+  car.left_indicator: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.LEFT_INDICATOR_STATE", type: bool }
+  car.park_light: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.PARK_LIGHT_STATE", type: bool }
+  car.pdm_raw_byte_0: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_0", type: int }
+  car.pdm_raw_byte_1: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_1", type: int }
+  car.pdm_raw_byte_2: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_2", type: int }
+  car.pdm_raw_byte_3: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_3", type: int }
+  car.right_indicator: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.RIGHT_INDICATOR_STATE", type: bool }
+
+  # ---- IMU: FDI DETA10A (device: imu) ----
+  car.accel_x: { from: "can0:imu.FDI_IMU_ACCEL.IMU_ACCEL_X", units: "g" }
+  car.accel_y: { from: "can0:imu.FDI_IMU_ACCEL.IMU_ACCEL_Y", units: "g" }
+  car.accel_z: { from: "can0:imu.FDI_IMU_ACCEL.IMU_ACCEL_Z", units: "g" }
+  car.gyro_x: { from: "can0:imu.FDI_IMU_GYRO.IMU_GYRO_X", units: "deg/s" }
+  car.gyro_y: { from: "can0:imu.FDI_IMU_GYRO.IMU_GYRO_Y", units: "deg/s" }
+  car.gyro_z: { from: "can0:imu.FDI_IMU_GYRO.IMU_GYRO_Z", units: "deg/s" }
+  car.imu_temp: { from: "can0:imu.FDI_IMU_INFO.IMU_TEMPERATURE", units: "C" }
+  car.pitch: { from: "can0:imu.FDI_UKF_EULER.IMU_PITCH", units: "deg" }
+  car.roll: { from: "can0:imu.FDI_UKF_EULER.IMU_ROLL", units: "deg" }
+  car.yaw: { from: "can0:imu.FDI_UKF_EULER.IMU_YAW", units: "deg" }
+
+  # ---- PDM/keypad: PD16A power distribution module (device: haltech2, haltech-multiplexed.dbc) ----
+  # PD16A_DIAGNOSTICS: ~2 Hz device-health telemetry -- rail voltages, temps,
+  # total current, and per-driver-pair thermal status. These describe the PD16
+  # module itself and are meaningful regardless of what's wired to its outputs,
+  # so (unlike the wiring-dependent I/O below) they're mapped unconditionally.
+  car.pd16_battery_v: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_BATTERY_VOLTAGE", units: "V" }
+  car.pd16_cpu_temp: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_CPU_TEMP", units: "degC" }
+  car.pd16_hco25_12_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_HCO25_12_TEMP_STATUS", type: int }
+  car.pd16_hco25_34_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_HCO25_34_TEMP_STATUS", type: int }
+  car.pd16_ignition_switch: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_IGNITION_SWITCH", type: int }
+  car.pd16_main_rail_temp: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_MAIN_RAIL_TEMP", units: "degC" }
+  car.pd16_main_rail_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_MAIN_RAIL_TEMP_STATUS", type: int }
+  car.pd16_main_rail_v: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_MAIN_RAIL_VOLTAGE", units: "V" }
+  car.pd16_prot_rail_v: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_PROT_RAIL_VOLTAGE", units: "V" }
+  car.pd16_thermistor_1_temp: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_THERMISTOR_1_TEMP", units: "degC" }
+  car.pd16_thermistor_2_temp: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_THERMISTOR_2_TEMP", units: "degC" }
+  car.pd16_thermistor_3_temp: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_THERMISTOR_3_TEMP", units: "degC" }
+  car.pd16_total_current: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_TOTAL_CURRENT", units: "A" }
+  car.pd16_tvs_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_TVS_TEMP_STATUS", type: int }
+
+  # Wiring-dependent PDM I/O: deliberately NOT mapped here ("name the measurement,
+  # not the wire" -- see docs/CATALOG.md). PD16A_AVI_VOLTAGES / PD16A_SPI_VOLTAGES
+  # (analog inputs AVI1-4, SPI3-4) and PD16A_OUTPUT_STATUS (per-output
+  # current/status/load for HBO1-2, HCO25_1-4, HCO8_1-10) describe whatever
+  # happens to be physically wired to that pin, not a fixed physical quantity --
+  # a generic example catalog has no honest canonical name to give them. Map
+  # each one when you know what's connected, e.g.:
+  #
+  # car.fuel_surge_tank_level: { from: "can0:haltech2.PD16A_AVI_VOLTAGES.PD16A_AVI_1_VOLTAGE", units: "V" }
+  # car.aux_fan_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_1_CURRENT", units: "A" }
+  #
+  # The removed AVI/SPI voltage channels (avi1_v..avi4_v, spi3_v, spi4_v) each
+  # carried an rbe policy -- {deadband: 0.05, max_interval: 5s} -- to keep the
+  # link quiet on these ~100 Hz analog inputs while still guaranteeing a
+  # heartbeat sample for Timescale fill-forward. Re-apply an equivalent policy
+  # (tuned to the mapped signal) once you map one of these.
+
+  # ---- PDM/keypad: 15-button CAN keypad, CANopen node 12 (device: haltech2) ----
+  car.keypad_button_1: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_1", type: int }
+  car.keypad_button_2: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_2", type: int }
+  car.keypad_button_3: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_3", type: int }
+  car.keypad_button_4: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_4", type: int }
+  car.keypad_button_5: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_5", type: int }
+  car.keypad_button_6: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_6", type: int }
+  car.keypad_button_7: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_7", type: int }
+  car.keypad_button_8: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_8", type: int }
+  car.keypad_button_9: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_9", type: int }
+  car.keypad_button_10: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_10", type: int }
+  car.keypad_button_11: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_11", type: int }
+  car.keypad_button_12: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_12", type: int }
+  car.keypad_button_13: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_13", type: int }
+  car.keypad_button_14: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_14", type: int }
+  car.keypad_button_15: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_15", type: int }
+  car.keypad_nmt_state: { from: "can0:haltech2.KEYPAD_HEARTBEAT.KEYPAD_NMT_STATE", type: int }
+
+  # ---- GNSS: UM980 receiver (serial0: UM980, decoder nmea, sentence RMC) ----
+  # Not sourced from a DBC: these come from the nmea decoder's parse of the RMC
+  # sentence. The nmea decoder normalizes RMC's knots-on-the-wire speed-over-ground
+  # to km/h so position.speed is directly comparable to car.vehicle_speed.
+  # fix_quality carries RMC's posMode indicator (R=RTK fixed, F=RTK float,
+  # D=differential, A=autonomous/SPP, N=no fix) -- see docs/GPS_SETUP.md equivalent
+  # in the old repo for receiver-side detail.
+  position.lat:  { from: "serial0:um980.RMC.lat", units: "deg" }
+  position.lon:  { from: "serial0:um980.RMC.lon", units: "deg" }
+  position.speed: { from: "serial0:um980.RMC.speed", units: "km/h" }
+  position.heading: { from: "serial0:um980.RMC.heading", units: "deg" }
+  position.fix_quality: { from: "serial0:um980.RMC.mode", type: string }
+
+apps:
+  lap_timing:
+    position: position.*
+    track: Wanneroo

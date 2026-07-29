@@ -392,6 +392,16 @@ def _vcan_available() -> bool:
 
 @pytest.mark.skipif(not _vcan_available(), reason="no vcan0 interface on this host")
 def test_vcan_roundtrip_emits_samples(tmp_path: Path):
+    """The only test here that touches a real socketCAN interface.
+
+    CI has no vcan and will keep skipping this, which is fine: its value is
+    on the Phase 4 bench host, where `vcan0` is exactly the interface
+    `profiles/example-club-racer-bench` opens and where a permissions or
+    kernel-module problem would otherwise show up as a bandwidth run that
+    quietly measured no CAN at all. Create the interface with
+    `sudo modprobe vcan && sudo ip link add dev vcan0 type vcan &&
+    sudo ip link set up vcan0`, then run this file.
+    """
     (tmp_path / "only.dbc").write_text(_MINIMAL_DBC, encoding="utf-8")
     samples: list[Sample] = []
     collector = CanCollector(

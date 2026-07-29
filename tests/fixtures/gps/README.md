@@ -14,3 +14,8 @@ Columns: `t_s` (seconds from the start of the slice), `lat`, `lon`,
 Used by `tools/replay.py`'s `--gps-trace` source: each row is encoded to a
 synthetic RMC sentence and fed through the real serial collector's NMEA
 decoder, exactly like a live receiver's own sentences.
+
+`tools/extract_gps_trace.py` (P4.6) is the same extraction as a repeatable
+tool, and is how this slice would be cut today. P4.6 uses it on the whole
+event — 1 767 617 fixes over 24 h 39 m — rather than a slice; see
+`docs/bench/timing-parity.md`.

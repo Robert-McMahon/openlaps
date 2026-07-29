@@ -27,7 +27,14 @@ each sample's own capture time. What ``--rate`` controls is *publish*
 pacing: batches are handed to the publisher spaced to reproduce the
 source's recorded cadence divided by ``--rate``, so a consumer downstream
 sees traffic shaped like the real link (1.0 = wall clock, higher =
-accelerated).
+accelerated, 0 = unpaced). Unpaced still means *bounded*: publishing waits
+on the publisher's own lag, because `JetStreamPublisher.submit` sheds
+oldest-first past its byte budget and a replay that outran the local
+server would otherwise lose batches silently.
+
+Batches stream out of the pipeline rather than accumulating, so the input
+may be an entire event: P4.6 replays 24.7 h and 1.77 M GPS fixes through
+this tool (`docs/bench/timing-parity.md`).
 
 Examples:
 
@@ -43,6 +50,7 @@ import csv
 import itertools
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import can
@@ -74,6 +82,9 @@ DEFAULT_GPS_TRACE = REPO_ROOT / "tests" / "fixtures" / "gps" / "wanneroo-trace.c
 # decode-format smoke-test sentences, not a recorded session), so lines are
 # spaced at a plausible fixed cadence rather than instantaneously.
 NMEA_LINE_INTERVAL_S = 1.0
+
+TICK_MS = 20
+FLUSH_EVERY_FIXES = 5_000
 
 
 def _emit(pipeline: Pipeline, source_class: str):
@@ -127,15 +138,20 @@ def replay_cycle(
     candump_frames: list[can.Message],
     nmea_lines: list[tuple[float, bytes]],
     gps_rows: list[tuple[float, float, float, float, float]],
-) -> list[TickBatch]:
-    """One full pass over every loaded source, returned as ordered batches.
+) -> Iterator[TickBatch]:
+    """One full pass over every loaded source, yielded as ordered batches.
 
     A fresh `Pipeline` (and `LapTimingApp`, if the profile has one) per
     cycle keeps ``--loop`` simple: each cycle is a clean replay of the same
     fixtures from lap/tick zero, the same way restarting the agent would be.
+
+    Batches are *yielded* rather than accumulated. A 110 s fixture would fit
+    in memory either way; P4.6's parity run is the whole 24.7 h June-2025
+    event -- 1.77 M fixes and ~3.5 M batches -- and building that list before
+    publishing a byte of it would need several gigabytes for no reason.
     """
     timing_app = build_timing_app(profile, catalog)
-    pipeline = Pipeline(catalog, tick_ms=20, timing_app=timing_app)
+    pipeline = Pipeline(catalog, tick_ms=TICK_MS, timing_app=timing_app)
     base_mono_ns = time.monotonic_ns()
 
     if candump_frames and profile.vehicle.buses:
@@ -148,11 +164,31 @@ def replay_cycle(
         collector = SerialCollector(serial, _emit(pipeline, serial.name), wall_clock=clock)
         for offset_s, line in nmea_lines:
             collector.handle_line(line, t_mono_ns=base_mono_ns + int(offset_s * 1e9))
-        for t_s, lat, lon, speed_kmh, heading in gps_rows:
+        for index, (t_s, lat, lon, speed_kmh, heading) in enumerate(gps_rows):
             sentence = rmc_sentence(lat, lon, speed_kmh, heading)
             collector.handle_line(sentence, t_mono_ns=base_mono_ns + int(t_s * 1e9))
+            if _flush_due(gps_rows, index, staged=index % FLUSH_EVERY_FIXES == 0):
+                yield from pipeline.flush(clock)
 
-    return pipeline.flush(clock)
+    yield from pipeline.flush(clock)
+
+
+def _flush_due(
+    gps_rows: list[tuple[float, float, float, float, float]], index: int, *, staged: bool
+) -> bool:
+    """Whether the pipeline may be flushed after feeding ``gps_rows[index]``.
+
+    Only at a gap of at least one tick. `Pipeline.flush` anchors tick windows
+    on the earliest sample it holds and the publisher's `msg_id` is
+    ``<source-class>:<epoch-ms>``, so a tick window split across two flushes
+    would produce two batches carrying the same id -- and JetStream's
+    deduplication would silently discard the second. The GPS trace is the only
+    source long enough to need incremental flushing; the CAN and NMEA fixtures
+    are bounded and fed in one go.
+    """
+    if not staged or index + 1 >= len(gps_rows):
+        return False
+    return (gps_rows[index + 1][0] - gps_rows[index][0]) * 1000.0 >= TICK_MS
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -168,7 +204,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--rate",
         type=float,
         default=1.0,
-        help="publish speed: 1.0 = wall clock, higher = accelerated (default: %(default)s)",
+        help="publish speed: 1.0 = wall clock, higher = accelerated, "
+        "0 = unpaced (default: %(default)s)",
     )
     parser.add_argument("--loop", action="store_true", help="replay continuously until interrupted")
     parser.add_argument(
@@ -222,6 +259,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         while True:
             cycle += 1
+            print(
+                f"replay: cycle {cycle}: publishing to tele.{vehicle_id}.* at rate={args.rate}",
+                file=sys.stderr,
+            )
             batches = replay_cycle(
                 profile,
                 catalog,
@@ -230,12 +271,12 @@ def main(argv: list[str] | None = None) -> int:
                 nmea_lines=nmea_lines,
                 gps_rows=gps_rows,
             )
+            submitted = publish_paced(publisher, batches, args.rate)
             print(
-                f"replay: cycle {cycle}: {len(batches)} batch(es) to "
-                f"tele.{vehicle_id}.* at rate={args.rate}",
+                f"replay: cycle {cycle}: {submitted} batch(es) submitted, "
+                f"{publisher.publish_drops} dropped",
                 file=sys.stderr,
             )
-            publish_paced(publisher, batches, args.rate)
             if not args.loop:
                 break
     except KeyboardInterrupt:

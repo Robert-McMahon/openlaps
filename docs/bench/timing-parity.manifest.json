@@ -1,0 +1,86 @@
+{
+  "run": "p4.6-timing-parity",
+  "work_package": "P4.6",
+  "started": "2026-07-29T11:23:24Z",
+  "ended": "2026-07-29T13:57:00Z",
+  "operator_notes": [
+    "No radio, no bench hardware, no operator: both stacks ran on the vehicle SBC (192.168.12.176) over a local leafnode, per docs/plan/PHASE4.md -> P4.6.",
+    "The pit stack's published ports were remapped (4222->14222, 8222->18222, 5432->15432) because the vehicle nats already owns those ports on a single-host run. Nothing else about either stack was changed.",
+    "ntrip-client was scaled to 0: no NTRIP credentials, and RTK plays no part in a replay.",
+    "The docker daemon restarted at about 12:50 local and stopped every container. The ingest-writer resumed from its durable cursor when restarted and completed the run with no gaps, no duplicates and no re-publish. Recorded because it happened, not because it was planned."
+  ],
+  "code": {
+    "git_sha_base": "6b66ee8253eb554a637282f06ffa4fdf89828eb6",
+    "branch": "feat/p4.6-timing-parity",
+    "note": "the run used the working tree that this branch's P4.6 commit contains"
+  },
+  "profile": {
+    "path": "profiles/example-club-racer",
+    "registry_seq": 1,
+    "channels": 129,
+    "registry_sha256": "18ae0c8cf8e89ae2ade532f2deb7b90d3bc272e12f5d0be939089cd0097bbc27",
+    "track": "Wanneroo",
+    "vehicle_id_published": "example-club-racer-parity"
+  },
+  "pipeline": {
+    "OPENLAPS_TICK_MS": 20,
+    "signal_source_mode": "--gps-trace only (no CAN, no NMEA file); the legacy corpus carries decoded values, not raw frames",
+    "publish_rate": "--rate 0 (unpaced, bounded by publisher backpressure)",
+    "batches_submitted": 3511492,
+    "publish_drops": 0
+  },
+  "source_data": {
+    "gps_dump": "/mnt/data/logger/backups/backup_migration_tmp/gps.lp.gz",
+    "validation_export": "/mnt/data/logger/exports/timing_validation_june2025.csv",
+    "trace_epoch_unix_s": 1749784529.6016154,
+    "trace_fixes": 1767617,
+    "trace_duration_s": 88781.748280517,
+    "trace_mean_rate_hz": 19.909689032198305,
+    "trace_normalised_headings": 956,
+    "trace_rejected_fixes": 0,
+    "trace_partial_fixes": 0
+  },
+  "clock": {
+    "method": "none — no shared time reference is available or needed",
+    "note": "tools/replay.py stamps samples from the replaying host's clock, so the run sits at a constant wall-clock translation of June 2025. The offset is fitted by tools/compare_timing.py and the residual after removing it is reported as the crossing-time agreement.",
+    "fitted_offset_s": 35539674.879025,
+    "crossing_time_residual_p95_s": 0.0024
+  },
+  "radio": {
+    "configuration": "none — P4.6 crosses no radio; the leafnode ran over the host's loopback/bridge",
+    "leafnode_rtt_ms": 0.8
+  },
+  "infrastructure": {
+    "nats_server": "2.12.12",
+    "vehicle_server_config": "deploy/nats/vehicle.conf (JetStream domain veh, leafnode listener on 7422, TLS)",
+    "pit_stack": "deploy/pit-compose.yaml (nats, timescaledb, mosquitto, migrate, provision-streams, ingest-writer, live-decoder, session-control)",
+    "vehicle_stream_messages": 3511493,
+    "pit_stream_messages": 3511493,
+    "ingest_cursor_final": 3511493
+  },
+  "database": {
+    "laps": 768,
+    "lap_sectors": 2304,
+    "lap_events": 3161,
+    "samples": 14071782,
+    "channels": 129,
+    "co_timed_sample_rows": "768, all lap.event — the sector-3 completion and the lap completion share one interpolated instant by design",
+    "crossed_at_span": "2026-07-29T11:52:00.542662Z .. 2026-07-30T12:02:55.066678Z"
+  },
+  "artefacts": {
+    "note": "raw run data is local and gitignored; these are the paths it lives at",
+    "gps_trace_csv": "/var/tmp/openlaps-bench/p4.6/june2025-gps.csv",
+    "extract_report": "/var/tmp/openlaps-bench/p4.6/extract-report.json",
+    "replay_log": "/var/tmp/openlaps-bench/p4.6/replay.log",
+    "compare_report": "/var/tmp/openlaps-bench/p4.6/compare-timing.json",
+    "registry_state": "/var/tmp/openlaps-bench/p4.6/state-parity/.registry-state.json"
+  },
+  "result": {
+    "gate": "pass",
+    "laps_matched": 768,
+    "laps_missing": 0,
+    "laps_extra": 0,
+    "lap_number_offsets": {"0": 768},
+    "strict_lap_time_p50_excess_s": 0.0004
+  }
+}

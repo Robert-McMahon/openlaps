@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from collections.abc import Iterable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -29,6 +30,15 @@ DEFAULT_PROFILE = REPO_ROOT / "profiles" / "example-club-racer"
 # car sitting in the garage between sessions, say) can't stall the tool for
 # real minutes -- accelerate through it instead.
 MAX_PUBLISH_SLEEP_S = 5.0
+
+# Backpressure bounds. `JetStreamPublisher.submit` sheds oldest-first past its
+# byte budget, which is right for a car whose broker is wedged and wrong for a
+# replay: an accelerated run would quietly drop the batches JetStream could not
+# absorb fast enough, and the loss would surface much later as a hole in the
+# database. Pacing on the publisher's own lag makes `--rate 0` mean "as fast as
+# the local server will take it" instead of "as fast as memory will take it".
+MAX_PUBLISH_LAG_MS = 2_000.0
+MAX_PUBLISH_STALL_S = 30.0
 
 
 def load_catalog(
@@ -77,21 +87,42 @@ def wait_connected(publisher: JetStreamPublisher, timeout_s: float = 15.0) -> No
     raise TimeoutError("publisher never reached JetStream")
 
 
-def publish_paced(publisher: JetStreamPublisher, batches: list[TickBatch], rate: float) -> None:
+def publish_paced(publisher: JetStreamPublisher, batches: Iterable[TickBatch], rate: float) -> int:
     """Submit ``batches`` spaced to reproduce their recorded cadence / ``rate``.
 
-    ``rate`` of 1.0 reproduces wall-clock pacing between consecutive
-    batches' capture times; higher values compress it. Batches already
-    come out of `Pipeline.flush` in capture-time order.
+    ``rate`` of 1.0 reproduces wall-clock pacing between consecutive batches'
+    capture times; higher values compress it and 0 removes the pacing
+    entirely. Batches already come out of `Pipeline.flush` in capture-time
+    order, and an *iterable* is accepted rather than a list so a long replay
+    can stream them instead of materialising the whole event first.
+
+    Returns how many batches were submitted.
     """
     previous_mono_ns: int | None = None
+    submitted = 0
     for batch in batches:
         if previous_mono_ns is not None and rate > 0:
             delay_s = (batch.epoch_mono_ns - previous_mono_ns) / 1e9 / rate
             if delay_s > 0:
                 time.sleep(min(delay_s, MAX_PUBLISH_SLEEP_S))
+        _await_publisher(publisher)
         publisher.submit(batch)
+        submitted += 1
         previous_mono_ns = batch.epoch_mono_ns
+    return submitted
+
+
+def _await_publisher(publisher: JetStreamPublisher) -> None:
+    """Hold off while the publisher's queue is behind, but never indefinitely.
+
+    A broker that is down rather than merely busy would otherwise stall the
+    replay forever. Past the stall bound the batch is submitted anyway and
+    the loss becomes visible in ``publish_drops``, which is the honest
+    outcome: a silent wait is indistinguishable from a slow one.
+    """
+    deadline = time.monotonic() + MAX_PUBLISH_STALL_S
+    while publisher.publish_lag_ms() > MAX_PUBLISH_LAG_MS and time.monotonic() < deadline:
+        time.sleep(0.01)
 
 
 def rmc_sentence(lat: float, lon: float, speed_kmh: float, heading_deg: float) -> bytes:

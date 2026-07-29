@@ -25,5 +25,12 @@ profiles/*
 **/.registry-state.json*
 **/.session-state.json*
 **/.claude
+
+# Bench artefacts (docs/plan/PHASE4.md → ground rules): manifests and summary
+# documents under docs/bench/ are checked in; the raw per-sample and per-run
+# data they describe is large, local, and named by path in the manifest.
+docs/bench/**/*.csv
+docs/bench/**/*.csv.gz
+docs/bench/**/*.log
 # OS
 .DS_Store

@@ -74,11 +74,18 @@ needed to issue a replacement certificate.
 ## The leafnode password
 
 `$NATS_LEAF_PASSWORD` is the vehicle listener's `authorization` credential.
-Generate a fresh one per car:
+Generate a fresh one per car — **hex, not base64**:
 
 ```bash
-openssl rand -base64 32
+openssl rand -hex 32
 ```
+
+The password is embedded in the pit's `NATS_LEAFNODE_URL`, and base64's
+alphabet includes `/` and `+`. A password containing either makes
+`nats-server` refuse the config outright with
+`error parsing leafnode url [...]` — a message that names the URL and not
+the character in it. Found while standing up the P4.6 parity stack; hex has
+the same entropy and no reserved characters.
 
 Put it in the **vehicle** stack's `.env` as `NATS_LEAF_PASSWORD`, and embed
 the same value in the **pit** stack's `NATS_LEAFNODE_URL`:

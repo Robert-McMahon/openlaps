@@ -1,0 +1,12 @@
+Station 8c:1f:64:a2:71:0e (on wlan0)
+	inactive time:	40 ms
+	rx bytes:	1583424
+	rx packets:	12010
+	tx bytes:	220814593
+	tx packets:	164338
+	rx drop misc:	0
+	signal:  	-67 dBm
+	authorized:	yes
+	authenticated:	yes
+	associated:	yes
+	connected time:	1832 seconds

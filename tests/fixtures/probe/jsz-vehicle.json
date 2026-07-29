@@ -1,0 +1,81 @@
+{
+  "memory": 0,
+  "storage": 228900,
+  "reserved_memory": 0,
+  "reserved_storage": 1073741824,
+  "accounts": 1,
+  "ha_assets": 0,
+  "api": {
+    "level": 3,
+    "total": 3,
+    "errors": 0
+  },
+  "server_id": "NDFOPPDFXGW6MGGLH2ZTUUSP3UN7KLDTGXK4ZVQGTBNKCKEMA7TUC7JW",
+  "now": "2026-07-29T11:14:42.900033447Z",
+  "config": {
+    "max_memory": 9229642752,
+    "max_storage": 38053260288,
+    "store_dir": "/data/jetstream",
+    "sync_interval": 120000000000,
+    "domain": "veh",
+    "strict": true
+  },
+  "limits": {},
+  "streams": 2,
+  "consumers": 0,
+  "messages": 300,
+  "bytes": 228900,
+  "account_details": [
+    {
+      "name": "$G",
+      "id": "$G",
+      "memory": 0,
+      "storage": 228900,
+      "reserved_memory": 18446744073709551615,
+      "reserved_storage": 18446744073709551615,
+      "accounts": 0,
+      "ha_assets": 0,
+      "api": {
+        "level": 0,
+        "total": 3,
+        "errors": 0
+      },
+      "stream_detail": [
+        {
+          "name": "TELE",
+          "created": "2026-07-29T11:14:39.737552492Z",
+          "cluster": {
+            "leader": "openlaps-vehicle"
+          },
+          "state": {
+            "messages": 300,
+            "bytes": 228900,
+            "first_seq": 1,
+            "first_ts": "2026-07-29T11:14:39.750100078Z",
+            "last_seq": 300,
+            "last_ts": "2026-07-29T11:14:39.876028098Z",
+            "num_subjects": 1,
+            "consumer_count": 0
+          }
+        },
+        {
+          "name": "CMD",
+          "created": "2026-07-29T11:14:39.740505031Z",
+          "cluster": {
+            "leader": "openlaps-vehicle"
+          },
+          "state": {
+            "messages": 0,
+            "bytes": 0,
+            "first_seq": 0,
+            "first_ts": "0001-01-01T00:00:00Z",
+            "last_seq": 0,
+            "last_ts": "0001-01-01T00:00:00Z",
+            "consumer_count": 0
+          }
+        }
+      ]
+    }
+  ],
+  "total": 1
+}

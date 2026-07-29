@@ -1,0 +1,30 @@
+{
+  "aggregate_sheds": 0,
+  "bad_version_batches": 0,
+  "channels": {
+    "engine.rpm": {
+      "published": 18,
+      "suppressed": 0
+    },
+    "gps.speed": {
+      "published": 19,
+      "suppressed": 0
+    },
+    "pd16.ain1": {
+      "published": 0,
+      "suppressed": 12
+    }
+  },
+  "config_mtime_ns": 0,
+  "config_reloads": 0,
+  "invalid_values": 0,
+  "malformed_payloads": 0,
+  "mqtt_drops": 0,
+  "mqtt_reconnects": 0,
+  "nats_reconnects": 0,
+  "publish_rate": 37.0,
+  "registries": 0,
+  "unknown_seq_batches": 0,
+  "unmatched_rules": [],
+  "uptime_s": 1830.0
+}

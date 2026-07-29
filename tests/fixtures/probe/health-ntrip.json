@@ -1,0 +1,13 @@
+{
+  "auth_errors": 0,
+  "bytes_from_caster": 1240,
+  "bytes_per_s": 1240.0,
+  "connected": true,
+  "gga_sends": 0,
+  "last_byte_age_s": 0.0,
+  "nats_reconnects": 0,
+  "publishes": 4,
+  "publishes_per_s": 4.0,
+  "reconnects": 0,
+  "uptime_s": 1830.0
+}

@@ -1,0 +1,1 @@
+{"nftables": [{"metainfo": {"version": "1.0.9", "release_name": "Old Doc Yak #3", "json_schema_version": 1}}, {"counter": {"family": "inet", "name": "openlaps_leaf_out", "table": "openlaps", "handle": 1, "packets": 3586, "bytes": 4186480}}, {"counter": {"family": "inet", "name": "openlaps_leaf_in", "table": "openlaps", "handle": 2, "packets": 3582, "bytes": 186272}}]}

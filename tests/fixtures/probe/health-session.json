@@ -1,0 +1,14 @@
+{
+  "database": {
+    "connected": true,
+    "errors": 0,
+    "pending": 0
+  },
+  "nats": {
+    "connected": true,
+    "errors": 0,
+    "pending": 0,
+    "published": 14
+  },
+  "status": "ok"
+}

@@ -1,0 +1,22 @@
+{
+  "server_id": "NCRWOWX4NLPG7MSDGLEPIUUWSZ4LK5E2Q3RQHXT4OOTZBRV3VP4ZIGMC",
+  "now": "2026-07-29T11:14:42.905600822Z",
+  "leafnodes": 1,
+  "leafs": [
+    {
+      "id": 5,
+      "name": "openlaps-vehicle",
+      "is_spoke": true,
+      "account": "$G",
+      "ip": "172.22.0.2",
+      "port": 7422,
+      "rtt": "327µs",
+      "in_msgs": 304,
+      "out_msgs": 1,
+      "in_bytes": 211526,
+      "out_bytes": 303,
+      "subscriptions": 19,
+      "compression": "s2_uncompressed"
+    }
+  ]
+}

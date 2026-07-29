@@ -1,0 +1,36 @@
+Station 8c:1f:64:a2:71:0e (on wlan0)
+	inactive time:	40 ms
+	rx bytes:	1583424
+	rx packets:	12010
+	tx bytes:	220814593
+	tx packets:	164338
+	tx retries:	9421
+	tx failed:	37
+	rx drop misc:	4
+	signal:  	-67 [-70, -72] dBm
+	signal avg:	-66 [-69, -71] dBm
+	tx bitrate:	3.9 MBit/s MCS 4
+	rx bitrate:	3.9 MBit/s MCS 4
+	authorized:	yes
+	authenticated:	yes
+	associated:	yes
+	connected time:	1832 seconds
+	expected throughput:	1.950Mbps
+Station 04:f0:21:1c:98:b3 (on wlan0)
+	inactive time:	120 ms
+	rx bytes:	9114
+	rx packets:	86
+	tx bytes:	14022
+	tx packets:	103
+	tx retries:	4
+	tx failed:	0
+	rx drop misc:	0
+	signal:  	-42 [-45, -47] dBm
+	signal avg:	-42 [-44, -46] dBm
+	tx bitrate:	6.5 MBit/s MCS 7
+	rx bitrate:	6.5 MBit/s MCS 7
+	authorized:	yes
+	authenticated:	yes
+	associated:	yes
+	connected time:	91 seconds
+	expected throughput:	3.250Mbps

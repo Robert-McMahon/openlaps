@@ -1,0 +1,82 @@
+{
+	"results": [
+		{
+			"mac": "8C:1F:64:A2:71:0E",
+			"signal": -67,
+			"signal_avg": -66,
+			"noise": -95,
+			"inactive": 40,
+			"connected_time": 1832,
+			"thr": 1950,
+			"authorized": true,
+			"authenticated": true,
+			"preauth": false,
+			"wme": true,
+			"mfp": false,
+			"tdls": false,
+			"mesh llid": 0,
+			"mesh plid": 0,
+			"mesh plink": "",
+			"mesh local ps": "",
+			"mesh peer ps": "",
+			"mesh non-peer ps": "",
+			"rx": {
+				"drop_misc": 4,
+				"packets": 12010,
+				"bytes": 1583424,
+				"is_ht": false,
+				"is_vht": false,
+				"is_he": false,
+				"mhz": 2,
+				"rate": 3900
+			},
+			"tx": {
+				"failed": 37,
+				"retries": 9421,
+				"packets": 164338,
+				"bytes": 220814593,
+				"is_ht": false,
+				"is_vht": false,
+				"is_he": false,
+				"mhz": 2,
+				"rate": 3900
+			}
+		},
+		{
+			"mac": "04:F0:21:1C:98:B3",
+			"signal": -42,
+			"signal_avg": -42,
+			"noise": -95,
+			"inactive": 120,
+			"connected_time": 91,
+			"thr": 3250,
+			"authorized": true,
+			"authenticated": true,
+			"preauth": false,
+			"wme": true,
+			"mfp": false,
+			"tdls": false,
+			"rx": {
+				"drop_misc": 0,
+				"packets": 86,
+				"bytes": 9114,
+				"is_ht": false,
+				"is_vht": false,
+				"is_he": false,
+				"mhz": 2,
+				"rate": 6500
+			},
+			"tx": {
+				"failed": 0,
+				"retries": 4,
+				"packets": 103,
+				"bytes": 14022,
+				"is_ht": false,
+				"is_vht": false,
+				"is_he": false,
+				"mhz": 2,
+				"rate": 6500
+			}
+		}
+	]
+}

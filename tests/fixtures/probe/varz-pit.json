@@ -1,0 +1,104 @@
+{
+  "server_id": "NCRWOWX4NLPG7MSDGLEPIUUWSZ4LK5E2Q3RQHXT4OOTZBRV3VP4ZIGMC",
+  "server_name": "openlaps-pit",
+  "version": "2.12.12",
+  "proto": 1,
+  "git_commit": "e8de2a6",
+  "go": "go1.25.11",
+  "host": "0.0.0.0",
+  "port": 4222,
+  "max_connections": 65536,
+  "ping_interval": 120000000000,
+  "ping_max": 2,
+  "http_host": "0.0.0.0",
+  "http_port": 8222,
+  "http_base_path": "",
+  "https_port": 0,
+  "auth_timeout": 2,
+  "max_control_line": 4096,
+  "max_payload": 8388608,
+  "max_pending": 67108864,
+  "cluster": {},
+  "gateway": {},
+  "leaf": {
+    "remotes": [
+      {
+        "local_account": "$G",
+        "urls": [
+          "vehicle-leaf:7422"
+        ]
+      }
+    ]
+  },
+  "mqtt": {},
+  "websocket": {},
+  "jetstream": {
+    "config": {
+      "max_memory": 9229642752,
+      "max_storage": 38053131264,
+      "store_dir": "/data/jetstream",
+      "sync_interval": 120000000000,
+      "domain": "pit",
+      "strict": true
+    },
+    "stats": {
+      "memory": 0,
+      "storage": 250092,
+      "reserved_memory": 0,
+      "reserved_storage": 1073741824,
+      "accounts": 1,
+      "ha_assets": 0,
+      "api": {
+        "level": 3,
+        "total": 4,
+        "errors": 1
+      }
+    },
+    "limits": {}
+  },
+  "tls_timeout": 2,
+  "write_deadline": 10000000000,
+  "start": "2026-07-29T11:14:37.63620325Z",
+  "now": "2026-07-29T11:14:42.902576377Z",
+  "uptime": "5s",
+  "mem": 19267584,
+  "cores": 4,
+  "gomaxprocs": 4,
+  "cpu": 0,
+  "connections": 1,
+  "total_connections": 1,
+  "routes": 0,
+  "remotes": 0,
+  "leafnodes": 1,
+  "in_msgs": 340,
+  "in_bytes": 212385,
+  "in_client_msgs": 36,
+  "in_client_bytes": 859,
+  "out_msgs": 60,
+  "out_bytes": 45726,
+  "out_client_msgs": 59,
+  "out_client_bytes": 45423,
+  "slow_consumers": 0,
+  "stale_connections": 0,
+  "stalled_clients": 0,
+  "subscriptions": 89,
+  "http_req_stats": {
+    "/leafz": 10,
+    "/varz": 1
+  },
+  "config_load_time": "2026-07-29T11:14:37.63620325Z",
+  "config_digest": "sha256:6c23aed393bb451cb13bd00ee4d670fd2c3bfcb4725b580744a29030a4634f02",
+  "system_account": "$SYS",
+  "slow_consumer_stats": {
+    "clients": 0,
+    "routes": 0,
+    "gateways": 0,
+    "leafs": 0
+  },
+  "stale_connection_stats": {
+    "clients": 0,
+    "routes": 0,
+    "gateways": 0,
+    "leafs": 0
+  }
+}

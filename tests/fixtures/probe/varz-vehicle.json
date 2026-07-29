@@ -1,0 +1,100 @@
+{
+  "server_id": "NDFOPPDFXGW6MGGLH2ZTUUSP3UN7KLDTGXK4ZVQGTBNKCKEMA7TUC7JW",
+  "server_name": "openlaps-vehicle",
+  "version": "2.12.12",
+  "proto": 1,
+  "git_commit": "e8de2a6",
+  "go": "go1.25.11",
+  "host": "0.0.0.0",
+  "port": 4222,
+  "max_connections": 65536,
+  "ping_interval": 120000000000,
+  "ping_max": 2,
+  "http_host": "0.0.0.0",
+  "http_port": 8222,
+  "http_base_path": "",
+  "https_port": 0,
+  "auth_timeout": 2,
+  "max_control_line": 4096,
+  "max_payload": 8388608,
+  "max_pending": 67108864,
+  "cluster": {},
+  "gateway": {},
+  "leaf": {
+    "host": "0.0.0.0",
+    "port": 7422,
+    "auth_timeout": 2,
+    "tls_timeout": 2
+  },
+  "mqtt": {},
+  "websocket": {},
+  "jetstream": {
+    "config": {
+      "max_memory": 9229642752,
+      "max_storage": 38053260288,
+      "store_dir": "/data/jetstream",
+      "sync_interval": 120000000000,
+      "domain": "veh",
+      "strict": true
+    },
+    "stats": {
+      "memory": 0,
+      "storage": 228900,
+      "reserved_memory": 0,
+      "reserved_storage": 1073741824,
+      "accounts": 1,
+      "ha_assets": 0,
+      "api": {
+        "level": 3,
+        "total": 3,
+        "errors": 0
+      }
+    },
+    "limits": {}
+  },
+  "tls_timeout": 2,
+  "write_deadline": 10000000000,
+  "start": "2026-07-29T11:14:36.639117197Z",
+  "now": "2026-07-29T11:14:42.891344369Z",
+  "uptime": "6s",
+  "mem": 19136512,
+  "cores": 4,
+  "gomaxprocs": 4,
+  "cpu": 1,
+  "connections": 1,
+  "total_connections": 1,
+  "routes": 0,
+  "remotes": 0,
+  "leafnodes": 1,
+  "in_msgs": 303,
+  "in_bytes": 211674,
+  "in_client_msgs": 302,
+  "in_client_bytes": 211371,
+  "out_msgs": 606,
+  "out_bytes": 225722,
+  "out_client_msgs": 302,
+  "out_client_bytes": 14196,
+  "slow_consumers": 0,
+  "stale_connections": 0,
+  "stalled_clients": 0,
+  "subscriptions": 88,
+  "http_req_stats": {
+    "/leafz": 1,
+    "/varz": 1
+  },
+  "config_load_time": "2026-07-29T11:14:36.639117197Z",
+  "config_digest": "sha256:735fc044581422b5912e8fd3da831b8a33ce3f5d4d5dc91daf0290fc5c84c592",
+  "system_account": "$SYS",
+  "slow_consumer_stats": {
+    "clients": 0,
+    "routes": 0,
+    "gateways": 0,
+    "leafs": 0
+  },
+  "stale_connection_stats": {
+    "clients": 0,
+    "routes": 0,
+    "gateways": 0,
+    "leafs": 0
+  }
+}

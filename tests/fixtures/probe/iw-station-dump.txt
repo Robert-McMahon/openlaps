@@ -1,0 +1,30 @@
+Station 8c:1f:64:a2:71:0e (on wlan0)
+	inactive time:	40 ms
+	rx bytes:	1583424
+	rx packets:	12010
+	tx bytes:	220814593
+	tx packets:	164338
+	tx retries:	9421
+	tx failed:	37
+	rx drop misc:	4
+	signal:  	-67 [-70, -72] dBm
+	signal avg:	-66 [-69, -71] dBm
+	tx bitrate:	3.9 MBit/s MCS 4
+	tx duration:	0 us
+	rx bitrate:	3.9 MBit/s MCS 4
+	rx duration:	0 us
+	authorized:	yes
+	authenticated:	yes
+	associated:	yes
+	preamble:	long
+	WMM/WME:	yes
+	MFP:		no
+	TDLS peer:	no
+	DTIM period:	2
+	beacon interval:100
+	short slot time:yes
+	connected time:	1832 seconds
+	associated at [boottime]:	1832.100s
+	associated at:	1785000000000 ms
+	current time:	1785000001832 ms
+	expected throughput:	1.950Mbps

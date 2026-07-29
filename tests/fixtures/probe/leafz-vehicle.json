@@ -1,0 +1,22 @@
+{
+  "server_id": "NDFOPPDFXGW6MGGLH2ZTUUSP3UN7KLDTGXK4ZVQGTBNKCKEMA7TUC7JW",
+  "now": "2026-07-29T11:14:42.8978473Z",
+  "leafnodes": 1,
+  "leafs": [
+    {
+      "id": 5,
+      "name": "openlaps-pit",
+      "is_spoke": false,
+      "account": "$G",
+      "ip": "172.22.0.3",
+      "port": 54002,
+      "rtt": "611µs",
+      "in_msgs": 1,
+      "out_msgs": 304,
+      "in_bytes": 303,
+      "out_bytes": 211526,
+      "subscriptions": 18,
+      "compression": "s2_uncompressed"
+    }
+  ]
+}

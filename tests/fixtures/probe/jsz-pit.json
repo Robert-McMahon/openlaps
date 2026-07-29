@@ -1,0 +1,99 @@
+{
+  "memory": 0,
+  "storage": 250092,
+  "reserved_memory": 0,
+  "reserved_storage": 1073741824,
+  "accounts": 1,
+  "ha_assets": 0,
+  "api": {
+    "level": 3,
+    "total": 4,
+    "errors": 1
+  },
+  "server_id": "NCRWOWX4NLPG7MSDGLEPIUUWSZ4LK5E2Q3RQHXT4OOTZBRV3VP4ZIGMC",
+  "now": "2026-07-29T11:14:42.90713816Z",
+  "config": {
+    "max_memory": 9229642752,
+    "max_storage": 38053131264,
+    "store_dir": "/data/jetstream",
+    "sync_interval": 120000000000,
+    "domain": "pit",
+    "strict": true
+  },
+  "limits": {},
+  "streams": 1,
+  "consumers": 1,
+  "messages": 300,
+  "bytes": 250092,
+  "account_details": [
+    {
+      "name": "$G",
+      "id": "$G",
+      "memory": 0,
+      "storage": 250092,
+      "reserved_memory": 18446744073709551615,
+      "reserved_storage": 18446744073709551615,
+      "accounts": 0,
+      "ha_assets": 0,
+      "api": {
+        "level": 0,
+        "total": 4,
+        "errors": 1
+      },
+      "stream_detail": [
+        {
+          "name": "TELE_VEHICLE",
+          "created": "2026-07-29T11:14:39.747454298Z",
+          "cluster": {
+            "name": "openlaps-pit",
+            "leader": "openlaps-pit"
+          },
+          "state": {
+            "messages": 300,
+            "bytes": 250092,
+            "first_seq": 1,
+            "first_ts": "2026-07-29T11:14:39.858500164Z",
+            "last_seq": 300,
+            "last_ts": "2026-07-29T11:14:39.876217158Z",
+            "num_subjects": 1,
+            "consumer_count": 1
+          },
+          "consumer_detail": [
+            {
+              "stream_name": "TELE_VEHICLE",
+              "name": "ingest-writer",
+              "created": "2026-07-29T11:14:39.878802229Z",
+              "delivered": {
+                "consumer_seq": 55,
+                "stream_seq": 50,
+                "last_active": "2026-07-29T11:14:42.888112294Z"
+              },
+              "ack_floor": {
+                "consumer_seq": 30,
+                "stream_seq": 30,
+                "last_active": "2026-07-29T11:14:39.883983674Z"
+              },
+              "num_ack_pending": 20,
+              "num_redelivered": 5,
+              "num_waiting": 0,
+              "num_pending": 250,
+              "ts": "2026-07-29T11:14:42.907172117Z"
+            }
+          ],
+          "sources": [
+            {
+              "name": "TELE",
+              "external": {
+                "api": "$JS.veh.API",
+                "deliver": ""
+              },
+              "lag": 0,
+              "active": 29057067
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "total": 1
+}

@@ -5,6 +5,7 @@ real Pipeline/LapTimingApp -- no NATS involved, so no docker required.
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from agent.clock import SteeredClock  # noqa: E402
 from core.catalog import build_runtime_catalog  # noqa: E402
 from core.config import load_profile  # noqa: E402
 from core.pb import telemetry_pb2 as pb  # noqa: E402
+from timing import timing_core  # noqa: E402
 
 
 @pytest.fixture
@@ -56,6 +58,70 @@ def _lap_completed_events(batches, catalog) -> list[dict]:
 def test_dry_run_path_length_matches_the_track_within_a_few_percent(track_and_path):
     track, _frame, _path, length = track_and_path
     assert length == pytest.approx(track.length_m, rel=0.03)
+
+
+def test_the_loop_does_not_begin_on_the_start_finish_line(track_and_path):
+    """A first fix sitting *on* the line is a degenerate intersection.
+
+    `segment_intersection` needs 0 <= t <= 1, and a segment starting on the
+    line puts t at 0 give or take float64 noise -- so whether the opening
+    crossing registers comes down to rounding. It was masked for a long time
+    by `rmc_sentence` quantising coordinates to 0.185 m; once that encoder was
+    widened for P4.6 the crossing began to be missed and lap 1 came out
+    invalid. The loop now starts short of the line so the first segment spans
+    it outright.
+    """
+    track, frame, path, _length = track_and_path
+    start_finish = next(line for line in track.lines if line.line_type.value == "start_finish")
+    midpoint = frame.to_xy(
+        (start_finish.start.lat + start_finish.end.lat) / 2,
+        (start_finish.start.lon + start_finish.end.lon) / 2,
+    )
+
+    assert math.dist(path[0], midpoint) >= 1.0
+    # ...and the line is still a few points along the loop, not skipped past.
+    assert min(math.dist(point, midpoint) for point in path[:20]) < 1.0
+
+
+def test_the_opening_crossing_starts_timing_on_the_start_finish_line(
+    profile, track_and_path, tmp_path: Path
+):
+    """Timing must begin at start/finish, not mid-lap at a sector.
+
+    `_handle_lap_point` marks the first partial lap invalid when timing starts
+    anywhere but the line -- correct behaviour, and exactly what a missed
+    opening crossing looks like from the outside.
+    """
+    track, frame, path, _length = track_and_path
+    catalog = build_runtime_catalog(profile, state_path=tmp_path / "registry-state.json")
+
+    accepted: list[str] = []
+    original = timing_core.TimingEngine._accept
+
+    def record(self, line, hit):
+        taken = original(self, line, hit)
+        if taken:
+            accepted.append(line.name)
+        return taken
+
+    timing_core.TimingEngine._accept = record
+    try:
+        sim.simulate(
+            profile,
+            catalog,
+            SteeredClock(),
+            track=track,
+            frame=frame,
+            path=path,
+            label="Wanneroo_sim",
+            laps=2,
+            rate_hz=20.0,
+            seed=42,
+        )
+    finally:
+        timing_core.TimingEngine._accept = original
+
+    assert accepted[0] == "StartFinish"
 
 
 def test_dry_run_cli_exits_clean_without_touching_nats(capsys):

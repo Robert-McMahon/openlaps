@@ -223,11 +223,11 @@ def test_a_dropped_lap_fails_the_gate(tmp_path: Path):
     assert report["missing_examples"][0]["lap_number"] == 8
 
 
-def test_a_sub_millisecond_excess_is_reported_but_does_not_fail_the_gate(tmp_path: Path):
-    """The gate's floor is the RMC encoding's own resolution, not a fudge --
-    but the un-allowanced comparison has to stay visible either way."""
+def test_an_excess_below_the_resolution_floor_is_reported_but_does_not_fail(tmp_path: Path):
+    """The floor is float64 epoch resolution, not a fudge -- but the
+    un-allowanced comparison has to stay visible either way."""
     reference = _reference()
-    excess = 0.0004
+    excess = compare.RESOLUTION_FLOOR_S / 2
     subject = [
         compare.Crossing(
             line=crossing.line,
@@ -244,7 +244,32 @@ def test_a_sub_millisecond_excess_is_reported_but_does_not_fail_the_gate(tmp_pat
     assert report["gate"]["pass"]
     assert report["gate"]["checks"]["lap_time_p50_no_worse_than_predecessor"] is True
     assert report["gate"]["strict"]["lap_time_p50"] is False
-    assert abs(report["gate"]["strict"]["lap_time_p50_excess_s"] - excess) < 1e-9
+    assert report["gate"]["strict"]["lap_time_p50_excess_s"] > 0
+
+
+def test_a_millisecond_excess_now_fails_the_gate(tmp_path: Path):
+    """What the 5 ms floor used to swallow.
+
+    While `rmc_sentence` rounded coordinates to 0.185 m the gate had to allow
+    5 ms, which is a wide door. With a transparent encoder the floor is 1 us
+    and a millisecond is a real regression again.
+    """
+    reference = _reference()
+    subject = [
+        compare.Crossing(
+            line=crossing.line,
+            time=crossing.time + REPLAY_OFFSET,
+            lap_number=crossing.lap_number,
+            lap_time_s=(crossing.lap_time_s or 0.0) + 0.001,
+            valid=True,
+        )
+        for crossing in reference
+    ]
+
+    report = _report(subject, _validation_rows(reference), tmp_path)
+
+    assert not report["gate"]["pass"]
+    assert report["gate"]["checks"]["lap_time_p50_no_worse_than_predecessor"] is False
 
 
 def test_lap_times_worse_than_the_predecessors_own_spread_fail_the_gate(tmp_path: Path):

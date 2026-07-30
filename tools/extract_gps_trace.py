@@ -47,10 +47,11 @@ KNOTS_TO_KMH = 1.852
 
 _Fix = tuple[int, tuple[float, ...]]
 
-# 12 significant digits is ~1e-10 degrees, about 0.01 mm -- four orders of
-# magnitude finer than the 4-decimal arc-minutes (~0.19 m) `rmc_sentence` is
-# about to quantise these to. Shortest-round-trip repr would be exact and
-# would add ~35 MB to the event's trace for no reachable precision.
+# 12 significant digits is ~1e-10 degrees, about 0.01 mm -- two orders of
+# magnitude finer than `rmc_sentence` resolves at `COORD_DECIMALS` (1.9 um),
+# so this format is not what bounds the replay's fidelity. Shortest-round-trip
+# repr would be exact and would add ~35 MB to the event's trace to gain
+# nothing any consumer can see.
 _COORD_FORMAT = "{:.12g}"
 _T_FORMAT = "{:.9f}"
 

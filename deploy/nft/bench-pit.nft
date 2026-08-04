@@ -1,0 +1,56 @@
+# Wire counters for the pit end of the HaLow link (docs/plan/PHASE4.md,
+# P4.2). Counting only: every chain policies `accept` and no rule takes a
+# verdict, so loading this on a running bench cannot drop a packet.
+#
+#     sudo nft -f deploy/nft/bench-pit.nft
+#
+# The counter *names* are identical to the vehicle's on purpose --
+# tools/link_probe.py reads the same two names on both hosts and resolves
+# the link direction from `--role`, so nothing downstream has to remember
+# which end it is looking at.
+#
+# **Direction is host-relative**: `openlaps_leaf_out` is what this host
+# transmitted, `openlaps_leaf_in` what it received. The port-to-direction
+# mapping is therefore the *mirror* of the vehicle's, because the pit dials
+# out and the vehicle listens (deploy/README.md -- "the pit dials the
+# vehicle, never the reverse"): here a packet with dport 7422 is leaving for
+# the car, and a packet with sport 7422 is arriving from it.
+#
+# Getting this backwards would invert docs/LINK_BUDGET.md §8's
+# reverse-channel result -- the one number in the section that has never
+# been measured -- which is why the two files are separate and each states
+# its reasoning rather than one file being parameterised.
+#
+# The forward chain is the one that matters here: the pit stack runs
+# nats-server in a container (deploy/pit-compose.yaml), so its outbound
+# leafnode connection is forwarded across the docker bridge and masqueraded
+# rather than originating in the host's output hook. input/output are kept
+# anyway, for a pit running nats-server directly.
+
+table inet openlaps_bench {
+	counter openlaps_leaf_out {
+		comment "pit -> vehicle, leafnode TCP 7422, wire bytes"
+	}
+
+	counter openlaps_leaf_in {
+		comment "vehicle -> pit, leafnode TCP 7422, wire bytes"
+	}
+
+	chain input {
+		type filter hook input priority filter; policy accept;
+		tcp sport 7422 counter name "openlaps_leaf_in"
+		tcp dport 7422 counter name "openlaps_leaf_out"
+	}
+
+	chain output {
+		type filter hook output priority filter; policy accept;
+		tcp dport 7422 counter name "openlaps_leaf_out"
+		tcp sport 7422 counter name "openlaps_leaf_in"
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy accept;
+		tcp dport 7422 counter name "openlaps_leaf_out"
+		tcp sport 7422 counter name "openlaps_leaf_in"
+	}
+}

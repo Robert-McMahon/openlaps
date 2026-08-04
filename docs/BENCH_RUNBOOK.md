@@ -559,7 +559,7 @@ their absolute path (`.gitignore` carries the rule).
 **One directory per run series**, for anything with probe output:
 
 ```
-docs/bench/2026-08-04-steady-state/
+docs/bench/<date>-<what>/           # e.g. 2026-08-04-steady-state
     summary.md                      # the analysis, with numbers and their manifests
     t20-vehicle.manifest.json
     t20-pit.manifest.json

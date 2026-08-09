@@ -150,10 +150,36 @@ channels:
   # happens to be physically wired to that pin, not a fixed physical quantity --
   # a generic example catalog has no honest canonical name to give them. Map
   # each one when you know what's connected, e.g.:
-  #
-  # car.fuel_surge_tank_level: { from: "can0:haltech2.PD16A_AVI_VOLTAGES.PD16A_AVI_1_VOLTAGE", units: "V" }
-  # car.aux_fan_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_1_CURRENT", units: "A" }
-  #
+
+  #Analog inputs
+  car.transmission_oil_temp_volts: { from: "can0:haltech2.PD16A_AVI_VOLTAGES.PD16A_AVI_2_VOLTAGE", units: "V" }
+  car.indicator_switch_volts: { from: "can0:haltech2.PD16A_AVI_VOLTAGES.PD16A_AVI_3_VOLTAGE", units: "V" }
+  car.fuel_level_volts: { from: "can0:haltech2.PD16A_AVI_VOLTAGES.PD16A_AVI_4_VOLTAGE", units: "V" }
+
+  #Sync pulsed inputs
+  car.surge_tank_switch: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_1_VOLTAGE", type: int }
+  car.clutch_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_3_VOLTAGE", type: int }
+  car.brake_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_4_VOLTAGE", type: int }
+
+  #Half Bridge Outputs
+  car.power_steering_pump_1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_1_CURRENT", units: "A" }
+  car.power_steering_pump_2_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_2_CURRENT", units: "A" }
+  
+  # High Current Outputs
+  car.starter_relay_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_1_CURRENT", units: "A" }
+  car.wideband1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_2_CURRENT", units: "A" }
+  car.head_light_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_3_CURRENT", units: "A" }
+  car.brake_light_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_4_CURRENT", units: "A" }
+  car.wiper_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_5_CURRENT", units: "A" }
+  car.inj_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_6_CURRENT", units: "A" }
+  car.crank_cam_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_7_CURRENT", units: "A" }
+  car.lift_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_8_CURRENT", units: "A" }
+  car.heater_fan_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_9_CURRENT", units: "A" }
+  car.oil_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_10_CURRENT", units: "A" }
+  car.thermo_fan_2_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HC25_1_CURRENT", units: "A" }
+  car.thermo_fan_1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HC25_2_CURRENT", units: "A" }
+  car.ign_coils_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HC25_3_CURRENT", units: "A" }
+  car.fuel_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HC25_4_CURRENT", units: "A" }
   # The removed AVI/SPI voltage channels (avi1_v..avi4_v, spi3_v, spi4_v) each
   # carried an rbe policy -- {deadband: 0.05, max_interval: 5s} -- to keep the
   # link quiet on these ~100 Hz analog inputs while still guaranteeing a
@@ -161,21 +187,21 @@ channels:
   # (tuned to the mapped signal) once you map one of these.
 
   # ---- PDM/keypad: 15-button CAN keypad, CANopen node 12 (device: haltech2) ----
-  car.keypad_button_1: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_1", type: int }
-  car.keypad_button_2: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_2", type: int }
-  car.keypad_button_3: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_3", type: int }
-  car.keypad_button_4: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_4", type: int }
+  car.wiper_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_1", type: int }
+  car.head_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_2", type: int }
+  car.oil_pump_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_3", type: int }
+  car.boost_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_4", type: int }
   car.keypad_button_5: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_5", type: int }
-  car.keypad_button_6: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_6", type: int }
-  car.keypad_button_7: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_7", type: int }
-  car.keypad_button_8: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_8", type: int }
-  car.keypad_button_9: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_9", type: int }
-  car.keypad_button_10: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_10", type: int }
-  car.keypad_button_11: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_11", type: int }
-  car.keypad_button_12: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_12", type: int }
-  car.keypad_button_13: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_13", type: int }
-  car.keypad_button_14: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_14", type: int }
-  car.keypad_button_15: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_15", type: int }
+  car.park_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_6", type: int }
+  car.pit_speed_limit_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_7", type: int }
+  car.thermo_fan_1_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_8", type: int }
+  car.hazard_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_9", type: int }
+  car.rotational_idle_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_10", type: int }
+  car.start_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_11", type: int }
+  car.heater_fan_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_12", type: int }
+  car.thermo_fan_2_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_13", type: int }
+  car.engine_protection_ack_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_14", type: int }
+  car.lift_pump_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_15", type: int }
   car.keypad_nmt_state: { from: "can0:haltech2.KEYPAD_HEARTBEAT.KEYPAD_NMT_STATE", type: int }
 
   # ---- GNSS: UM980 receiver (serial0: UM980, decoder nmea, sentence RMC) ----

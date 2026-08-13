@@ -13,7 +13,7 @@ from pathlib import Path
 
 import nats
 import pytest
-from conftest import EXAMPLE_PROFILE
+from conftest import EXAMPLE_PROFILE, TIGHT_STORE_BYTES
 from nats.js import api
 
 from agent.pipeline import Pipeline, TickBatch
@@ -231,5 +231,38 @@ def test_session_last_value_semantics_and_rtcm_forwarding(nats_url, catalog):
         _wait_until(lambda: late_sessions, message="last-value session on restart")
         assert json.loads(late_sessions[-1]) == {"session_id": "s-2", "driver": "Bob"}
         assert len(late_sessions) == 1
+    finally:
+        restarted.stop()
+
+
+def test_reprovisioning_survives_a_store_too_tight_to_reserve_twice(tight_store_nats_url, catalog):
+    """A restart must not ask for a second reservation of TELE's max_bytes.
+
+    nats-server costs `add_stream` of an existing stream as a *new* claim on
+    its `max_bytes`, and checks that before it notices the name is already
+    taken. On a server whose `max_file_store` is under twice the stream's cap
+    -- which `deploy/nats/vehicle.conf` is, at 12 GB against a default 8 GiB
+    TELE -- every start after the first is answered 10047 "insufficient
+    storage resources". That is a 500, not the BadRequestError the converge
+    path catches, so it used to escape and leave the publisher reconnecting
+    forever against a JetStream that had been fine all along.
+
+    `registry_publishes` is the assertion because the registry goes out
+    immediately after provisioning: counting it proves `_ensure_streams`
+    returned rather than raising.
+    """
+    tele_max_bytes = (TIGHT_STORE_BYTES * 2) // 3  # too big to reserve twice
+
+    first = _publisher(tight_store_nats_url, catalog, tele_max_bytes=tele_max_bytes)
+    first.start()
+    try:
+        _wait_until(lambda: first.registry_publishes >= 1, message="first provisioning")
+    finally:
+        first.stop()
+
+    restarted = _publisher(tight_store_nats_url, catalog, tele_max_bytes=tele_max_bytes)
+    restarted.start()
+    try:
+        _wait_until(lambda: restarted.registry_publishes >= 1, message="reprovisioning")
     finally:
         restarted.stop()

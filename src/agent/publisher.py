@@ -313,9 +313,26 @@ class JetStreamPublisher:
         )
         for config in (tele, cmd):
             try:
-                await js.add_stream(config)
-            except nats.js.errors.BadRequestError:
-                # Exists with a different configuration: converge it.
+                await js.stream_info(config.name)
+            except nats.js.errors.NotFoundError:
+                try:
+                    await js.add_stream(config)
+                except nats.js.errors.BadRequestError:
+                    # Raced with another agent start between the two calls.
+                    await js.update_stream(config)
+            else:
+                # Look before adding, rather than adding and converging on the
+                # error. nats-server costs an `add` of a stream that already
+                # exists as a *new* reservation of its max_bytes, checked
+                # before it deduplicates by name -- so re-adding TELE asks for
+                # a second `tele_max_bytes` on top of the one it already
+                # holds, and any server whose max_file_store is under twice
+                # that answers 10047 "insufficient storage resources". That is
+                # a 500, not a BadRequestError, so it escaped the converge
+                # path below and failed every start after the first (the store
+                # survives the agent; the reservation with it). An `update` is
+                # costed as a delta against the existing reservation, so it
+                # stays free no matter how tight the headroom.
                 await js.update_stream(config)
 
     async def _publish_registry(self, js: JetStreamContext) -> None:

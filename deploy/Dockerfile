@@ -57,6 +57,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+RUN install -d -o openlaps -g openlaps /var/lib/openlaps/agent /data
+
 USER openlaps
 
 # No default command: every compose service names its own entry point.

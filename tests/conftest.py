@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +29,10 @@ _NATS_IMAGE = "nats:2.12-alpine"
 _TIMESCALE_IMAGE = "timescale/timescaledb:latest-pg17"
 _MOSQUITTO_IMAGE = "eclipse-mosquitto:2"
 _LAP_POINT_ORDER = ("StartFinish", "Sector1", "Sector2")
+
+# Size of the `tight_store_nats_url` file store. A stream asking for more than
+# half of it cannot be reserved twice over.
+TIGHT_STORE_BYTES = 64 * 1024 * 1024
 
 
 def crossing_pair(line, offset_m: float = 20.0) -> tuple[tuple[float, float], tuple[float, float]]:
@@ -116,9 +121,9 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-@pytest.fixture
-def nats_url():
-    """A fresh throwaway JetStream-enabled nats-server in docker (skip-less-able)."""
+@contextmanager
+def _nats_server(*docker_args: str, server_args: tuple[str, ...] = ("-js",)):
+    """A fresh throwaway nats-server in docker, yielding its client URL."""
     if shutil.which("docker") is None:
         pytest.skip("docker not available")
     port = _free_port()
@@ -133,8 +138,9 @@ def nats_url():
             name,
             "-p",
             f"127.0.0.1:{port}:4222",
+            *docker_args,
             _NATS_IMAGE,
-            "-js",
+            *server_args,
         ],
         capture_output=True,
         text=True,
@@ -159,6 +165,28 @@ def nats_url():
         yield f"nats://127.0.0.1:{port}"
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+
+
+@pytest.fixture
+def nats_url():
+    """A fresh throwaway JetStream-enabled nats-server in docker (skip-less-able)."""
+    with _nats_server() as url:
+        yield url
+
+
+@pytest.fixture
+def tight_store_nats_url():
+    """A JetStream whose file store is capped at ``TIGHT_STORE_BYTES``.
+
+    Left unconfigured, ``max_file_store`` is sized from the free space on the
+    store's filesystem, which on any development machine is far too large to
+    exercise a stream reservation against its limit. A small tmpfs is the
+    cheapest way to get a server that has to say no.
+    """
+    with _nats_server(
+        "--tmpfs", f"/data:size={TIGHT_STORE_BYTES}", server_args=("-js", "-sd", "/data")
+    ) as url:
+        yield url
 
 
 @pytest.fixture

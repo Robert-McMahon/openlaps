@@ -130,10 +130,11 @@ def parse_command_response(line: str, *, verify_checksum: bool = False) -> Comma
     stripped but deliberately not verified. That is the predecessor's
     bench-proven behaviour: strict verification in this mode broke real
     hardware because the field is not a meaningful XOR checksum. After
-    ``CONFIG CMDFORMAT 1``, ``verify_checksum`` requires the manual's ASCII
-    command XOR: all characters between ``$`` and ``*``. Anything that is not
-    a command acknowledgement returns ``None`` so callers keep scanning the
-    interleaved NMEA stream.
+    ``CONFIG CMDFORMAT 1`` the acks do validate, and ``verify_checksum``
+    checks them over the span the receiver actually uses -- ``$`` included,
+    unlike the commands we send it (see ``_verify_checksum``). Anything that
+    is not a command acknowledgement returns ``None`` so callers keep
+    scanning the interleaved NMEA stream.
     """
     if not line.startswith("$command,"):
         return None
@@ -153,11 +154,26 @@ def parse_command_response(line: str, *, verify_checksum: bool = False) -> Comma
 
 
 def _checksummed_command(command: str) -> str:
+    # Excludes the '$', NMEA-style. Confirmed against a real UM980 in
+    # CMDFORMAT 1 on 2026-08-13: this framing is acknowledged, while a
+    # '$'-inclusive checksum, a wrong one and no checksum at all are all
+    # silently ignored -- the receiver validates what we send.
     return f"${command}*{_xor_checksum(command):02X}"
 
 
 def _verify_checksum(line: str) -> None:
-    body, separator, supplied_checksum = line[1:].rpartition("*")
+    # Includes the '$', which is *not* how the receiver wants commands
+    # checksummed. The asymmetry is real, not a transcription slip: the same
+    # bench session read back four acks, and all four XOR-validate only with
+    # the '$' in the span --
+    #     $command,CONFIG CMDFORMAT 1,response: OK*2C
+    #     $command,UNLOG,response: OK*01
+    #     $command,GPRMC 0.02,response: OK*29
+    #     $command,CONFIG,response: OK*54
+    # Verifying the NMEA span instead rejected every one of them, which is
+    # what broke startup configuration against a receiver an earlier run had
+    # already left in CMDFORMAT 1.
+    body, separator, supplied_checksum = line.rpartition("*")
     if not separator or len(supplied_checksum) != 2:
         raise ValueError("invalid UM980 acknowledgement checksum field")
     if supplied_checksum.upper() != f"{_xor_checksum(body):02X}":

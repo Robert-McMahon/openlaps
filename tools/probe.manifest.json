@@ -1,0 +1,37 @@
+{
+  "clock": {
+    "method": null,
+    "offset_ms": null,
+    "source": null
+  },
+  "consumer": "ingest-writer",
+  "csv_path": "/mnt/data/openlaps/tools/probe.csv",
+  "ended": "2026-08-12T12:52:02.394892+00:00",
+  "git_dirty": true,
+  "git_sha": "e1343336d50a4c101f477dc48451fab13665e68c",
+  "host": "radx4",
+  "interval_s": 1.0,
+  "nats_monitor": "http://127.0.0.1:8222",
+  "notes": [],
+  "profile": {},
+  "radio": {
+    "adapter": "none",
+    "config": null,
+    "host": null,
+    "iface": null,
+    "peer": null
+  },
+  "role": "vehicle",
+  "samples": 880,
+  "signal_source": null,
+  "started": "2026-08-12T12:37:22.753841+00:00",
+  "stream": "TELE",
+  "tick_ms": null,
+  "tool": "tools/link_probe.py",
+  "wire": {
+    "counter_in": "openlaps_leaf_in",
+    "counter_out": "openlaps_leaf_out",
+    "interface": null,
+    "nft_command": "sudo -n nft -j list counters"
+  }
+}

@@ -209,6 +209,11 @@ bring-up needs no vehicle and no hardware:
 uv run tools/replay.py --server nats://127.0.0.1:4222 --rate 1.0 --loop
 ```
 
+For a **measurement** bench rather than a bring-up one — the real agent
+reading real interfaces, with load injected below it at the socketCAN and
+serial boundaries — `docs/BENCH_RUNBOOK.md` is the operator document, and it
+defers to this file for everything above.
+
 `tools/lap_simulator.py` adds synthetic laps through the real timing engine.
 It labels its data with a `<track>_sim` track name, so everything it wrote
 is trivially filterable — and deletable — from the pit database afterwards.

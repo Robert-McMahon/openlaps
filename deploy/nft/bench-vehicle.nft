@@ -1,0 +1,65 @@
+# Wire counters for the vehicle end of the HaLow link (docs/plan/PHASE4.md,
+# P4.2). Counting only: every chain policies `accept` and no rule takes a
+# verdict, so loading this on a running bench cannot drop a packet.
+#
+#     sudo nft -f deploy/nft/bench-vehicle.nft
+#
+# tools/link_probe.py reads the two named counters with
+# `nft -j list counters` and records `wire_source=nft` in the row. They are
+# what makes the framing-overhead ratio (wire bytes ÷ NATS /leafz bytes)
+# measurable at all -- docs/LINK_BUDGET.md §2 estimates TCP/IP + 802.11
+# framing at 6-13% and explicitly does not model it.
+#
+# **Direction is host-relative**, matching the probe's columns:
+# `openlaps_leaf_out` is what this host transmitted, `openlaps_leaf_in` what
+# it received. On the vehicle the resolution is unambiguous because the
+# vehicle *listens* on 7422 (deploy/nats/vehicle.conf) and the pit dials in
+# (deploy/README.md): a packet with dport 7422 is arriving, a packet with
+# sport 7422 is leaving. That is true in every hook, which is why the same
+# pair of rules is repeated rather than the hook being used to infer
+# direction.
+#
+# Three hooks, because the bench may run nats either way and a packet
+# traverses exactly one of these paths, so there is no double counting:
+#   - input/output   -- nats-server on the host (deploy/systemd + a local
+#                       nats-server.service)
+#   - forward        -- nats-server in a container (deploy/vehicle-compose.yaml),
+#                       where the published port is DNATed and the traffic
+#                       is forwarded to the bridge rather than terminated
+#                       on the host
+#
+# The counters are absolute totals since load. link_probe differences them
+# and handles a reset (a reload zeroes them) as an unknown interval rather
+# than as a negative rate, so reloading mid-run costs one sample, not a run.
+#
+# Persisting this across a reboot is deliberately not done here: a bench
+# ruleset that survives a reboot invisibly is a ruleset nobody remembers
+# loading. The runbook loads it as a bring-up step.
+
+table inet openlaps_bench {
+	counter openlaps_leaf_out {
+		comment "vehicle -> pit, leafnode TCP 7422, wire bytes"
+	}
+
+	counter openlaps_leaf_in {
+		comment "pit -> vehicle, leafnode TCP 7422, wire bytes"
+	}
+
+	chain input {
+		type filter hook input priority filter; policy accept;
+		tcp dport 7422 counter name "openlaps_leaf_in"
+		tcp sport 7422 counter name "openlaps_leaf_out"
+	}
+
+	chain output {
+		type filter hook output priority filter; policy accept;
+		tcp sport 7422 counter name "openlaps_leaf_out"
+		tcp dport 7422 counter name "openlaps_leaf_in"
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy accept;
+		tcp dport 7422 counter name "openlaps_leaf_in"
+		tcp sport 7422 counter name "openlaps_leaf_out"
+	}
+}

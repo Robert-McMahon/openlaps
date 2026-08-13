@@ -35,5 +35,10 @@ profiles/*
 docs/bench/**/*.csv
 docs/bench/**/*.csv.gz
 docs/bench/**/*.log
+
+# Where docs/BENCH_RUNBOOK.md tells the operator to point link_probe's --out.
+# Raw probe CSVs and the manifests written beside them are local run data;
+# the copy that gets kept is curated into docs/bench/ afterwards.
+/runs/
 # OS
 .DS_Store

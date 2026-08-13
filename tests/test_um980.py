@@ -5,6 +5,7 @@ import pytest
 from collectors.serial.um980 import (
     UM980ConfigurationError,
     UM980Driver,
+    _checksummed_command,
     parse_command_response,
 )
 from core.config import DriverSettings
@@ -55,12 +56,12 @@ def test_configure_switches_to_checksummed_commands():
                 b"CONFIG CMDFORMAT 1\r\n",
                 [b"$command,CONFIG CMDFORMAT 1,response: OK*08\r\n"],
             ),
-            (b"$UNLOG*5F\r\n", [b"$command,UNLOG,response: OK*25\r\n"]),
+            (b"$UNLOG*5F\r\n", [b"$command,UNLOG,response: OK*01\r\n"]),
             (
                 b"$GPRMC 0.02*77\r\n",
                 [
                     b"$GNRMC,ignored while waiting for ack\r\n",
-                    b"$command,GPRMC 0.02,response: OK*0D\r\n",
+                    b"$command,GPRMC 0.02,response: OK*29\r\n",
                 ],
             ),
         ]
@@ -86,7 +87,7 @@ def test_configure_fails_immediately_on_bad_ack():
             ),
             (
                 b"$UNLOG*5F\r\n",
-                [b"$command,UNLOG,response: PARSING FAILD! NO MATCHING FUNC*1A\r\n"],
+                [b"$command,UNLOG,response: PARSING FAILD! NO MATCHING FUNC*3E\r\n"],
             ),
         ]
     )
@@ -156,12 +157,12 @@ def test_configure_retries_mode_switch_checksummed_if_receiver_is_already_in_mod
             (b"CONFIG CMDFORMAT 1\r\n", [b"$command,unparseable acknowledgement\r\n"]),
             (
                 b"$CONFIG CMDFORMAT 1*72\r\n",
-                [b"$command,CONFIG CMDFORMAT 1,response: OK*08\r\n"],
+                [b"$command,CONFIG CMDFORMAT 1,response: OK*2C\r\n"],
             ),
-            (b"$UNLOG*5F\r\n", [b"$command,UNLOG,response: OK*25\r\n"]),
+            (b"$UNLOG*5F\r\n", [b"$command,UNLOG,response: OK*01\r\n"]),
             (
                 b"$GPRMC 0.02*77\r\n",
-                [b"$command,GPRMC 0.02,response: OK*0D\r\n"],
+                [b"$command,GPRMC 0.02,response: OK*29\r\n"],
             ),
         ]
     )
@@ -201,7 +202,7 @@ def test_configure_still_fails_on_error_acks():
             ),
             (
                 b"$UNLOG*5F\r\n",
-                [b"$command,UNLOG,response: PARSING FAILD! NO MATCHING FUNC*1A\r\n"],
+                [b"$command,UNLOG,response: PARSING FAILD! NO MATCHING FUNC*3E\r\n"],
             ),
         ]
     )
@@ -220,3 +221,34 @@ def test_configure_wraps_serial_io_failures():
 
     with pytest.raises(UM980ConfigurationError, match="receiver unplugged"):
         driver.configure()
+
+
+# Captured from a real UM980 in CMDFORMAT 1 on 2026-08-13 -- the exact bytes
+# that startup configuration used to reject. Their XOR validates only with the
+# leading '$' inside the span.
+BENCH_ACKS = (
+    "$command,CONFIG CMDFORMAT 1,response: OK*2C",
+    "$command,UNLOG,response: OK*01",
+    "$command,GPRMC 0.02,response: OK*29",
+    "$command,CONFIG,response: OK*54",
+)
+
+
+@pytest.mark.parametrize("ack", BENCH_ACKS)
+def test_checksummed_mode_accepts_the_acks_real_hardware_sends(ack: str):
+    result = parse_command_response(ack, verify_checksum=True)
+
+    assert result is not None and result.ok
+
+
+def test_commands_are_checksummed_over_the_nmea_span():
+    """The two directions disagree, and the hardware settles both.
+
+    The same bench session that produced ``BENCH_ACKS`` established that the
+    receiver acknowledges this framing and silently ignores a '$'-inclusive
+    checksum, a wrong one, and no checksum at all. Widening this span to match
+    the ack span would leave the agent unable to configure the receiver at
+    all, with no error to read -- just silence and a timeout.
+    """
+    assert _checksummed_command("CONFIG CMDFORMAT 1") == "$CONFIG CMDFORMAT 1*72"
+    assert _checksummed_command("UNLOG") == "$UNLOG*5F"

@@ -79,8 +79,8 @@ def test_run_configures_receiver_before_reading_sentences():
     port = FakeSerial(
         [
             b"$command,CONFIG CMDFORMAT 1,response: OK*08\r\n",
-            b"$command,UNLOG,response: OK*25\r\n",
-            b"$command,GPRMC 0.02,response: OK*0D\r\n",
+            b"$command,UNLOG,response: OK*01\r\n",
+            b"$command,GPRMC 0.02,response: OK*29\r\n",
             RMC,
         ],
         stop,
@@ -144,8 +144,8 @@ def test_configuration_io_failure_closes_and_reconnects():
             port = FakeSerial(
                 [
                     b"$command,CONFIG CMDFORMAT 1,response: OK*08\r\n",
-                    b"$command,UNLOG,response: OK*25\r\n",
-                    b"$command,GPRMC 0.02,response: OK*0D\r\n",
+                    b"$command,UNLOG,response: OK*01\r\n",
+                    b"$command,GPRMC 0.02,response: OK*29\r\n",
                     RMC,
                 ],
                 stop,

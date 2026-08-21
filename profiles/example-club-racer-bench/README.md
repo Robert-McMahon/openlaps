@@ -115,10 +115,10 @@ modelled 4,087 samples/s, and **the two do not agree**:
 
 | Class | Predicted here | §2 modelled | Delta |
 | --- | ---: | ---: | ---: |
-| CAN (ECU + PD16A + WB1) | 1,397.0/s | 2,787.2/s | −49.9% |
+| CAN (ECU + PD16A + WB1) | 2,034.6/s | 2,787.2/s | −27.0% |
 | IMU | 752.5/s | 1,000.0/s | −24.8% |
 | GPS | 250.0/s | 300.0/s | −16.7% |
-| **Total** | **2,399.5/s** | **4,087.2/s** | **−41.3%** |
+| **Total** | **3,037.0/s** | **4,087.2/s** | **−25.7%** |
 
 That gap is not a bench fault and no wiring change closes it. §2 counts
 every signal in each DBC-known CAN message where the catalog maps a subset

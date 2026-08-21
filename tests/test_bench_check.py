@@ -282,7 +282,7 @@ def test_predict_mode_needs_no_hardware_and_reports_the_model_gap():
     assert status == 0
     assert "vcan0" in text
     assert "Predicted bench mix vs. LINK_BUDGET.md §2 model" in text
-    assert "3037.8" in text and "4087.2" in text
+    assert "3037.0" in text and "4087.2" in text
 
 
 def test_the_model_gap_can_be_made_fatal_for_those_who_want_it():

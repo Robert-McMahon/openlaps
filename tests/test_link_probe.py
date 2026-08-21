@@ -15,6 +15,8 @@ No live hardware, no docker: every test here runs in CI.
 from __future__ import annotations
 
 import json
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -313,6 +315,31 @@ def test_radio_adapter_records_a_reason_when_ssh_fails():
     row, reason = adapter.sample()
     assert row == {}
     assert "iw:" in reason and "ubus:" in reason
+
+
+def test_ubus_json_survives_the_remote_shell(monkeypatch):
+    """ssh hands everything after the host to the *remote* shell.
+
+    Passed as loose argv, `{"device":"wlan0"}` reaches the router with its
+    quotes eaten and ubus fails with "Parsing message data" -- which is what
+    happened the first time this adapter was pointed at a real router. The
+    remote command must therefore be one shell-quoted string.
+    """
+    seen: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        seen.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout='{"results": []}', stderr="")
+
+    monkeypatch.setattr(link_probe.subprocess, "run", fake_run)
+    adapter = link_probe.RadioAdapter(adapter="ubus", host="halow-vehicle", iface="wlan0")
+    adapter.sample()
+
+    assert seen, "the adapter never shelled out"
+    remote = seen[-1][-1]
+    assert remote.count('"device"') == 1
+    # What the remote shell would be left with after its own quote removal.
+    assert shlex.split(remote)[-1] == '{"device":"wlan0"}'
 
 
 def test_radio_row_with_no_stations_is_reachable_but_unassociated():

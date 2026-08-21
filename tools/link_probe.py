@@ -68,6 +68,7 @@ import json
 import math
 import os
 import re
+import shlex
 import signal
 import socket
 import subprocess
@@ -645,7 +646,11 @@ class RadioAdapter:
             "-o",
             f"ConnectTimeout={int(max(1, self.timeout_s))}",
             self.host,
-            *remote,
+            # One shell-quoted string, not loose argv. ssh joins whatever
+            # follows the host with spaces and hands the result to the *remote*
+            # shell, which would otherwise eat the quotes in ubus's JSON
+            # argument and leave it parsing `{device:wlan1}`.
+            shlex.join(remote),
         ]
         completed = subprocess.run(  # noqa: S603
             command, capture_output=True, text=True, timeout=self.timeout_s + 2.0

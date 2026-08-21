@@ -329,9 +329,19 @@ class _SessionHandler(BaseHTTPRequestHandler):
         self._send(405, {"error": "cross-origin requests are not allowed"})
 
     def do_GET(self) -> None:  # noqa: N802
+        path = self.path.split("?", maxsplit=1)[0]
+        # /health is deliberately outside the bearer-token gate, matching the
+        # other three pit services. A container has to bind 0.0.0.0, which
+        # makes the API key mandatory (see SessionControlSettings.from_env),
+        # and deploy/pit-compose.yaml's healthcheck curls this endpoint with
+        # no credentials -- so gating it meant the container was reported
+        # unhealthy forever while the service itself was fine. The payload is
+        # liveness counters only: no session, roster or credential data.
+        if path == "/health":
+            self._send(200, _health_payload(self.database, self.publisher))
+            return
         if not self._authorized():
             return
-        path = self.path.split("?", maxsplit=1)[0]
         if path == "/session":
             future = asyncio.run_coroutine_threadsafe(self.controller.current(), self.loop)
             try:
@@ -341,8 +351,6 @@ class _SessionHandler(BaseHTTPRequestHandler):
                 self._send(503, {"error": "service busy"})
         elif path == "/roster":
             self._send(200, load_roster(self.roster_path))
-        elif path == "/health":
-            self._send(200, _health_payload(self.database, self.publisher))
         else:
             self._send(404, {"error": "not found"})
 

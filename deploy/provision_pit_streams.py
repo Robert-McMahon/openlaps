@@ -2,11 +2,11 @@
 """Create (or converge) the pit's sourced ``TELE_VEHICLE`` stream.
 
 Run once per pit bring-up, after both nats-servers are up and the leafnode
-is connected. Idempotent: it mirrors the
-``add_stream``-then-``update_stream``-on-``BadRequestError`` convergence
-pattern ``src/agent/publisher.py::_ensure_streams`` already uses for TELE
-and CMD, so re-running it after an edit is the normal way to change the
-stream's limits.
+is connected. Idempotent: it looks the stream up and either creates it or
+converges it onto the desired config -- the same end state
+``src/agent/publisher.py::_ensure_streams`` reaches for TELE and CMD, so
+re-running it after an edit is the normal way to change the stream's
+limits. See ``ensure_pit_stream`` for why the lookup comes first.
 
 Two properties of the resulting stream are load-bearing, and both are
 measurements rather than preferences:
@@ -41,7 +41,7 @@ import sys
 
 import nats
 from nats.js import JetStreamContext, api
-from nats.js.errors import BadRequestError
+from nats.js.errors import BadRequestError, NotFoundError
 
 logger = logging.getLogger("provision-pit-streams")
 
@@ -94,16 +94,34 @@ async def ensure_pit_stream(
 ) -> api.StreamInfo:
     """Create the stream, or converge an existing one onto ``config``."""
     config = pit_stream_config() if config is None else config
+    # Look before adding, rather than adding and converging on the error --
+    # the same ordering, for the same reason, as
+    # `src/agent/publisher.py::_ensure_streams`. nats-server costs an `add`
+    # of a stream that already exists as a *new* reservation of its
+    # max_bytes, checked before it deduplicates by name, so re-adding
+    # TELE_VEHICLE asks for a second 32 GiB on top of the one it already
+    # holds and the 40 GiB `max_file_store` in deploy/nats/pit.conf answers
+    # 10047 "insufficient storage resources". That is a 500, not the
+    # BadRequestError the converge path catches, so it escaped and failed
+    # every bring-up after the first (the store outlives the container, and
+    # the reservation with it). An `update` is costed as a delta against the
+    # existing reservation, so it stays free no matter how tight the
+    # headroom.
     try:
-        info = await js.add_stream(config)
-        logger.info("created stream %s sourcing %s", config.name, config.sources[0].name)
-        return info
-    except BadRequestError:
-        # Exists with a different configuration: converge it, exactly as the
-        # agent does for TELE/CMD.
+        await js.stream_info(config.name)
+    except NotFoundError:
+        try:
+            info = await js.add_stream(config)
+        except BadRequestError:
+            # Raced with another provisioner between the two calls.
+            info = await js.update_stream(config)
+        else:
+            logger.info("created stream %s sourcing %s", config.name, config.sources[0].name)
+            return info
+    else:
         info = await js.update_stream(config)
-        logger.info("converged existing stream %s", config.name)
-        return info
+    logger.info("converged existing stream %s", config.name)
+    return info
 
 
 async def run(args: argparse.Namespace) -> int:

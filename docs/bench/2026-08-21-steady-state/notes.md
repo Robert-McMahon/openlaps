@@ -72,3 +72,65 @@ starting. `pit_offset_s` for this run is −0.094 s.
   Correct `OPENLAPS_LIVE_STREAM` and `OPENLAPS_VEHICLE_ID`, health endpoint
   responding, no errors in its log, and no consumer on `TELE_VEHICLE` at all.
   The MQTT branch of the pit is untested by both runs.
+
+---
+
+# Operator notes — the 10 ms run
+
+## The pit probe never started
+
+Its `--note` was passed inline through `ssh … sh -c '…'` and contained the
+string `Docker Desktop's VM`. The apostrophe terminated the single-quoted
+block and the remote shell reported:
+
+```
+VM,: 1: Syntax error: Unterminated quoted string
+```
+
+So the 10 ms run has no pit CSV, no merge, and no pit-side time series —
+no `ingest_lag_ms` distribution, no `pit_offset_s`, no per-second
+live-decoder rate. The vehicle probe was unaffected and wrote its manifest.
+The run was accepted rather than repeated: both of P4.3's 10 ms deliverables
+(offered load, framing overhead) are vehicle-side, and the pit's own counters
+evidence its health even without the series. Pass the note through a file
+rather than inline next time; no shell quoting, no failure mode.
+
+## What was fixed before this run
+
+- **`nft` counters.** The grant now exists on both hosts and the vehicle's
+  ruleset is loaded, so the vehicle probe recorded `wire_source: nft` with an
+  empty `reasons` field for all 2101 samples. This is what makes §2's framing
+  measurement possible.
+- **The pit cannot use them at all, and this is structural.** Its counters
+  read exactly 0 over 30 s while the leafnode was passing traffic, because
+  the pit stack runs in **Docker Desktop's VM**, not the WSL distro we ssh
+  into: `docker info` reports `Name: docker-desktop`, and `192.168.12.118` is
+  the Windows host's address while the distro is `172.29.140.9` behind a NAT,
+  with `docker0` and the `br-*` bridges both DOWN. Loading `bench-pit.nft`
+  there counts a link that is not present. It also retro-explains the 20 ms
+  run's `pit_fwd_wire_kbit_s` of 0.9 kbit/s while 521 kbit/s crossed — the
+  `/proc/net/dev` fallback was reading the wrong path entirely, not merely a
+  coarser one. The pit probe now passes `--nft-command ""` explicitly so this
+  is a stated choice rather than a silent fallback.
+- **live-decoder.** Fixed between the two runs; it published at ~100/s
+  throughout the 10 ms run with no drops.
+
+## A false alarm worth recording
+
+The agent came up reporting 163 channels at `registry_seq 4` while the pit's
+`channel_map` held a generation with 161, which would have made the tick
+comparison meaningless. It resolved as P4.8's change — `sys.agent.clock_*`
+retired, four `host:clock_*` added — in a generation that **predates both
+runs**. Old generations accumulate in `channel_map` because §8 step 4
+deliberately leaves `channel_registry` alone. The t20 manifest's
+`registry_hash` is byte-identical to the state file's `catalog_hash` at seq 4,
+which is what confirms both runs share a generation.
+
+Reading a channel count out of `channel_map` without checking which
+generation belongs to your run is a trap; it nearly cost a good run.
+
+## Unchanged from the 20 ms run
+
+No radio in the path. No GNSS fix, so no GNSS traceability — the UM980 still
+reports RMC status `V` with one satellite at 22 dB-Hz, suspected antenna.
+Inter-host clock offset 51.9 ms.

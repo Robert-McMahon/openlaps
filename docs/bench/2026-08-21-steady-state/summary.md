@@ -1,108 +1,118 @@
-# P4.3 steady state — 2026-08-21, tick 20 ms
+# P4.3 steady state — 2026-08-21
 
-One 35-minute run at `OPENLAPS_TICK_MS=20`, on the bench profile with
-replayed CAN and synthetic GPS. **This is half of P4.3**: the brief calls for
-a run at 20 ms and one at 10 ms, and the 10 ms series has not been run.
+Two 35-minute runs on the bench profile with replayed CAN and synthetic GPS:
+one at `OPENLAPS_TICK_MS=20`, one at `10`, as the brief requires. Both ran
+registry generation 4 (163 channels, catalog `3abb3d5a…`), so they are
+directly comparable.
 
-Provenance: `t20-vehicle.manifest.json`, `t20-pit.manifest.json`. Both record
-`git_sha a5ffb85` with `git_dirty: true` — an untracked `tools/rp2040_bootloader.sh`
-was in the tree; no tracked file differed. Catalog `3abb3d5a…`, profile
-`profiles/example-club-racer-bench`, 2101 samples per side, 2101 merged rows
-with zero unmatched.
+Provenance: `t20-vehicle.manifest.json`, `t20-pit.manifest.json`,
+`t10-vehicle.manifest.json`. **There is no `t10-pit.manifest.json`** — the pit
+probe failed to start for the 10 ms run (see `notes.md`), so that run is
+vehicle-side only. Both headline results below are vehicle-side measurements
+and are unaffected.
 
-## Offered load at the NATS layer
+## Offered load, and the tick lever
 
-`LINK_BUDGET.md` §3 models **544.4 kbit/s** at 20 ms.
+`LINK_BUDGET.md` §3 models 544.4 kbit/s at 20 ms and 552.8 at 10 ms.
 
-| window | samples | mean | p50 | vs modelled |
+| run | load-window mean | p50 | n | vs modelled |
 | --- | ---: | ---: | ---: | ---: |
-| all samples | 2100 | 507.6 kbit/s | 529.6 | **−6.8%** |
-| load only (>100 kbit/s) | 2015 | **529.0 kbit/s** | 529.7 | **−2.8%** |
+| tick 20 ms | 529.0 kbit/s | 529.7 | 2015 | **−2.8%** |
+| tick 10 ms | 570.2 kbit/s | 570.9 | 2015 | **+3.1%** |
 
-**Quote −2.8%.** The all-sample mean is diluted by the baseline periods §9
-mandates — the probe starts 15 s before the load and runs 60 s after it stops,
-and those 85 near-zero samples pull the mean down without saying anything
-about steady state. The median over all samples (529.6) agrees with the
-load-window mean (529.0) to within 0.7 kbit/s, so either is a sound estimator;
-the arithmetic mean over the full CSV is not.
+Both figures are means over the load window — samples above 100 kbit/s —
+not over the whole CSV. §9 requires the probes to bracket the load, so each
+CSV carries ~85 near-zero baseline samples that dilute the arithmetic mean
+without describing steady state (they pull t20 to 507.6 and t10 to 547.1).
+The load-window mean and the all-sample median agree to within 1 kbit/s in
+both runs. **`link_probe --summary` prints only the diluted figure**; cite the
+table above.
 
-`tools/link_probe.py --summary` prints only the diluted figure. Worth either
-teaching it the load window or noting in the runbook that the median is the
-number to cite.
+The comparison §7 asked for:
 
-The model is confirmed to within 3% at 20 ms. §7's claim that tick length is
-a weak lever cannot be tested until the 10 ms run exists.
+```
+modelled  20 -> 10 ms:  544.4 -> 552.8  =  +1.5%
+measured  20 -> 10 ms:  529.0 -> 570.2  =  +7.8%
+```
+
+**§7's "tick is a weak lever" survives, but the model understates the
+sensitivity by about fivefold.** Halving the tick cost 7.8% more offered load
+where §3 predicts 1.5%. The mechanism is visible in the message rate:
+forward messages went 147.2/s to 191.8/s rather than doubling, because GPS is
+source-limited at 50 Hz and cannot fill the extra ticks. The additional bytes
+are therefore mostly per-batch overhead — protobuf and NATS headers on
+smaller batches — which §3 appears to under-count. Tick remains a weak lever
+in absolute terms (under 8% across a 2× change) and this is now measured
+rather than asserted.
+
+## Framing overhead — §2's first measurement
+
+Vehicle-side `nft` counters on `:7422` (`openlaps_leaf_out` / `_in`), 10 ms
+run, load window, n=2015:
+
+```
+framing_overhead   mean 1.082   p50 1.082   ->  8.2% over NATS bytes
+§2 estimated 6–13% unmodelled TCP/IP + 802.11 framing
+```
+
+**The estimate holds**, landing mid-range. This is the first time §2's figure
+has met a measurement.
+
+The reverse direction behaves differently and should not be described by the
+same ratio: `rev_wire` 40.4 kbit/s against `rev_nats` 16.5, roughly 2.4×,
+because that path is mostly small acknowledgement packets where header
+overhead dominates payload.
+
+Not measured at 20 ms: that run predates the `nft` grant and fell back to
+`/proc/net/dev`, so §2 currently has data at 10 ms only.
 
 ## The reverse channel
 
 §8's third caveat, reported first-class:
 
-| series | mean | p50 | p95 | max |
-| --- | ---: | ---: | ---: | ---: |
-| `rev_nats_kbit_s` | 16.6 | 16.8 | 22.4 | 44.0 |
-| reverse ÷ forward | 0.031 | 0.032 | 0.042 | 0.083 |
-| ntrip bytes/s | 2159.7 | 2098.3 | 3045.8 | 5326.6 |
+| run | rev kbit/s (p50) | reverse ÷ forward | ntrip bytes/s (mean) |
+| --- | ---: | ---: | ---: |
+| tick 20 ms | 16.8 | 3.1% | 2159.7 |
+| tick 10 ms | 16.6 | 2.9% | — (pit probe absent) |
 
-The reverse direction runs at **~3.1% of forward** and is dominated by RTCM
-carried pit→vehicle, not by protocol acknowledgement. That is consistent with
-§8's claim that the sourcing/ack pattern is structurally different from the
-predecessor's per-message QoS-1 PUBACKs, whose reverse traffic scaled with
-forward message count. Here forward message rate is ~150/s while the reverse
-is a near-constant correction stream. An explicit numeric comparison against
-the predecessor baseline is still owed.
+The reverse rate is **flat across a 2× change in forward tick**, which is the
+sharpest evidence yet for §8's claim that the sourcing/ack pattern is
+"structurally different, not just smaller" than the predecessor's per-message
+QoS-1 PUBACKs — those scaled with forward message count, and this does not.
+It is dominated by RTCM carried pit→vehicle, not by protocol acknowledgement.
+An explicit numeric comparison against the predecessor baseline is still owed.
 
 ## Ingest and pipeline health
+
+Tick 20 (full probe coverage):
 
 | series | mean | p50 | p95 | max |
 | --- | ---: | ---: | ---: | ---: |
 | `ingest_rows_per_s` | 2965.3 | 3118.5 | 3174.8 | 4806.9 |
 | `ingest_lag_ms` | 19.6 | 21.1 | 28.1 | 50.5 |
-| `ingest_wall_lag_ms` | −28.3 | −28.4 | −22.3 | −1.2 |
-| `flushes_per_s` | 4.74 | 4.99 | 5.00 | 6.00 |
 | `consumer_num_pending` | 0.33 | 0.00 | 3.00 | 42.00 |
 
-**6,228,235 samples, 18 laps, 54 sectors** written. Zero on every error
-counter for the whole run: `unknown_seq_batches`, `bad_version_batches`,
-`dropped_flushes`, `samples_dropped`, `db_errors`, `num_redelivered`,
-`slow_consumers`. `consumer_num_pending` at p50 0 means the pit tracked live
-throughout rather than draining a backlog.
+Tick 10 (counters only, no time series): **6,227,153 rows, 18 laps, 54
+sectors**, against tick 20's 6,228,235 / 18 / 54. Zero on `unknown_seq_batches`,
+`samples_dropped`, `dropped_flushes` and `db_errors` in both runs.
 
-Measured ingest at p50 3118.5 rows/s against the predicted mix of 3037.8
-samples/s is **+2.7%** — the bench delivered slightly more than
-`bench_check --predict` expects, well inside the loop-seam noise of a
-replayed fixture.
+live-decoder published at ~100/s throughout the 10 ms run with zero
+`mqtt_drops` and zero `aggregate_sheds`. It published **nothing** during the
+20 ms run — it was broken then and fixed between the two — so the MQTT branch
+of the pit is exercised at 10 ms only.
 
-## What this run does not answer
+## What P4.3 still does not answer
 
-Four of P4.3's six required outputs are still open, three of them for reasons
-outside the run:
-
-- **Wire bytes on `:7422`, both directions**, against §2's 6–13% framing
-  estimate. `nft` counters are unavailable — `sudo -n nft` is refused for the
-  operator's user on both hosts, so `wire_source` is `procnetdev` and the
-  counters are whole-interface totals that cannot be attributed to the
-  leafnode port. The framing estimate still has not met a measurement.
 - **Airtime efficiency** (`wire goodput ÷ PHY rate`), replacing §5's assumed
   0.5. Not measurable: no radio in the path. The vehicle reaches the pit over
-  wired `enp2s0`, and the pit reaches back through a NAT on `eth0`.
-- **Absolute source-to-row latency** against the under-500 ms target. Needs
-  P4.8's GNSS discipline, which was not in effect: the UM980 held no fix
+  wired `enp2s0`; the pit reaches back through Docker Desktop's NAT.
+- **Absolute source-to-row latency** against the under-500 ms target. P4.8's
+  chain is installed and working, but the UM980 held no fix in either run
   (RMC status `V`, one satellite at 22 dB-Hz), so the fix-gated PPS was silent
-  and chrony ran on holdover plus NTP. Measured inter-host offset was
-  **51.9 ms ±11.2**, which is far too coarse for a 500 ms target to be
-  asserted honestly. `ingest_wall_lag_ms` (−28.3 mean) is a proxy for the
-  writer's own lag only, and carries that offset inside it.
-- **Signal-mix ground truth** from `v_samples_named` over the full run,
-  against the 5.3 s fixture's assumed mix. The data exists — 6.2 M rows are
-  in TimescaleDB — and this analysis has not yet been done.
-
-## Also observed
-
-- **live-decoder published nothing for the entire run** (`publish_rate 0.0`,
-  `registries 0`, no consumer on `TELE_VEHICLE`, no errors logged), as it did
-  in the discarded run before it. Its configuration is correct. The MQTT
-  branch of the pit is therefore untested by both runs. Under investigation.
-- **`sourcing_backlog` reads ~4,520,452 and means nothing.** It is the gap
-  between the two streams' sequence origins (5,304,449 − 784,003) after each
-  was purged independently, and it is constant across the run. Anyone reading
-  the summary cold will see it as a catastrophic backlog.
+  and the hosts sat 51.9 ms apart. `ingest_lag_ms` above is the writer's own
+  lag, not source-to-row.
+- **Signal-mix ground truth** from `v_samples_named` against the 5.3 s
+  fixture's assumed mix. The rows exist; the analysis has not been done.
+- **Wire bytes at 20 ms**, and any pit-side wire figure at all — the pit's
+  stack runs inside Docker Desktop's VM, so its leafnode bytes never cross the
+  netfilter hooks of the host we can instrument.

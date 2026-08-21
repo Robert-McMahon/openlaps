@@ -1,0 +1,39 @@
+{
+  "clock": {
+    "method": "chrony selects radx4.lan; WSL2 host clock overrides - measured 51.9 ms from the vehicle",
+    "offset_ms": null,
+    "source": "system"
+  },
+  "consumer": "ingest-writer",
+  "csv_path": "/home/rmc/openlaps/runs/2026-08-21-steady-t20-pit.csv",
+  "ended": "2026-08-21T08:22:56.899502+00:00",
+  "git_dirty": true,
+  "git_sha": "f5aa02d6ed5b7a95508a7f42073ac5f507e2c2bd",
+  "host": "SS2",
+  "interval_s": 1.0,
+  "nats_monitor": "http://127.0.0.1:8222",
+  "notes": [
+    "P4.3 steady state, tick 20 ms. Probes phase-aligned to a common epoch. No radio in path (vehicle enp2s0 wired; pit reaches it via NAT on eth0). nft unavailable on both hosts (sudo denied), wire_source=procnetdev. Clock: NOT GNSS-traceable for this run -- vehicle chrony has the GPS refclock configured and the RP2040 timing head feeding it, but the UM980 reports fix void (RMC status V) so the fix-gated PPS is silent and the last GPS sample is stale; vehicle is on GPS holdover with NTP fallback. Pit chrony selects radx4.lan but WSL2 host clock overrides it. Measured inter-host offset 51.9 ms +/-9.0."
+  ],
+  "profile": {},
+  "radio": {
+    "adapter": "none",
+    "config": null,
+    "host": null,
+    "iface": null,
+    "peer": null
+  },
+  "role": "pit",
+  "samples": 2101,
+  "signal_source": null,
+  "started": "2026-08-21T07:47:57.114598+00:00",
+  "stream": "TELE_VEHICLE",
+  "tick_ms": null,
+  "tool": "tools/link_probe.py",
+  "wire": {
+    "counter_in": "openlaps_leaf_in",
+    "counter_out": "openlaps_leaf_out",
+    "interface": "eth0",
+    "nft_command": ""
+  }
+}

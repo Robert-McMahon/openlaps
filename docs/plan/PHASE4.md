@@ -793,9 +793,25 @@ down what the bench cannot prove.
 
 ## After Phase 4
 
-Phase 5 is Grafana plus cutover, and its briefs get written once this phase
-reports — the same discipline every phase here has applied to the next. The
-shape is known:
+**Phase 5 is now briefed in `docs/plan/PHASE5.md`.** Its scope narrowed
+during the writing, in three ways this section did not anticipate:
+
+- **There is no dashboard parity obligation.** The owner's judgement is
+  that the legacy set was a mess, and that porting a mess produces a mess
+  with new syntax. The eight dashboards became reference material rather
+  than a specification, and ADR 0003's "must be rewritten against SQL"
+  consequence is superseded by a dated amendment.
+- **Phase 5 ships one dashboard**, the car-and-engine view, designed
+  against this stack's channels rather than translated. Lap analysis,
+  sector analysis, pit-stop analysis and a live timing wall are deferred
+  until the first one has been used in a real session.
+- **Session management leaves Grafana** for a small static operator UI
+  served by session-control itself, and **the rollback requirement is
+  dropped** — cutover is not gated on a verified rollback, and ADR 0001
+  gets an amendment saying what carries the risk instead.
+
+The shape anticipated here was otherwise right, and is recorded below as
+written:
 
 - **Grafana.** Datasource provisioning against Timescale and the
   eight-dashboard SQL rewrite (ADR 0003: "all existing Grafana dashboards

@@ -171,6 +171,15 @@ GPS, also without a step. The host collector publishes that state as
 
 ### 2. Pit
 
+Install the pit clock configuration before starting the application stack:
+
+```bash
+sudo apt-get install chrony
+sudo install -m 0644 deploy/chrony/pit.conf /etc/chrony/chrony.conf
+sudo systemctl restart chrony
+chronyc sources -v
+```
+
 ```bash
 docker compose -f deploy/pit-compose.yaml up -d
 ```

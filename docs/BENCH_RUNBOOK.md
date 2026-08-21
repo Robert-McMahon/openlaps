@@ -188,7 +188,15 @@ sudo systemctl enable --now timing-head-shim
 ```
 
 For the UART build, change the device in `TIMING_HEAD_ARGS` to the X4 UART
-node and retain 115200 baud. On the pit install `deploy/chrony/pit.conf`.
+node and retain 115200 baud. On the pit:
+
+```bash
+sudo apt-get install chrony
+sudo install -m 0644 deploy/chrony/pit.conf /etc/chrony/chrony.conf
+sudo systemctl restart chrony
+chronyc sources -v
+```
+
 Internet sources remain configured on both hosts; source selection and
 fallback are chrony's job. Do not add failover code and do not issue
 `chronyc makestep` during pull/restore testing.

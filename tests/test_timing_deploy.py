@@ -19,6 +19,14 @@ def test_pit_chrony_uses_the_vehicle_sbc():
     assert "server 192.168.12.176 iburst prefer" in config
 
 
+def test_pit_install_docs_install_and_restart_chrony():
+    install_command = "sudo install -m 0644 deploy/chrony/pit.conf /etc/chrony/chrony.conf"
+    for path in (ROOT / "deploy" / "README.md", ROOT / "docs" / "BENCH_RUNBOOK.md"):
+        instructions = path.read_text(encoding="utf-8")
+        assert install_command in instructions
+        assert "sudo systemctl restart chrony" in instructions
+
+
 def test_timing_head_service_waits_for_chrony_and_restarts():
     unit = (ROOT / "deploy" / "systemd" / "timing-head-shim.service").read_text(encoding="utf-8")
     assert "After=chrony.service" in unit

@@ -197,6 +197,48 @@ def test_http_rejects_unsafe_request_bodies_and_cross_origin(tmp_path: Path):
     asyncio.run(exercise())
 
 
+def test_health_is_reachable_without_the_bearer_token(tmp_path: Path):
+    """The compose healthcheck curls /health with no credentials.
+
+    A container binds 0.0.0.0, which makes OPENLAPS_SESSION_API_KEY mandatory,
+    and deploy/pit-compose.yaml's healthcheck sends no Authorization header.
+    When /health sat behind the token gate every curl came back 401 and the
+    container was reported unhealthy for as long as it ran, while the service
+    behind it was connected and serving. The other three pit services expose
+    /health unauthenticated; this pins that session-control matches them.
+    """
+
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(StateFile(tmp_path / "session.json"), database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+            api_key="operator-secret",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            code, body = await asyncio.to_thread(_request, f"{base}/health")
+            assert code == 200
+            assert body["status"] == "ok"
+
+            # The gate is still shut on everything else.
+            code, _ = await asyncio.to_thread(_request, f"{base}/session")
+            assert code == 401
+            code, _ = await asyncio.to_thread(_request, f"{base}/roster")
+            assert code == 401
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
 def test_http_requires_bearer_token_when_configured(tmp_path: Path):
     async def exercise() -> None:
         database = Database()

@@ -157,9 +157,9 @@ channels:
   car.fuel_level_volts: { from: "can0:haltech2.PD16A_AVI_VOLTAGES.PD16A_AVI_4_VOLTAGE", units: "V" }
 
   #Sync pulsed inputs
-  car.surge_tank_switch: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_1_VOLTAGE", units: "V" }
-  car.clutch_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_3_VOLTAGE", units: "V" }
-  car.brake_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_4_VOLTAGE", units: "V" }
+  car.surge_tank_switch: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_1_VOLTAGE"}
+  car.clutch_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_3_VOLTAGE"}
+  car.brake_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_4_VOLTAGE"}
 
   #Half Bridge Outputs
   car.power_steering_pump_1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_1_CURRENT", units: "A" }

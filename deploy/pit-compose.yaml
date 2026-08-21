@@ -1,10 +1,7 @@
-# Pit stack: nats-server, TimescaleDB, mosquitto, and the four pit services.
+# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the four pit
+# services.
 #
 #     docker compose -f deploy/pit-compose.yaml up -d
-#
-# No Grafana: locked decision 3 of docs/plan/PHASE3.md. The MQTT bridge is
-# verifiable with `mosquitto_sub` and the database with a SQL query; the
-# dashboard work is a later phase.
 #
 # Bring-up order is expressed in `depends_on`, not in a runbook, so `up -d`
 # gets it right unattended:
@@ -246,7 +243,95 @@ services:
       retries: 4
       start_period: 20s
 
+  # --- read surface ---------------------------------------------------------
+
+  grafana:
+    # Pinned, never `latest`. A Grafana minor bump can change panel schema,
+    # and discovering that from a restart in the pit lane is not a thing
+    # anyone should do. Bump this deliberately, in a commit, with the
+    # dashboards re-checked afterwards.
+    image: grafana/grafana:${GRAFANA_IMAGE_TAG:-12.4.9}
+    # No `env_file` here, unlike every openlaps service above, and that is
+    # the point rather than an oversight. The pit's .env holds
+    # TIMESCALE_PASSWORD -- the owner role the services write with -- and
+    # Grafana must never see it. Listing each variable explicitly means the
+    # only database credential this container can possibly hold is the
+    # read-only one, structurally, not by convention.
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Absolute links -- share URLs, the login redirect -- are built from
+      # this. Left at localhost they are unusable from any other machine on
+      # the pit LAN, which is every machine that matters.
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      # Exactly one plugin this stack asks for, and locked decision 4 of
+      # docs/plan/PHASE5.md is the list. Pinned for the same reason the image
+      # is. It downloads at first start and then lives in the named volume,
+      # so a pit that is offline at the track only needs to have been online
+      # once.
+      #
+      # _SYNC, not the plain `preinstall`, and not the `GF_INSTALL_PLUGINS`
+      # the brief names: that variable is deprecated in Grafana 12 and is now
+      # a no-op unless GF_INSTALL_PLUGINS_FORCE is also set. The synchronous
+      # list is the right one regardless -- it installs *before* provisioning
+      # runs, so the mqtt-live datasource is never provisioned against a
+      # plugin that has not landed yet, and a failed install is loud instead
+      # of leaving a red datasource to explain later.
+      #
+      # Grafana 12 additionally preinstalls its own drilldown apps
+      # asynchronously and offers no supported way to decline them without
+      # also declining this one. They are part of what the pinned image is,
+      # not something this stack asked for.
+      GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.3.6}
+      # Read by the provisioning YAML, which Grafana interpolates at load.
+      # No password among them but the read-only one.
+      TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_DB: ${TIMESCALE_DB:-openlaps}
+      GRAFANA_DB_USER: ${GRAFANA_DB_USER:-grafana_ro}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?set GRAFANA_DB_PASSWORD in .env}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      # Datasources and the dashboard provider. Read-only: provisioning is a
+      # thing Grafana reads, never writes. The `plugins/` and `alerting/`
+      # subdirectories carry nothing and exist anyway: this mount *replaces*
+      # the four directories the image ships, and Grafana logs a red error
+      # for each one it cannot open -- two red herrings at every bring-up
+      # otherwise.
+      - ./pit-config/grafana/provisioning:/etc/grafana/provisioning:ro
+      # The dashboards themselves, mounted over a subdirectory of the volume
+      # above at the path the provider names. Read-only here as well as
+      # `allowUiUpdates: false` in the provider -- the repository is the
+      # source of truth and the browser is not.
+      - ./pit-config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      # The Timescale datasource connects as the read-only role that
+      # migration 002 creates, so a Grafana that starts before the migrator
+      # has run shows a red datasource and an empty dashboard rather than an
+      # error anyone can act on. Bring-up order belongs in `depends_on`.
+      migrate:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      # The alpine image carries busybox wget but no curl, so this differs
+      # from the openlaps services' healthchecks above. /api/health needs no
+      # authentication and reports the database and version.
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # First start downloads and unpacks a plugin.
+      start_period: 60s
+
 volumes:
   nats-data:
   timescale-data:
   session-data:
+  grafana-data:

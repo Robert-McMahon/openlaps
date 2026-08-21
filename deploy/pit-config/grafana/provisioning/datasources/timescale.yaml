@@ -1,0 +1,48 @@
+# The pit database, read-only.
+#
+# Grafana connects as GRAFANA_DB_USER (default `grafana_ro`), *not* as the
+# owner role the pit services write with. That role is created by migration
+# 002 with CONNECT on the database, USAGE on the schema and SELECT on the
+# views only -- so a query pasted into the Explore editor cannot reach a base
+# table, let alone DELETE FROM samples. docs/PIT_SCHEMA.md says the views are
+# the contract and the base tables are not; this grant is what makes that
+# sentence enforceable rather than advisory.
+#
+# `TIMESCALE_PASSWORD` deliberately does not appear here and is not in the
+# grafana container's environment at all (deploy/pit-compose.yaml). Two
+# credentials, two roles.
+apiVersion: 1
+
+datasources:
+  - name: Timescale
+    # An explicit, stable uid. Without one Grafana generates a per-install
+    # value and every dashboard authored anywhere else fails to load with
+    # "Datasource ... was not found" -- the predecessor stack learned this
+    # the hard way and left a comment saying so.
+    uid: timescale
+    type: grafana-postgresql-datasource
+    access: proxy
+    # The default, deliberately. Grafana makes the first datasource it
+    # provisions the default when none is marked, and a panel that omits its
+    # datasource then silently reads live MQTT instead of the database --
+    # which renders, and renders the wrong thing.
+    isDefault: true
+    url: ${TIMESCALE_HOST}:${TIMESCALE_PORT}
+    user: ${GRAFANA_DB_USER}
+    jsonData:
+      database: ${TIMESCALE_DB}
+      # Compose-network traffic between two containers on the same host.
+      # There is no TLS on this hop and nothing to verify against.
+      sslmode: disable
+      # PostgreSQL 17, matching timescale/timescaledb:latest-pg17.
+      postgresVersion: 1700
+      # Offers time_bucket() in the query editor and lets the $__timeGroup
+      # macro compile to it. The continuous aggregate P5.2 adds is only
+      # reachable through queries written this way.
+      timescaledb: true
+      maxOpenConns: 10
+      maxIdleConns: 5
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}
+    editable: false

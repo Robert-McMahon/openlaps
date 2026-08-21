@@ -118,7 +118,8 @@ modelled 4,087 samples/s, and **the two do not agree**:
 | CAN (ECU + PD16A + WB1) | 2,034.6/s | 2,787.2/s | −27.0% |
 | IMU | 752.5/s | 1,000.0/s | −24.8% |
 | GPS | 250.0/s | 300.0/s | −16.7% |
-| **Total** | **3,037.0/s** | **4,087.2/s** | **−25.7%** |
+| Host (`sys.host.clock_*`, 5 s poll) | 0.8/s | — | n/a |
+| **Total** | **3,037.8/s** | **4,087.2/s** | **−25.7%** |
 
 That gap is not a bench fault and no wiring change closes it. §2 counts
 every signal in each DBC-known CAN message where the catalog maps a subset

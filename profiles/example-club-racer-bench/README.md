@@ -126,8 +126,8 @@ every signal in each DBC-known CAN message where the catalog maps a subset
 of them; it models GPS at 6 doubles per fix where the catalog has 5
 `position.*` channels; and it models the IMU at a flat 100 Hz × 10 where the
 recorded frame rates are 100.2 / 100.2 / 50.1 / 1.0 Hz across four messages.
-The bench also offers ~17 samples/s of `lap.*`/`timing.*` derived channels
-and ~13/s of `sys.agent.*` health that §2 does not model at all.
+The bench also offers ~49 samples/s of `lap.*`/`timing.*` derived channels
+and ~9/s of `sys.agent.*`/`sys.host.*` health that §2 does not model at all (measured over the 2026-08-21 run; see docs/bench/2026-08-21-steady-state/).
 
 `bench_check` therefore gates on measured-vs-predicted and *reports*
 predicted-vs-modelled (`--model-tolerance` makes the latter fatal for anyone

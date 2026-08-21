@@ -22,11 +22,16 @@ starting. `pit_offset_s` for this run is −0.094 s.
 
 ## Conditions that were not as intended
 
-- **No radio in the path.** §1's topology assumes HaLow units either side.
-  The vehicle reaches the pit over wired `enp2s0`; the pit reaches back via
-  `172.29.128.1` on `eth0` — it is a WSL2 guest, and that address is a NAT.
-  `halow-vehicle` and `halow-pit` resolve on neither host. Nothing in this run
-  crossed a radio.
+- **The radio IS in the path** — corrected after both runs. The vehicle is
+  wired to the vehicle router (192.168.12.1); the pit is wired via USB
+  Ethernet to an access point (192.168.12.201); the two bridge to each other
+  over HaLow. The bridge is transparent at layer 2, so neither host's routing
+  table shows it, and both manifests written during these runs carry the
+  incorrect note "No radio in path". That claim was inferred from the routing
+  table and is wrong; the manifests are left as written, since they are the
+  record of what was believed at run time, and this file is the correction.
+  `halow-vehicle` and `halow-pit` still resolve on neither host, which is why
+  the probe ran with `--radio-adapter none` and collected no radio series.
 - **No `nft` counters.** `sudo -n nft -j list counters` is refused for the
   operator's user on both hosts, in every path form; an
   `/etc/sudoers.d/openlaps-bench` drop-in exists but does not grant it.
@@ -131,6 +136,8 @@ generation belongs to your run is a trap; it nearly cost a good run.
 
 ## Unchanged from the 20 ms run
 
-No radio in the path. No GNSS fix, so no GNSS traceability — the UM980 still
-reports RMC status `V` with one satellite at 22 dB-Hz, suspected antenna.
-Inter-host clock offset 51.9 ms.
+No GNSS fix, so no GNSS traceability — the UM980 still reports RMC status `V`
+with one satellite at 22 dB-Hz, suspected antenna. Inter-host clock offset
+51.9 ms. The radio-in-path correction above applies to this run too: it
+crossed HaLow, but with `--radio-adapter none`, so no radio series exist for
+either tick.

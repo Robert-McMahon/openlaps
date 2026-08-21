@@ -85,8 +85,6 @@ def test_registry_includes_sys_agent_and_derived_channels(tmp_path: Path):
         "sys.agent.rbe_suppressed",
         "sys.agent.publish_drops",
         "sys.agent.publish_lag_ms",
-        "sys.agent.clock_offset_ms",
-        "sys.agent.clock_source",
         "sys.agent.drops.can0",
         "sys.agent.drops.serial0",
         "sys.agent.drops.host",
@@ -100,7 +98,6 @@ def test_health_samples_land_on_sys_agent_channels(tmp_path: Path):
     agent = VehicleAgent(_settings(tmp_path), bus_factory=_failing_bus_factory)
     agent._emit_health_samples()
     samples = {s.source_ref: s.value for s in agent._agent_queue.drain()}
-    assert samples["derived:sys.agent.clock_source"] == "system"
     assert samples["derived:sys.agent.publish_drops"] == 0
     status = json.loads(samples["derived:sys.agent.status"])
     assert status["state"] == "running"

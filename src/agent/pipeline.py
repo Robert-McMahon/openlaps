@@ -10,7 +10,6 @@ no thread and reads no clock of its own.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from agent.timing_app import LapTimingApp
@@ -23,12 +22,7 @@ from core.samples import Sample
 logger = logging.getLogger(__name__)
 
 DERIVED_SOURCE_CLASS = "derived"
-GNSS_TIME_CHANNEL = "position.time_unix_ms"
-"""Mapped channel name that, when present, steers the agent's wall clock."""
-
 _MAX_TRACKED_UNMAPPED_REFS = 1024
-
-GnssTimeObserver = Callable[[int, float], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,15 +45,12 @@ class Pipeline:
         *,
         tick_ms: int = 20,
         timing_app: LapTimingApp | None = None,
-        on_gnss_time: GnssTimeObserver | None = None,
     ) -> None:
         self._source_map = catalog.source_map
         self._rbe = RbeFilter()
         self._batcher = Batcher(catalog.registry.registry_seq, catalog.policies_by_id, tick_ms)
         self._tick_ns = tick_ms * 1_000_000
         self._timing_app = timing_app
-        self._on_gnss_time = on_gnss_time
-        self._gnss_time_id = catalog.channel_ids.get(GNSS_TIME_CHANNEL)
         self._staged: list[tuple[str, int, Sample]] = []
         self._reported_unmapped: set[str] = set()
         self._reported_failures: set[str] = set()
@@ -86,13 +77,6 @@ class Pipeline:
                 logger.info("pipeline: no catalog mapping for %s", sample.source_ref)
             return
         channel_id, policy = mapping
-
-        if channel_id == self._gnss_time_id and self._on_gnss_time is not None:
-            try:
-                self._on_gnss_time(sample.t_mono_ns, float(sample.value))
-            except (TypeError, ValueError):
-                self._note_failure(f"gnss-time:{sample.source_ref}", "non-numeric GNSS time")
-
         timing = self._timing_app
         if timing is not None and channel_id in timing.subscribed_channel_ids:
             # Pre-RBE is non-negotiable: timing interpolates line crossings

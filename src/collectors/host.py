@@ -14,6 +14,8 @@ a catalog migration.
 from __future__ import annotations
 
 import logging
+import re
+import subprocess
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -31,6 +33,46 @@ DEFAULT_DISK_PATH = "/"
 
 Reading = tuple[str, SampleValue]
 Probe = Callable[[], Iterator[Reading]]
+ChronyRunner = Callable[[], str]
+
+
+def _run_chronyc_tracking() -> str:
+    completed = subprocess.run(
+        ["chronyc", "-n", "tracking"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=2.0,
+    )
+    return completed.stdout
+
+
+def parse_chronyc_tracking(output: str) -> dict[str, SampleValue]:
+    """Parse the stable labelled fields needed from ``chronyc tracking``."""
+    fields: dict[str, str] = {}
+    for line in output.splitlines():
+        label, separator, value = line.partition(":")
+        if separator:
+            fields[label.strip().lower()] = value.strip()
+    required = ("reference id", "stratum", "system time", "root dispersion")
+    if any(field not in fields for field in required):
+        raise ValueError("chronyc tracking output is missing required fields")
+
+    reference = fields["reference id"]
+    parenthesized = re.search(r"\(([^()]+)\)\s*$", reference)
+    source = parenthesized.group(1) if parenthesized else reference.split()[0]
+    system_time = fields["system time"].split()
+    if len(system_time) < 3 or system_time[2] not in {"fast", "slow"}:
+        raise ValueError("chronyc tracking has an invalid System time field")
+    offset = float(system_time[0])
+    if system_time[2] == "slow":
+        offset = -offset
+    return {
+        "host:clock_offset_s": offset,
+        "host:clock_source": source,
+        "host:clock_stratum": int(fields["stratum"]),
+        "host:clock_root_dispersion_s": float(fields["root dispersion"].split()[0]),
+    }
 
 
 @dataclass(slots=True)
@@ -61,10 +103,12 @@ class HostMetricsReader:
         *,
         psutil_module: object | None = None,
         disk_path: str = DEFAULT_DISK_PATH,
+        chrony_runner: ChronyRunner | None = None,
     ) -> None:
         """Build a reader over ``psutil_module`` (injectable for tests)."""
         self._psutil = psutil if psutil_module is None else psutil_module
         self._disk_path = disk_path
+        self._chrony_runner = _run_chronyc_tracking if chrony_runner is None else chrony_runner
         self.stats = HostStats()
         self._reported_failures: set[str] = set()
         self.prime()
@@ -90,6 +134,7 @@ class HostMetricsReader:
             ("mem", self._read_memory),
             ("disk", self._read_disk),
             ("net", self._read_network),
+            ("clock", self._read_clock),
         ):
             try:
                 # Broad: psutil raises platform-specific errors (missing
@@ -160,6 +205,9 @@ class HostMetricsReader:
         yield "host:net.err_out", int(net.errout)
         yield "host:net.drop_in", int(net.dropin)
         yield "host:net.drop_out", int(net.dropout)
+
+    def _read_clock(self) -> Iterator[Reading]:
+        yield from parse_chronyc_tracking(self._chrony_runner()).items()
 
     def _note_failure(self, group: str, exc: Exception) -> None:
         if group in self._reported_failures:

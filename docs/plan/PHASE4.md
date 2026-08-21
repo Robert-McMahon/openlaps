@@ -119,7 +119,9 @@ Settled with the owner before these briefs were written — do not relitigate:
 flowchart LR
   P40[P4.0 link_probe] --> P42[P4.2 runbook + clock]
   P41[P4.1 bench signal sources] --> P42
+  P42 --> P48[P4.8 GNSS time reference]
   P42 --> P43[P4.3 steady state]
+  P48 -.->|absolute latency only| P43
   P43 --> P44[P4.4 dropout ladder]
   P43 --> P45[P4.5 range + degradation]
   P46[P4.6 timing parity]
@@ -135,6 +137,12 @@ both are read as *deltas from the healthy baseline* — without it, a degraded
 number has nothing to be degraded against. **P4.6 is independent of the
 radio entirely** and can be picked up at any point, including first: it
 needs no bench, no HaLow, and no operator.
+
+**P4.8 was added after the phase opened** (ADR 0008) and is the dashed edge:
+P4.3 runs without it against P4.2's fallback discipline and produces a valid
+*relative* latency number, but the *absolute* source-to-row latency P4.3
+asks for is only reportable once the vehicle has a real time reference. It
+needs the bench but not the radio.
 
 Suggested models: P4.0 wants a strong model (it is the instrument every
 later number depends on, and its arithmetic — counter wrap, server restart,
@@ -660,6 +668,126 @@ what evidence.
 **Acceptance:** someone deciding whether to put this stack on the car can
 read one document and see every number the decision rests on, with a path
 back to the raw data for each.
+
+---
+
+## P4.8 — GNSS time reference: the RP2040 timing head
+
+**Specs:** ADR 0008 (the decision and its accuracy ceiling);
+`docs/ARCHITECTURE.md` → "Link dropout and recovery" (why absolute latency
+needs a shared reference); `docs/BENCH_RUNBOOK.md` §3 (the clock discipline
+this package replaces); `src/agent/clock.py` and `src/agent/pipeline.py`
+(the dormant `SteeredClock`); ADR 0006 (why the receiver's serial port is
+not available and why the vehicle has no internet).
+
+P4.2 established clock discipline *as far as the hardware allowed* and was
+honest that the indoor fallback bounds the two hosts against each other and
+neither against true time. This package gives the vehicle a real reference
+so that P4.3's absolute source-to-row latency is a measurement rather than a
+caveat. **P4.3 is not blocked on it** — the P4.2 fallback still produces a
+valid relative number — but the absolute figure P4.3 asks for is only
+reportable with this in place.
+
+**This is the first package in the repository with firmware in it.** The
+build, the flashing procedure and the artefact's relationship to the host
+shim are part of the deliverable, not an afterthought.
+
+**Deliverables:**
+
+- **`firmware/timing-head/`** — RP2040 firmware, pico-sdk, one `.uf2`.
+
+  - **PPS capture** on a GPIO, timestamped in hardware. Resolution here is
+    far below the transport noise that dominates; do not gold-plate it.
+  - **1 Hz `ZDA` in** on a UART from the UM980's spare COM port, parsed
+    minimally. The sentence names the second; the edge says when it was.
+  - **Edge↔sentence association is the one error class that matters, and it
+    is a whole second when it goes wrong.** The receiver raises PPS at the
+    second boundary and *then* emits the sentence describing it, so the
+    pairing is "the sentence that follows this edge", never the one that
+    precedes it. A sentence arriving more than ~900 ms after its edge is not
+    that edge's sentence and must be rejected rather than paired. Factor
+    this into a pure function and test it on the host — it is not
+    acceptable for the only test of second-numbering to be "it looked right
+    on the bench".
+  - **One message per second**, carrying: sequence, UTC second, the captured
+    edge, **the firmware's own edge→transmit interval**, and a validity
+    flag. The host must never have to estimate the part of the delay the
+    firmware already knows.
+  - **No fix, no message.** A timing head that emits a plausible-looking
+    sample from a stale or void fix is worse than one that emits nothing.
+  - **Both host transports, selectable at build time** — USB CDC and the
+    RP2040↔N100 UART. Building both is not indecision; measuring them
+    against each other is a deliverable of this package.
+
+- **`tools/timing_head_shim.py`** — reads the message, timestamps arrival
+  against `CLOCK_REALTIME`, subtracts the firmware's edge→transmit interval,
+  and offers the result to `chrony` over the **SOCK refclock** protocol.
+  Degrades to silence: a malformed line, a stale sequence, a cleared
+  validity flag or a vanished device yields no sample and a counter, never a
+  wrong sample and never an exception.
+
+- **`deploy/chrony/vehicle.conf`** — the timing head as a `prefer`red
+  refclock, internet NTP sources alongside it, `local stratum 10` so the pit
+  can still discipline against the SBC when the SBC itself is free-running,
+  and `allow` for the bench subnet. **The primary/fallback behaviour is
+  chrony's source selection and nothing else** — if this package finds
+  itself writing failover logic, it has taken a wrong turn.
+  **`deploy/chrony/pit.conf`** — the pit pointed at the SBC, per P4.2.
+
+- **Clock health as telemetry.** A `chrony` probe in
+  `src/collectors/host.py` (the probe structure is already there and each
+  group already fails independently) emitting `host:clock_offset_s`,
+  `host:clock_source`, `host:clock_stratum`, `host:clock_root_dispersion_s`,
+  mapped to `sys.host.clock_*` in the example catalogue. A PPS lead that
+  falls off in a car degrades silently and correctly to NTP; the only thing
+  that makes that visible in time is a channel on a dashboard.
+
+- **`SteeredClock`'s GNSS steering retired**, per ADR 0008. The system clock
+  is the authority. Removing it is preferable to leaving a dormant
+  mechanism that the next person has to re-derive is dormant — P4.2 already
+  had to spend a section explaining that it does nothing.
+
+- **Docs.** `docs/BENCH_RUNBOOK.md` §3 rewritten around a configuration that
+  can actually be built — the current "preferred" one cannot, because
+  `gpsd` cannot open a port the collector holds. `deploy/README.md` gains
+  the wiring (PPS pin, spare COM port, shared ground) and the RP2040
+  flashing procedure, including that it replaces Radxa's stock GPIO
+  firmware.
+
+**The measurement, which is the point of putting this in a bench phase:**
+
+- **Both transports characterised** — delay and jitter distribution over at
+  least an hour each, and a stated choice with the numbers behind it. ADR
+  0008's ~1 ms (USB) and ~90 µs (UART) are indicative and must be replaced
+  by measured values or struck.
+- **What cannot be measured here, said plainly.** There is no independent
+  reference on this bench, so the *absolute* offset of the disciplined clock
+  is not directly observable. What is observable, and what this package
+  reports: the jitter distribution, the firmware-known delay component, and
+  the agreement between the PPS-disciplined clock and good internet NTP when
+  both are present — which bounds gross error without establishing
+  microsecond truth. **Quote the bound, not a figure the bench cannot
+  support**; this is the same rule P4.2 applied to latency.
+- **A manifest under `docs/bench/`**, per the ground rules.
+
+**Acceptance:**
+
+- With the internet unplugged, `chronyc sources` shows the timing head
+  selected and the system clock disciplined from a cold start with no RTC.
+- Pulling the PPS lead falls back to internet NTP **by slew, without a
+  step**, and `sys.host.clock_source` shows the transition on the dashboard
+  rather than in a log.
+- Restoring PPS re-selects it, again without a step.
+- Host-side unit tests cover edge↔sentence pairing including the late-
+  sentence rejection and a missing sentence, and cover the shim's
+  degradation paths. No hardware in CI.
+- The achieved offset and jitter, and which transport produced them, are in
+  a manifest and quoted in `BENCH_RUNBOOK.md` §3 with a citation.
+
+**Suggested model:** strong. The arithmetic is small but the second-
+numbering rule is the kind of off-by-one that produces a confidently wrong
+answer for a year, and the accuracy claims need someone willing to write
+down what the bench cannot prove.
 
 ---
 

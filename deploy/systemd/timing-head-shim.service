@@ -1,0 +1,23 @@
+[Unit]
+Description=openlaps RP2040 timing-head to chrony bridge
+Documentation=https://github.com/Robert-McMahon/openlaps
+After=chrony.service
+Requires=chrony.service
+PartOf=chrony.service
+
+[Service]
+Type=simple
+User=openlaps
+Group=openlaps
+SupplementaryGroups=dialout
+EnvironmentFile=-/etc/openlaps/timing-head.env
+ExecStart=/usr/bin/python3 /usr/local/libexec/openlaps/timing_head_shim.py $TIMING_HEAD_ARGS
+Restart=always
+RestartSec=1s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -66,16 +66,12 @@ Sample = (source_ref: str-interned, t_mono_ns: int, t_wall_ms: float, value)
 ## Clock discipline
 
 - `t_mono_ns` is the ordering and interval truth everywhere internally.
-- The wall clock maps from monotonic via an affine `(offset)` estimate:
-  initialised from the system clock, and — when a GNSS time source is
-  present among the mapped channels (the agent looks for the canonical
-  channel `position.time_unix_ms`) — steered gently toward GPS time
-  (slew, never step, while running; a step is allowed only at startup —
-  including the first GNSS acquisition after boot, since the vehicle has
-  no RTC guarantee and slewing away a large system-clock error at ppm
-  rates would take hours).
-  The current offset and its source (`system` / `gnss`) are published as
-  `sys.agent.clock_offset_ms` / `sys.agent.clock_source`.
+- The externally disciplined system clock is the only wall-time authority.
+  Each conversion samples realtime and monotonic together, so chrony's
+  runtime slew is observed without a second in-process steering loop.
+- Chrony state is ordinary host telemetry:
+  `sys.host.clock_offset_s`, `sys.host.clock_source`,
+  `sys.host.clock_stratum` and `sys.host.clock_root_dispersion_s`.
 - Each `SampleBatch` records both epochs (`batch_epoch_unix_ms`,
   `batch_epoch_mono_ns`); per-sample `t_offset_us` is against the batch
   epoch. Consumers therefore never depend on the vehicle's absolute clock
@@ -130,7 +126,6 @@ on the same dashboards, stored in the same DB, no side channel:
 | `sys.agent.unmapped_refs` | cumulative samples with no catalog mapping |
 | `sys.agent.publish_drops` | batches shed because local NATS was unavailable |
 | `sys.agent.publish_lag_ms` | age of oldest unacked publish |
-| `sys.agent.clock_offset_ms`, `sys.agent.clock_source` | clock discipline state |
 | `sys.agent.rbe_suppressed` | cumulative samples suppressed by RBE (sanity check on policies) |
 
 ## Startup and shutdown

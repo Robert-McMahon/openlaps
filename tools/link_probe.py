@@ -1481,7 +1481,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--signal-source", help="e.g. canplayer+bench_gps, live-car")
     parser.add_argument("--clock-method", help="how the two hosts' clocks were disciplined")
     parser.add_argument("--clock-offset-ms", type=float, help="measured offset at run start")
-    parser.add_argument("--clock-source", help="sys.agent.clock_source at run start")
+    parser.add_argument("--clock-source", help="sys.host.clock_source at run start")
     parser.add_argument("--note", action="append", default=[], help="operator note (repeatable)")
     parser.add_argument("--manifest", help="manifest path (default: <out>.manifest.json)")
     parser.add_argument(

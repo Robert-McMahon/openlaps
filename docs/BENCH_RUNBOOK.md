@@ -142,64 +142,64 @@ share no epoch, so `batch_epoch_mono_ns` cannot yield a one-way latency, and
 end with a shared time reference". P4.3's latency distribution is only as
 good as what this section establishes, so establish it first and record it.
 
-### Read this before configuring anything
+### One authority: chrony and the system clock
 
-**The agent's clock is the system clock on this profile, and will report
-itself as such.** `SteeredClock` steers toward GNSS only when the canonical
-channel `position.time_unix_ms` is present among the mapped channels
-(`src/agent/pipeline.py`, `docs/AGENT_DESIGN.md` → Clock discipline). The
-NMEA decoder emits `lat`, `lon`, `speed`, `heading` and `mode` and no time
-field (`src/collectors/serial/nmea.py`), and the example catalog maps five
-`position.*` channels with no time among them. So on this deployment the
-mechanism is dormant: `sys.agent.clock_source` reads `system`, always, and
-`sys.agent.clock_offset_ms` is the boot-time system-to-monotonic offset
-rather than anything GNSS-derived.
-
-The consequence for this phase is simple and worth stating rather than
-discovering: **host time discipline is the entire story.** Record
-`sys.agent.clock_source` in the manifest anyway (`--clock-source`) — it is
-the corroborating evidence that the agent was *not* independently steering,
-which is what lets a chrony offset be read as the whole uncertainty.
+P4.8 retired the agent's GNSS steering. Every collector now correlates its
+monotonic capture timestamp against the current `CLOCK_REALTIME`, so a chrony
+slew is observed and there is no second in-process loop trying to correct the
+same clock. Clock health comes from `chronyc tracking` through the host
+collector as `sys.host.clock_offset_s`, `sys.host.clock_source`,
+`sys.host.clock_stratum` and `sys.host.clock_root_dispersion_s`.
 
 **Never discipline anything from `tools/bench_gps.py`.** The feeder is a
 position source, not a time source: `rmc_sentence` writes a fixed
 `000000.00` time field and a fixed date (`tools/_bench.py`), and feeding it
 to `gpsd` as a reference clock would be circular as well as wrong.
 
-### Preferred: both hosts to the SBC, SBC GPS-disciplined
+### Buildable preferred configuration: RP2040 timing head
 
-Only available when the SBC has a real receiver with a real fix — which is
-not the indoor case, so treat it as the outdoor-run configuration.
+Wire and flash the timing head exactly as `firmware/timing-head/README.md`
+describes. The UM980 driver configures fix-gated, active-high GPS PPS per the
+receiver manual's `CONFIG PPS` options and sends 1 Hz ZDA plus GGA on COM2.
+The RP2040 pairs each edge only with the sentence that follows it; a sentence
+over 900 ms late is rejected. The host shim subtracts the firmware-known
+edge-to-transmit interval and feeds a full sample to chrony's SOCK refclock.
 
-On the SBC (`/etc/chrony/chrony.conf`):
+Install the supplied configuration instead of transcribing it:
 
+```bash
+sudo apt-get install chrony python3-serial
+getent group openlaps >/dev/null || sudo groupadd --system openlaps
+id -u openlaps >/dev/null 2>&1 || \
+  sudo useradd --system --gid openlaps --home-dir /opt/openlaps --shell /usr/sbin/nologin openlaps
+sudo install -m 0644 deploy/chrony/vehicle.conf /etc/chrony/chrony.conf
+sudo install -D -o root -g root -m 0755 tools/timing_head_shim.py \
+  /usr/local/libexec/openlaps/timing_head_shim.py
+sudo install -m 0644 deploy/systemd/timing-head-shim.service /etc/systemd/system/
+sudo install -d /etc/systemd/system/chrony.service.d
+sudo install -m 0644 deploy/systemd/chrony-openlaps-sock.conf \
+  /etc/systemd/system/chrony.service.d/openlaps-sock.conf
+sudo install -d /etc/openlaps
+printf '%s\n' 'TIMING_HEAD_ARGS=--device /dev/ttyACM0 --chrony-socket /run/chrony/openlaps-timing.sock' \
+  | sudo tee /etc/openlaps/timing-head.env
+sudo systemctl daemon-reload
+sudo systemctl restart chrony
+sudo systemctl enable --now timing-head-shim
 ```
-refclock SHM 0 refid GPS precision 1e-1 offset 0.0 delay 0.2
-allow 192.168.12.0/24
-local stratum 10
+
+For the UART build, change the device in `TIMING_HEAD_ARGS` to the X4 UART
+node and retain 115200 baud. On the pit:
+
+```bash
+sudo apt-get install chrony
+sudo install -m 0644 deploy/chrony/pit.conf /etc/chrony/chrony.conf
+sudo systemctl restart chrony
+chronyc sources -v
 ```
 
-On the pit:
-
-```
-server 192.168.12.176 iburst prefer minpoll 4 maxpoll 6
-```
-
-### Fallback, and the normal indoor case: one common NTP source
-
-When the SBC has no fix, do **not** leave the pit chasing a stratum-10 local
-clock that is itself free-running. Point both hosts at the same upstream and
-say so in the manifest:
-
-```
-server 192.168.12.1 iburst minpoll 4 maxpoll 6
-```
-
-This is worse than the preferred configuration in a specific, reportable
-way: it bounds the *relative* offset between the two hosts without bounding
-either against true time. That is exactly what a source-to-row latency
-measurement needs, so it is fine — provided the reported uncertainty is the
-measured one and not an assumed one.
+Internet sources remain configured on both hosts; source selection and
+fallback are chrony's job. Do not add failover code and do not issue
+`chronyc makestep` during pull/restore testing.
 
 ### Measure it, then record it
 
@@ -214,17 +214,24 @@ chronyc sources -v
 ```
 
 Take **RMS offset** from `chronyc tracking` as the number to quote, and
-**Root dispersion** as the bound. The pit's offset relative to the SBC is
-the figure P4.3's latency distribution is uncertain by; if it is not small
-compared with the sub-500 ms target `docs/ARCHITECTURE.md` sets, the latency
-result is not reportable and the run has found that out cheaply.
+**Root dispersion** as the bound. Confirm `GPS` is selected with the internet
+unplugged, then pull and restore PPS while internet is present. Both
+transitions must slew without a step and must appear in
+`sys.host.clock_source`.
+
+Characterise USB CDC and UART for at least one hour each. Record the
+firmware delay distribution, chrony offset/jitter distribution, root
+dispersion, sample/rejection counts, firmware SHA-256, transport and exact
+wiring in a manifest under `docs/bench/`. This bench has no independent time
+reference: report agreement with good internet NTP as a gross-error bound,
+not as proof of microsecond absolute accuracy.
 
 Pass both into every probe invocation for the run:
 
 ```bash
---clock-method "chrony, both hosts to 192.168.12.1 (SBC has no fix)" \
+--clock-method "chrony SOCK timing head on vehicle; pit to 192.168.12.176" \
 --clock-offset-ms 0.42 \
---clock-source system
+--clock-source GPS
 ```
 
 **Reporting millisecond latency figures the clock discipline cannot support

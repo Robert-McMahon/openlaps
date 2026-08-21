@@ -6,6 +6,7 @@ from collectors.serial.um980 import (
     UM980ConfigurationError,
     UM980Driver,
     _checksummed_command,
+    _startup_commands,
     parse_command_response,
 )
 from core.config import DriverSettings
@@ -76,6 +77,44 @@ def test_configure_switches_to_checksummed_commands():
         b"$GPRMC 0.02*77\r\n",
     ]
     assert port.resets == 3
+
+
+def test_startup_configures_fix_gated_gps_pps_and_one_hz_timing_port():
+    settings = _settings(
+        pps={
+            "mode": "ENABLE",
+            "time_reference": "GPS",
+            "polarity": "POSITIVE",
+            "width_us": 500000,
+            "period_ms": 1000,
+            "rf_delay_ns": 0,
+            "user_delay_ns": 0,
+        },
+        timing_output={"port": "COM2", "baud": 115200},
+    )
+
+    assert _startup_commands(settings) == (
+        "UNLOG",
+        "GPRMC 0.02",
+        "CONFIG COM2 115200 8 N 1",
+        "CONFIG PPS ENABLE GPS POSITIVE 500000 1000 0 0",
+        "GPZDA COM2 1",
+        "GPGGA COM2 1",
+    )
+
+
+@pytest.mark.parametrize("user_delay_ns", [-32769, 32768])
+def test_pps_user_delay_rejects_values_outside_the_um980_range(user_delay_ns: int):
+    with pytest.raises(ValueError):
+        _settings(pps={"user_delay_ns": user_delay_ns})
+
+
+@pytest.mark.parametrize("user_delay_ns", [-32768, 32767])
+def test_pps_user_delay_accepts_documented_endpoints(user_delay_ns: int):
+    settings = _settings(pps={"user_delay_ns": user_delay_ns})
+
+    assert settings.pps is not None
+    assert settings.pps.user_delay_ns == user_delay_ns
 
 
 def test_configure_fails_immediately_on_bad_ack():

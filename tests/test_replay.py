@@ -23,8 +23,8 @@ import _bench  # noqa: E402
 import replay  # noqa: E402
 from _bench import DEFAULT_PROFILE, load_catalog  # noqa: E402
 
-from agent.clock import SteeredClock  # noqa: E402
 from agent.pipeline import TickBatch  # noqa: E402
+from collectors.clock import MonotonicWallClock  # noqa: E402
 from core.pb import telemetry_pb2 as pb  # noqa: E402
 
 VEHICLE = "example-club-racer"
@@ -119,7 +119,7 @@ def test_replay_streams_batches_instead_of_materialising_them(tmp_path: Path):
     batches = replay.replay_cycle(
         profile,
         catalog,
-        SteeredClock(),
+        MonotonicWallClock(),
         candump_frames=[],
         nmea_lines=[],
         gps_rows=_gps_rows(64),
@@ -144,7 +144,7 @@ def test_incremental_flushes_never_reuse_a_message_id(tmp_path: Path):
         replay.replay_cycle(
             profile,
             catalog,
-            SteeredClock(),
+            MonotonicWallClock(),
             candump_frames=[],
             nmea_lines=[],
             gps_rows=_gps_rows(fixes),

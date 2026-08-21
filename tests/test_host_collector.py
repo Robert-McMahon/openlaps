@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from collectors.host import HostCollector, HostMetricsReader
+from collectors.host import HostCollector, HostMetricsReader, parse_chronyc_tracking
 from core.catalog import build_runtime_catalog
 from core.config import HostConfig
 from core.samples import Sample
@@ -46,7 +46,18 @@ EXPECTED_REFS = {
     "host:net.err_out",
     "host:net.drop_in",
     "host:net.drop_out",
+    "host:clock_offset_s",
+    "host:clock_source",
+    "host:clock_stratum",
+    "host:clock_root_dispersion_s",
 }
+
+CHRONY_TRACKING = """Reference ID    : 47505300 (GPS)
+Stratum         : 1
+System time     : 0.000123456 seconds fast of NTP time
+Root dispersion : 0.000456789 seconds
+Leap status     : Normal
+"""
 
 
 @dataclass
@@ -177,7 +188,19 @@ def _host_config(interval: str = "5s", *, enabled: bool = True) -> HostConfig:
 
 def _reader(fake: FakePsutil | None = None) -> tuple[HostMetricsReader, FakePsutil]:
     fake = FakePsutil() if fake is None else fake
-    return HostMetricsReader(psutil_module=fake), fake
+    return HostMetricsReader(psutil_module=fake, chrony_runner=lambda: CHRONY_TRACKING), fake
+
+
+def test_chrony_tracking_exposes_clock_health():
+    assert parse_chronyc_tracking(CHRONY_TRACKING) == {
+        "host:clock_offset_s": 0.000123456,
+        "host:clock_source": "GPS",
+        "host:clock_stratum": 1,
+        "host:clock_root_dispersion_s": 0.000456789,
+    }
+
+    slow = CHRONY_TRACKING.replace("fast", "slow")
+    assert parse_chronyc_tracking(slow)["host:clock_offset_s"] == -0.000123456
 
 
 def test_read_emits_the_pinned_metric_names():
@@ -201,7 +224,12 @@ def test_byte_counters_are_ints_and_percentages_are_floats():
     readings = dict(reader.read())
 
     for ref, value in readings.items():
-        expected = int if ref.endswith("_bytes") or ref.startswith("host:net.") else float
+        if ref == "host:clock_source":
+            expected = str
+        elif ref == "host:clock_stratum" or ref.endswith("_bytes") or ref.startswith("host:net."):
+            expected = int
+        else:
+            expected = float
         assert isinstance(value, expected), ref
 
 
@@ -432,4 +460,6 @@ def test_real_psutil_snapshot_is_sane():
     assert 0.0 <= readings["host:mem.percent"] <= 100.0
     assert readings["host:mem.total_bytes"] > 0
     assert readings["host:disk.used_bytes"] >= 0
-    assert reader.stats.probe_failures == 0
+    # chronyc is optional on developer/CI hosts. Its independent probe may be
+    # the one unavailable group; core host metrics must remain present.
+    assert reader.stats.probe_failures <= 1

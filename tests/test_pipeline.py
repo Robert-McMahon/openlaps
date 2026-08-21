@@ -199,18 +199,6 @@ def test_timing_tap_is_pre_rbe_and_derived_reenters_at_the_mapper(catalog, tmp_p
     assert rebuilt.channel_ids["lap.number"] in derived_ids
 
 
-def test_gnss_time_channel_steers_the_clock_callback(catalog):
-    observed: list[tuple[int, float]] = []
-    pipeline = Pipeline(catalog, tick_ms=20, on_gnss_time=lambda t, ms: observed.append((t, ms)))
-    pipeline.ingest(
-        "serial0",
-        Sample("serial0:um980.RMC.time_unix_ms", T0, _wall(T0), 1_780_000_123_456.0),
-    )
-    assert observed == [(T0, 1_780_000_123_456.0)]
-    # The time sample is an ordinary mapped channel too: it still batches.
-    assert len(pipeline.flush(_wall)) == 1
-
-
 def test_encode_failure_discards_one_window_and_recovers(catalog):
     pipeline = Pipeline(catalog, tick_ms=20)
     # car.count is INT64 unscaled: a fractional float cannot encode.

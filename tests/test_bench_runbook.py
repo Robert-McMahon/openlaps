@@ -33,7 +33,6 @@ from pathlib import Path
 import pytest
 from conftest import EXAMPLE_PROFILE
 
-from agent.pipeline import GNSS_TIME_CHANNEL
 from core.catalog import build_runtime_catalog
 from core.config import load_profile
 
@@ -206,20 +205,15 @@ def test_both_ends_use_one_table_the_runbook_can_tear_down():
 
 
 @pytest.mark.parametrize("profile", [EXAMPLE_PROFILE, BENCH_PROFILE])
-def test_the_agent_clock_never_steers_to_gnss_on_these_profiles(profile: Path, tmp_path: Path):
-    """Why §3 says host time discipline is the entire uncertainty budget.
-
-    `SteeredClock` is steered only when the canonical channel
-    `position.time_unix_ms` is among the mapped channels; the NMEA decoder
-    emits no time field, and neither catalog maps one. So
-    `sys.agent.clock_source` reads `system`, always, and a chrony offset is
-    the whole story for P4.3's latency figures.
-
-    If this ever fails, the mechanism has woken up and §3 is no longer
-    true -- which is good news, and a documentation change.
-    """
+def test_clock_health_is_mapped_on_both_profiles(profile: Path, tmp_path: Path):
+    """P4.8 makes chrony the sole authority and its state ordinary telemetry."""
     catalog = build_runtime_catalog(load_profile(profile), state_path=tmp_path / "registry.json")
-    assert GNSS_TIME_CHANNEL not in catalog.channel_ids
+    assert {
+        "sys.host.clock_offset_s",
+        "sys.host.clock_source",
+        "sys.host.clock_stratum",
+        "sys.host.clock_root_dispersion_s",
+    } <= catalog.channel_ids.keys()
 
 
 def test_the_systemd_unit_still_hides_the_bench_gps_symlink():

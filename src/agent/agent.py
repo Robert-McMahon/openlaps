@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agent.clock import SteeredClock
+from agent.clock import SystemClock
 from agent.pipeline import DERIVED_SOURCE_CLASS, Pipeline
 from agent.publisher import (
     DEFAULT_BUFFER_BYTES,
@@ -145,8 +145,6 @@ def agent_derived_channels(collector_names: list[str]) -> tuple[DerivedChannel, 
         DerivedChannel("sys.agent.rbe_suppressed", pb.INT64),
         DerivedChannel("sys.agent.publish_drops", pb.INT64),
         DerivedChannel("sys.agent.publish_lag_ms", pb.DOUBLE, "ms"),
-        DerivedChannel("sys.agent.clock_offset_ms", pb.DOUBLE, "ms"),
-        DerivedChannel("sys.agent.clock_source", pb.STRING),
     ]
     channels += [DerivedChannel(f"sys.agent.drops.{name}", pb.INT64) for name in collector_names]
     return tuple(channels)
@@ -189,7 +187,7 @@ class VehicleAgent:
             state_path=registry_state,
             derived_channels=agent_derived_channels(collector_names),
         )
-        self.clock = SteeredClock()
+        self.clock = SystemClock()
         self.session_store = SessionStore(session_state)
         self._session_inbox = _SessionInbox()
 
@@ -208,7 +206,6 @@ class VehicleAgent:
             self.catalog,
             tick_ms=settings.tick_ms,
             timing_app=self.timing_app,
-            on_gnss_time=self.clock.observe_gnss,
         )
         self.publisher = JetStreamPublisher(
             nats_url=settings.nats_url,
@@ -284,7 +281,6 @@ class VehicleAgent:
         self._pipeline_thread.start()
         for supervised in self._supervised:
             supervised.collector.start()
-        self.clock.mark_running()
         self._health_thread = threading.Thread(target=self._health_main, name="health", daemon=True)
         self._health_thread.start()
         logger.info("agent: running with %d collector(s)", len(self._supervised))
@@ -390,8 +386,6 @@ class VehicleAgent:
         emit("sys.agent.rbe_suppressed", self.pipeline.rbe_suppressed)
         emit("sys.agent.publish_drops", self.publisher.publish_drops)
         emit("sys.agent.publish_lag_ms", self.publisher.publish_lag_ms())
-        emit("sys.agent.clock_offset_ms", self.clock.offset_ms)
-        emit("sys.agent.clock_source", self.clock.source)
         for supervised in self._supervised:
             emit(f"sys.agent.drops.{supervised.queue.source_class}", supervised.queue.dropped)
 

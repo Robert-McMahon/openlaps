@@ -24,7 +24,7 @@ from conftest import EXAMPLE_PROFILE, lap_path, rmc_sentence, wanneroo_track
 from nats.js import api
 
 from agent.agent import AgentSettings, VehicleAgent
-from agent.clock import SteeredClock
+from agent.clock import SystemClock
 from agent.pipeline import Pipeline
 from agent.publisher import (
     MSG_TYPE_BATCH,
@@ -71,7 +71,7 @@ def test_candump_and_nmea_replay_end_to_end(nats_url, tmp_path: Path):
         catalog, "position.*", "Wanneroo", str(EXAMPLE_PROFILE / "tracks")
     )
     timing_app.apply_session({"session_id": "e2e-race", "driver": "Alice"})
-    clock = SteeredClock()
+    clock = SystemClock()
     pipeline = Pipeline(catalog, tick_ms=20, timing_app=timing_app)
     publisher = JetStreamPublisher(
         nats_url=nats_url,

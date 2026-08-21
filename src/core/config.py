@@ -106,12 +106,39 @@ class BusConfig(StrictModel):
         return self
 
 
+class PpsConfig(StrictModel):
+    """UM980 PPS output parameters from ``CONFIG PPS``."""
+
+    mode: Literal["ENABLE", "ENABLE2", "ENABLE3"] = "ENABLE"
+    time_reference: Literal["GPS", "BDS", "GAL", "GLO"] = "GPS"
+    polarity: Literal["POSITIVE", "NEGATIVE"] = "POSITIVE"
+    width_us: Annotated[int, Field(gt=0)] = 500000
+    period_ms: Annotated[int, Field(ge=50, le=20000, multiple_of=50)] = 1000
+    rf_delay_ns: Annotated[int, Field(ge=-32768, le=32767)] = 0
+    user_delay_ns: Annotated[int, Field(ge=-32768, le=32767)] = 0
+
+    @model_validator(mode="after")
+    def width_is_shorter_than_period(self) -> PpsConfig:
+        if self.width_us >= self.period_ms * 1000:
+            raise ValueError("PPS width_us must be smaller than period_ms")
+        return self
+
+
+class TimingOutputConfig(StrictModel):
+    """Spare UM980 serial port feeding the RP2040 timing head."""
+
+    port: Literal["COM1", "COM2", "COM3"] = "COM2"
+    baud: Literal[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600] = 115200
+
+
 class DriverSettings(StrictModel):
-    """Supported device startup settings."""
+    """Supported UM980 startup settings."""
 
     rate_hz: Annotated[int, Field(gt=0)]
     sentences: list[_NON_EMPTY] = Field(min_length=1)
     configure_on_start: bool
+    pps: PpsConfig | None = None
+    timing_output: TimingOutputConfig | None = None
 
 
 class DriverConfig(StrictModel):

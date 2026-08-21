@@ -40,10 +40,9 @@ from _bench import (
     wait_connected,
 )
 
-from agent.clock import SteeredClock
 from agent.pipeline import Pipeline, TickBatch
 from agent.timing_app import LapTimingApp
-from collectors.clock import WallClock
+from collectors.clock import MonotonicWallClock, WallClock
 from collectors.serial.transport import SerialCollector
 from core.catalog import RuntimeCatalog
 from core.config import ProfileConfig, load_profile
@@ -454,7 +453,7 @@ def main(argv: list[str] | None = None) -> int:
         publisher.stop()
         return 1
 
-    clock = SteeredClock()
+    clock = MonotonicWallClock()
     try:
         batches, lap_times = simulate(
             profile,

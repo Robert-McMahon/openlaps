@@ -204,4 +204,17 @@ def _startup_commands(settings: DriverSettings) -> tuple[str, ...]:
         except KeyError:
             raise ValueError(f"unsupported UM980 NMEA sentence {configured_sentence!r}") from None
         commands.append(f"{command} {interval}")
+    timing = settings.timing_output
+    if timing is not None:
+        commands.append(f"CONFIG {timing.port} {timing.baud} 8 N 1")
+    pps = settings.pps
+    if pps is not None:
+        commands.append(
+            f"CONFIG PPS {pps.mode} {pps.time_reference} {pps.polarity} "
+            f"{pps.width_us} {pps.period_ms} {pps.rf_delay_ns} {pps.user_delay_ns}"
+        )
+    if timing is not None:
+        # ZDA names the PPS second. GGA supplies explicit fix validity so the
+        # timing head can stop immediately instead of trusting PPS holdover.
+        commands.extend((f"GPZDA {timing.port} 1", f"GPGGA {timing.port} 1"))
     return tuple(commands)

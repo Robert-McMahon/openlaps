@@ -74,11 +74,11 @@ from size_batch import (  # noqa: E402
 )
 
 from agent.agent import agent_derived_channels  # noqa: E402
-from agent.clock import SteeredClock  # noqa: E402
 from agent.pipeline import DERIVED_SOURCE_CLASS, Pipeline  # noqa: E402
 from agent.queues import SampleQueue  # noqa: E402
 from agent.timing_app import build_lap_timing_app  # noqa: E402
 from collectors.can import CanCollector  # noqa: E402
+from collectors.clock import MonotonicWallClock  # noqa: E402
 from collectors.host import HostCollector  # noqa: E402
 from collectors.serial.nmea import NmeaDecoder  # noqa: E402
 from collectors.serial.transport import SerialCollector  # noqa: E402
@@ -265,7 +265,7 @@ def run_live(
     """
     mix = Mix()
     result = RunResult(mix=mix)
-    clock = SteeredClock()
+    clock = MonotonicWallClock()
 
     timing_app = None
     lap_timing = profile.catalog.apps.lap_timing

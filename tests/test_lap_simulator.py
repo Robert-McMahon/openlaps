@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "tools"))
 
 import lap_simulator as sim  # noqa: E402
 
-from agent.clock import SteeredClock  # noqa: E402
+from collectors.clock import MonotonicWallClock  # noqa: E402
 from core.catalog import build_runtime_catalog  # noqa: E402
 from core.config import load_profile  # noqa: E402
 from core.pb import telemetry_pb2 as pb  # noqa: E402
@@ -109,7 +109,7 @@ def test_the_opening_crossing_starts_timing_on_the_start_finish_line(
         sim.simulate(
             profile,
             catalog,
-            SteeredClock(),
+            MonotonicWallClock(),
             track=track,
             frame=frame,
             path=path,
@@ -135,7 +135,7 @@ def test_ten_simulated_laps_produce_ten_valid_varying_lap_completions(
 ):
     track, frame, path, _length = track_and_path
     catalog = build_runtime_catalog(profile, state_path=tmp_path / "registry-state.json")
-    clock = SteeredClock()
+    clock = MonotonicWallClock()
 
     batches, reported_times = sim.simulate(
         profile,

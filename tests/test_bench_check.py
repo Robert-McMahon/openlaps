@@ -78,7 +78,7 @@ def test_the_candump_fixtures_predict_the_rate_they_actually_contain(tmp_path: P
 
     mix = bench_check.predict_can(profile, catalog, CANDUMPS)
 
-    assert mix.rate(bench_check.CAN_CLASS) == pytest.approx(1397.0, rel=0.01)
+    assert mix.rate(bench_check.CAN_CLASS) == pytest.approx(2034.6, rel=0.01)
     assert mix.rate(bench_check.IMU_CLASS) == pytest.approx(752.5, rel=0.01)
     devices = mix.device_rates()
     assert set(devices) == {"haltech", "haltech2", "wideband", "imu"}
@@ -105,10 +105,10 @@ def test_gps_is_predicted_from_a_sentence_the_real_decoder_accepts(tmp_path: Pat
     assert bench_check.predict_gps(profile, catalog, 10.0) == 50.0
 
 
-def test_host_metrics_contribute_nothing_because_the_catalog_maps_none(tmp_path: Path):
+def test_host_clock_metrics_contribute_at_the_host_poll_rate(tmp_path: Path):
     profile, catalog = _catalog(tmp_path)
 
-    assert bench_check.predict_host(profile, catalog) == 0.0
+    assert bench_check.predict_host(profile, catalog) == pytest.approx(0.8)
 
 
 def test_the_bench_profile_and_the_example_profile_predict_the_same_mix(tmp_path: Path):
@@ -282,7 +282,7 @@ def test_predict_mode_needs_no_hardware_and_reports_the_model_gap():
     assert status == 0
     assert "vcan0" in text
     assert "Predicted bench mix vs. LINK_BUDGET.md §2 model" in text
-    assert "2399.5" in text and "4087.2" in text
+    assert "3037.8" in text and "4087.2" in text
 
 
 def test_the_model_gap_can_be_made_fatal_for_those_who_want_it():

@@ -39,6 +39,20 @@ serial:
         rate_hz: 50
         sentences: [RMC]
         configure_on_start: true
+        # UM980 command manual §4.32 (printed p56): GPS-referenced, active-high
+        # 1 Hz PPS. ENABLE suppresses output until the receiver has a fix.
+        pps:
+          mode: ENABLE
+          time_reference: GPS
+          polarity: POSITIVE
+          width_us: 500000
+          period_ms: 1000
+          rf_delay_ns: 0
+          user_delay_ns: 0
+        # The spare port feeds ZDA plus GGA fix validity to the RP2040.
+        timing_output:
+          port: COM2
+          baud: 115200
       # Accepts RTCM correction bytes published by the pit ntrip-client on
       # core NATS subject rtcm.<vehicle> and writes them straight to the
       # receiver's correction input; no config needed here beyond having

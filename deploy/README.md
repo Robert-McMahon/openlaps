@@ -118,6 +118,57 @@ subject `tele.<vehicle>.>`:
 nats --server nats://127.0.0.1:4222 stream ls
 ```
 
+#### GNSS timing head and clock discipline
+
+The Radxa X4 cannot capture PPS on the N100 directly. P4.8 therefore flashes
+the onboard RP2040 as a timing head. This **replaces Radxa's stock GPIO
+firmware**. The complete firmware build and flash procedure is in
+`firmware/timing-head/README.md`.
+
+Default external wiring is UM980 PPS (active high) to RP2040 GPIO2, UM980
+COM2 TX to RP2040 GPIO5/UART1 RX, and a shared ground. On X4 v1.110 these are
+header pins 38 and 11 respectively; on older X4 boards they are pins 22 and
+6. The UART build uses the X4's internal RP2040 UART0 link and appears on the
+N100 as `/dev/ttyS4` — there is no external host-UART wire. The USB build
+appears as `/dev/ttyACM0`. All external signals are 3.3 V TTL. Do not select
+between transports on an assumed jitter advantage; run the one-hour
+comparison in the bench runbook.
+
+Install `chrony`, then install `deploy/chrony/vehicle.conf` on the SBC,
+`deploy/chrony/pit.conf` at the pit, and the shim unit:
+
+On the Ubuntu vehicle image, the chrony systemd drop-in starts chronyd with the
+`openlaps` GID, making its refclock socket `root:openlaps` with mode `0660`, and
+gives that group read/traverse access to the runtime directory. This lets the
+unprivileged shim submit samples without a privileged post-creation
+`chown`/`chmod` race or world-writable clock input.
+
+```bash
+sudo apt-get install chrony python3-serial
+getent group openlaps >/dev/null || sudo groupadd --system openlaps
+id -u openlaps >/dev/null 2>&1 || \
+  sudo useradd --system --gid openlaps --home-dir /opt/openlaps --shell /usr/sbin/nologin openlaps
+sudo install -m 0644 deploy/chrony/vehicle.conf /etc/chrony/chrony.conf
+sudo install -D -o root -g root -m 0755 tools/timing_head_shim.py \
+  /usr/local/libexec/openlaps/timing_head_shim.py
+sudo install -m 0644 deploy/systemd/timing-head-shim.service /etc/systemd/system/
+sudo install -d /etc/systemd/system/chrony.service.d
+sudo install -m 0644 deploy/systemd/chrony-openlaps-sock.conf \
+  /etc/systemd/system/chrony.service.d/openlaps-sock.conf
+sudo install -d /etc/openlaps
+printf '%s\n' 'TIMING_HEAD_ARGS=--device /dev/ttyACM0 --chrony-socket /run/chrony/openlaps-timing.sock' \
+  | sudo tee /etc/openlaps/timing-head.env
+sudo systemctl daemon-reload
+sudo systemctl restart chrony
+sudo systemctl enable --now timing-head-shim
+chronyc sources -v
+```
+
+The `GPS` SOCK refclock is preferred and internet NTP remains fallback.
+Pulling PPS must make chrony select NTP by slew; restoring it must reselect
+GPS, also without a step. The host collector publishes that state as
+`sys.host.clock_*` telemetry.
+
 ### 2. Pit
 
 ```bash

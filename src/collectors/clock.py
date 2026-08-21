@@ -23,8 +23,9 @@ Emit = Callable[[Sample], None]
 class MonotonicWallClock:
     """Fixed-offset monotonic-to-wall mapping, anchored at construction.
 
-    Collectors only need *a* mapping; the agent supplies its GNSS-steered one
-    (``docs/AGENT_DESIGN.md`` -> Clock discipline) in production.
+    Collectors only need *a* mapping; the agent supplies its dynamic
+    system-clock mapping (``docs/AGENT_DESIGN.md`` -> Clock discipline) in
+    production. This fixed mapping remains useful for standalone tools.
     """
 
     __slots__ = ("_offset_ms",)

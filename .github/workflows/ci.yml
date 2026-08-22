@@ -22,6 +22,10 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: uv sync --all-extras
       - run: uv run pytest
+        # This cleans up Docker volumes on self-hosted runner
+      - name: Prune Docker Volumes
+        if: always()
+        run: docker volume prune -f
 
   gitleaks:
     runs-on: ubuntu-latest

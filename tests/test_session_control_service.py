@@ -86,9 +86,52 @@ def test_load_roster_returns_configured_placeholders(tmp_path: Path):
         encoding="utf-8",
     )
 
+    # `tracks` is optional so an old roster file keeps working.
     assert load_roster(path) == {
         "drivers": ["Driver A", "Driver B"],
         "session_types": ["practice", "race"],
+        "tracks": [],
+    }
+
+
+def test_load_roster_reads_tracks_and_ignores_unknown_keys(tmp_path: Path):
+    path = tmp_path / "roster.json"
+    path.write_text(
+        json.dumps(
+            {
+                "drivers": ["Driver A"],
+                "session_types": ["race"],
+                "tracks": ["Wanneroo", "Collie"],
+                "a_future_key": {"the roster": "can grow without a lockstep deploy"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_roster(path) == {
+        "drivers": ["Driver A"],
+        "session_types": ["race"],
+        "tracks": ["Wanneroo", "Collie"],
+    }
+
+
+def test_load_roster_rejects_malformed_tracks(tmp_path: Path):
+    path = tmp_path / "roster.json"
+    path.write_text(
+        json.dumps(
+            {
+                "drivers": ["Driver A"],
+                "session_types": ["race"],
+                "tracks": "Wanneroo",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_roster(path) == {
+        "drivers": [],
+        "session_types": ["practice", "qualifying", "race", "test"],
+        "tracks": [],
     }
 
 

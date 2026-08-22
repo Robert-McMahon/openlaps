@@ -296,6 +296,233 @@ def test_http_requires_bearer_token_when_configured(tmp_path: Path):
     asyncio.run(exercise())
 
 
+def test_static_ui_is_served_outside_the_bearer_gate(tmp_path: Path):
+    """The page is where the key gets entered, so it cannot sit behind it.
+
+    Every API call the page makes is still gated: an unknown path with no
+    credential is 401, proving the gate is intact around the allowlist.
+    """
+
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(StateFile(tmp_path / "session.json"), database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+            api_key="operator-secret",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            code, content_type, body = await asyncio.to_thread(_get_asset, f"{base}/")
+            assert code == 200
+            assert content_type.startswith("text/html")
+            assert b"Session control" in body
+
+            for path, expected_type in (
+                ("/app.js", "text/javascript"),
+                ("/style.css", "text/css"),
+            ):
+                code, content_type, body = await asyncio.to_thread(_get_asset, base + path)
+                assert code == 200
+                assert content_type.startswith(expected_type)
+                assert body
+
+            code, _ = await asyncio.to_thread(_request, f"{base}/session")
+            assert code == 401
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
+def test_static_serving_is_an_allowlist_not_a_directory(tmp_path: Path):
+    """A traversal attempt is refused: nothing off the allowlist is a file.
+
+    The handler never joins the request path to a directory, so these are
+    dictionary misses (404), not filesystem lookups.
+    """
+
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(StateFile(tmp_path / "session.json"), database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            for path in (
+                "/../pyproject.toml",
+                "/static/../service.py",
+                "/%2e%2e/etc/passwd",
+                "/etc/passwd",
+                "/index.html",
+            ):
+                code = await asyncio.to_thread(_raw_get_status, base, path)
+                assert code == 404, path
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
+def test_same_origin_post_is_accepted_and_mismatched_origin_refused(tmp_path: Path):
+    """Browsers send Origin on every non-GET request, same-origin included.
+
+    The page this service serves must get through; any other origin — here a
+    different port on the same host — keeps the existing 403. The
+    absent-Origin path (curl, the compose healthcheck) is pinned by every
+    other POST test in this file.
+    """
+
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(StateFile(tmp_path / "session.json"), database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        payload = json.dumps({"session_type": "race", "driver": "Driver A"}).encode()
+        try:
+            mismatched = urllib.request.Request(
+                f"{base}/session/start",
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": f"http://127.0.0.1:{server.server_port + 1}",
+                },
+                method="POST",
+            )
+            code, body = await asyncio.to_thread(_url_request, mismatched)
+            assert code == 403
+            assert body == {"error": "cross-origin request denied"}
+            assert publisher.published == 0
+
+            same_origin = urllib.request.Request(
+                f"{base}/session/start",
+                data=payload,
+                headers={"Content-Type": "application/json", "Origin": base},
+                method="POST",
+            )
+            code, body = await asyncio.to_thread(_url_request, same_origin)
+            assert code == 200
+            assert body["status"] == "active"
+            assert publisher.published == 1
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
+def test_backdated_transitions_over_http(tmp_path: Path):
+    """`at` backdates a driver change or an end; everything invalid is 409."""
+
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(StateFile(tmp_path / "session.json"), database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/start",
+                {"session_type": "race", "driver": "Driver A", "at": 12345},
+            )
+            assert code == 409
+            assert "start cannot be backdated" in body["error"]
+
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/start",
+                {"session_type": "race", "driver": "Driver A"},
+            )
+            assert code == 200
+            session_start = body["session_start"]
+
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/driver",
+                {"driver": "Driver B", "at": "yesterday"},
+            )
+            assert code == 409
+            assert "epoch milliseconds" in body["error"]
+
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/driver",
+                {"driver": "Driver B", "at": session_start + 3_600_000_000},
+            )
+            assert code == 409
+            assert "future" in body["error"]
+
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/driver",
+                {"driver": "Driver B", "at": session_start - 60_000},
+            )
+            assert code == 409
+            assert "before the active stint" in body["error"]
+
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/driver",
+                {"driver": "Driver B", "at": session_start + 1},
+            )
+            assert code == 200
+            assert body["driver"] == "Driver B"
+            assert body["stint_number"] == 2
+            assert body["stint_start"] == session_start + 1
+
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/end",
+                {"at": session_start},
+            )
+            assert code == 409
+            assert "before the active stint" in body["error"]
+
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/end",
+                {"at": session_start + 2},
+            )
+            assert code == 200
+            assert body["status"] == "ended"
+            assert body["timestamp"] == session_start + 2
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
 def _request(url: str, body: dict[str, object] | None = None) -> tuple[int, dict]:
     data = None if body is None else json.dumps(body).encode()
     return _raw_request(url, data)
@@ -322,6 +549,28 @@ def _url_request(request: urllib.request.Request) -> tuple[int, dict]:
             return response.status, json.loads(response.read())
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read())
+
+
+def _get_asset(url: str) -> tuple[int, str, bytes]:
+    try:
+        with urllib.request.urlopen(url, timeout=3.0) as response:
+            return response.status, response.headers.get("Content-Type", ""), response.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.headers.get("Content-Type", ""), exc.read()
+
+
+def _raw_get_status(base: str, path: str) -> int:
+    """GET an exact, unnormalised path — urllib would clean `..` client-side."""
+    parsed = urlsplit(base)
+    assert parsed.hostname is not None
+    connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=3.0)
+    try:
+        connection.putrequest("GET", path, skip_host=True)
+        connection.putheader("Host", f"{parsed.hostname}:{parsed.port}")
+        connection.endheaders()
+        return connection.getresponse().status
+    finally:
+        connection.close()
 
 
 def _length_only_request(url: str, length: int) -> tuple[int, dict]:

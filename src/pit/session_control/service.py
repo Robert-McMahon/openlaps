@@ -10,9 +10,11 @@ import os
 import secrets
 import tempfile
 import threading
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import resources
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -26,6 +28,16 @@ logger = logging.getLogger(__name__)
 _MAX_REQUEST_BODY_BYTES = 64 * 1024
 _REQUEST_TIMEOUT_S = 5.0
 _MAX_HTTP_WORKERS = 32
+
+# The operator UI (P5.6), served by this process from package data. A strict
+# filename allowlist, never a request path joined to a directory: path
+# traversal on a hand-rolled BaseHTTPRequestHandler is the classic way to
+# serve /etc/passwd from a telemetry box. Anything not in this dict is 404.
+_STATIC_FILES: dict[str, tuple[str, str]] = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/style.css": ("style.css", "text/css; charset=utf-8"),
+}
 
 
 def _is_loopback_host(host: str) -> bool:
@@ -142,7 +154,12 @@ class StateFile:
 
 
 def load_roster(path: str | Path) -> dict[str, list[str]]:
-    """Load the operator roster, falling back to an empty safe roster."""
+    """Load the operator roster, falling back to an empty safe roster.
+
+    ``tracks`` is optional so an old roster file keeps working, and unknown
+    keys are ignored so the roster can keep growing without a lockstep
+    deploy (docs/plan/PHASE5.md -> P5.6).
+    """
     roster_path = Path(path)
     try:
         decoded = json.loads(roster_path.read_text(encoding="utf-8"))
@@ -150,16 +167,19 @@ def load_roster(path: str | Path) -> dict[str, list[str]]:
             raise TypeError("roster must be a JSON object")
         drivers = decoded.get("drivers")
         session_types = decoded.get("session_types")
+        tracks = decoded.get("tracks", [])
         if not isinstance(drivers, list) or not all(isinstance(item, str) for item in drivers):
             raise TypeError("roster.drivers must be a list of strings")
         if not isinstance(session_types, list) or not all(
             isinstance(item, str) and item in SESSION_TYPES for item in session_types
         ):
             raise TypeError(f"roster.session_types must contain only {SESSION_TYPES}")
-        return {"drivers": drivers, "session_types": session_types}
+        if not isinstance(tracks, list) or not all(isinstance(item, str) for item in tracks):
+            raise TypeError("roster.tracks must be a list of strings")
+        return {"drivers": drivers, "session_types": session_types, "tracks": tracks}
     except (OSError, TypeError, json.JSONDecodeError) as exc:
         logger.warning("session-control: cannot load roster %s: %s", roster_path, exc)
-        return {"drivers": [], "session_types": list(SESSION_TYPES)}
+        return {"drivers": [], "session_types": list(SESSION_TYPES), "tracks": []}
 
 
 class SessionController:
@@ -190,6 +210,20 @@ class SessionController:
         """Apply one API action; DB precedes publish whenever it is reachable."""
         async with self._lock:
             prior_state = self.state.to_dict()
+            # Buttons get pressed late: an optional `at` (epoch ms) backdates
+            # a driver change or an end to when it actually happened. It must
+            # not be in the future (server clock), and the state machine
+            # already refuses anything before the active stint started. Start
+            # is not backdatable — nothing has happened yet to be late about.
+            at = body.get("at")
+            if at is not None:
+                if isinstance(at, bool) or not isinstance(at, int):
+                    raise SessionError("at must be epoch milliseconds")
+                if action == "start":
+                    raise SessionError("start cannot be backdated")
+                if at > int(time.time() * 1000):
+                    raise SessionError("at cannot be in the future")
+                now_ms = at
             if action == "start":
                 payload = self.state.start_session(
                     _text(body.get("session_type")),
@@ -340,6 +374,13 @@ class _SessionHandler(BaseHTTPRequestHandler):
         if path == "/health":
             self._send(200, _health_payload(self.database, self.publisher))
             return
+        # The operator UI is also outside the bearer gate: it is where the
+        # key gets entered, and it is public-repository HTML with no data in
+        # it — every API call the page makes is still gated.
+        static = _STATIC_FILES.get(path)
+        if static is not None:
+            self._send_static(*static)
+            return
         if not self._authorized():
             return
         if path == "/session":
@@ -362,8 +403,16 @@ class _SessionHandler(BaseHTTPRequestHandler):
             return
         if not self._authorized():
             return
+        # Browsers send Origin on every request whose method is not GET/HEAD,
+        # including same-origin ones — so the operator UI this process serves
+        # must be let through, and only it. This server speaks plain HTTP and
+        # never terminates TLS, so the one acceptable Origin is exactly
+        # http://<Host header>. Anything else is refused, and a request with
+        # no Origin at all (curl, the compose healthcheck) keeps working.
+        # do_OPTIONS stays 405: a same-origin UI needs no preflight, and not
+        # implementing CORS is the point.
         origin = self.headers.get("Origin")
-        if origin:
+        if origin is not None and not self._same_origin(origin):
             self._send(403, {"error": "cross-origin request denied"})
             return
         if self.headers.get("Transfer-Encoding"):
@@ -413,6 +462,26 @@ class _SessionHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _same_origin(self, origin: str) -> bool:
+        host = self.headers.get("Host", "").strip()
+        return bool(host) and origin.strip().lower() == f"http://{host.lower()}"
+
+    def _send_static(self, filename: str, content_type: str) -> None:
+        try:
+            body = (resources.files("pit.session_control") / "static" / filename).read_bytes()
+        except OSError:
+            logger.exception("session-control: cannot read static asset %s", filename)
+            self._send(500, {"error": "internal server error"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        # The page is edited in the repository and redeployed; a stale cached
+        # copy against a newer API is a confusing failure for zero benefit.
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
 
@@ -473,7 +542,7 @@ def serve_http(
     host: str = "127.0.0.1",
     api_key: str | None = None,
 ) -> BoundedThreadingHTTPServer:
-    """Start the six-endpoint operator API on a daemon thread."""
+    """Start the operator API and its static UI on a daemon thread."""
     if not _is_loopback_host(host) and api_key is None:
         raise ValueError("api_key is required for non-loopback HTTP binding")
     handler = type(

@@ -270,6 +270,37 @@ class SessionDatabase:
                         _timestamp(end_ms) if isinstance(end_ms, int) else None,
                     ),
                 )
+            # Backdating a driver change moves a stint boundary after laps in
+            # the moved window were already attributed: the vehicle stamps
+            # stint_number into lap.event from the session state it knew at
+            # the crossing, so laps recorded between the real change and the
+            # late button press point at the closed stint. Re-window them
+            # from the stint rows just written, in the same transaction. This
+            # is a deliberate, narrow crossing of an ownership boundary —
+            # `laps` belongs to the ingest-writer — and an explicit operator
+            # amendment is the one case where the vehicle's stamp is known to
+            # be wrong (docs/plan/PHASE5.md -> P5.6).
+            #
+            # Snapshot-derived rather than transition-carried on purpose: the
+            # retry queue replays whole snapshots, and this UPDATE is
+            # idempotent, so a queued backdate converges to the same rows as
+            # a live one. Scope: only laps of this session that already point
+            # at a stint; a lap the writer left with a NULL stint (it arrived
+            # before our rows did) is the writer's to resolve, not ours.
+            await conn.execute(
+                """
+                UPDATE laps l
+                SET stint_id = s.stint_id
+                FROM stints s
+                WHERE l.session_id = %s
+                  AND s.session_id = l.session_id
+                  AND l.stint_id IS NOT NULL
+                  AND l.stint_id <> s.stint_id
+                  AND l.crossed_at >= s.started
+                  AND (s.ended IS NULL OR l.crossed_at < s.ended)
+                """,
+                (session_id,),
+            )
 
     @staticmethod
     async def _upsert_driver(conn: psycopg.AsyncConnection, name: str) -> int:

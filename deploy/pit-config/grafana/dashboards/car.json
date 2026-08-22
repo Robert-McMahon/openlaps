@@ -1,0 +1,3644 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Live car and engine state, lap/link context, and historical traces from the openlaps stable read surface.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Session control",
+      "tooltip": "Open the session-control operator UI",
+      "type": "link",
+      "url": "http://localhost:8080/"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "panels": [],
+      "title": "Live",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 7500
+              },
+              {
+                "color": "red",
+                "value": 8200
+              }
+            ]
+          },
+          "unit": "rpm",
+          "decimals": 0,
+          "min": 0,
+          "max": 9000
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.rpm"
+        }
+      ],
+      "title": "Engine speed",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 75
+              }
+            ]
+          },
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.throttle_pos"
+        }
+      ],
+      "title": "Throttle",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "text": "Released"
+                },
+                "1": {
+                  "color": "red",
+                  "text": "Applied"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0,
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.brake_pedal_switch"
+        }
+      ],
+      "title": "Brake",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0,
+          "min": -1,
+          "max": 6
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.gear"
+        }
+      ],
+      "title": "Gear",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "velocitykmh",
+          "decimals": 0,
+          "min": 0,
+          "max": 300
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 6
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.vehicle_speed"
+        }
+      ],
+      "title": "Vehicle speed",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 373.15
+              },
+              {
+                "color": "red",
+                "value": 383.15
+              }
+            ]
+          },
+          "unit": "kelvin",
+          "decimals": 1,
+          "min": 273.15,
+          "max": 403.15
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 6
+      },
+      "id": 7,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.coolant_temp"
+        }
+      ],
+      "title": "Coolant temperature",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 383.15
+              },
+              {
+                "color": "red",
+                "value": 398.15
+              }
+            ]
+          },
+          "unit": "kelvin",
+          "decimals": 1,
+          "min": 273.15,
+          "max": 423.15
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 6
+      },
+      "id": 8,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.oil_temp"
+        }
+      ],
+      "title": "Oil temperature",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 200
+              },
+              {
+                "color": "green",
+                "value": 300
+              }
+            ]
+          },
+          "unit": "pressurekpa",
+          "decimals": 0,
+          "min": 0,
+          "max": 1000
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 6
+      },
+      "id": 9,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.oil_pressure"
+        }
+      ],
+      "title": "Oil pressure",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 220
+              },
+              {
+                "color": "red",
+                "value": 260
+              }
+            ]
+          },
+          "unit": "pressurekpa",
+          "decimals": 0,
+          "min": 0,
+          "max": 300
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 11
+      },
+      "id": 10,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.map"
+        }
+      ],
+      "title": "Manifold pressure",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1.05
+              },
+              {
+                "color": "red",
+                "value": 1.15
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 2,
+          "min": 0.6,
+          "max": 1.4
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 11
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.lambda1"
+        }
+      ],
+      "title": "Lambda",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 11.5
+              },
+              {
+                "color": "green",
+                "value": 12.5
+              }
+            ]
+          },
+          "unit": "volt",
+          "decimals": 1,
+          "min": 8,
+          "max": 16
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 11
+      },
+      "id": 12,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.battery_v"
+        }
+      ],
+      "title": "Battery voltage",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 250
+              },
+              {
+                "color": "green",
+                "value": 350
+              }
+            ]
+          },
+          "unit": "pressurekpa",
+          "decimals": 0,
+          "min": 0,
+          "max": 1000
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 11
+      },
+      "id": 13,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.fuel_pressure"
+        }
+      ],
+      "title": "Fuel pressure",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "gauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 14,
+      "panels": [],
+      "title": "Context",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 17
+      },
+      "id": 15,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/lap.number"
+        }
+      ],
+      "title": "Lap",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 17
+      },
+      "id": 16,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/timing.lap_elapsed"
+        }
+      ],
+      "title": "Current lap",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 17
+      },
+      "id": 17,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/lap.last_time"
+        }
+      ],
+      "title": "Last lap",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 17
+      },
+      "id": 18,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/lap.best_time"
+        }
+      ],
+      "title": "Best lap",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 17
+      },
+      "id": 19,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/timing.delta_best"
+        }
+      ],
+      "title": "Delta to best",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 250
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          },
+          "unit": "ms",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 17
+      },
+      "id": 20,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/sys.agent.publish_lag_ms"
+        }
+      ],
+      "title": "Publish lag",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat",
+      "description": "Vehicle-side age of the oldest unacknowledged publish; this value goes stale when the radio link drops."
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "dateTimeFromNow"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 21
+      },
+      "id": 21,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/sys.agent.publish_lag_ms"
+        }
+      ],
+      "title": "Newest live update",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "time"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat",
+      "description": "Capture timestamp carried by the newest link-health MQTT message. A dead link leaves this visibly stale rather than zeroing it."
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 21
+      },
+      "id": 22,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/sys.agent.publish_drops"
+        }
+      ],
+      "title": "Publish drops",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 21
+      },
+      "id": 23,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/sys.agent.rbe_suppressed"
+        }
+      ],
+      "title": "RBE suppressed",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "id": 24,
+      "panels": [],
+      "title": "Traces",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "rpm"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "RPM Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "RPM Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "RPM Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "id": 25,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"RPM Average\", min(min) AS \"RPM Minimum\", max(max) AS \"RPM Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.rpm'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"RPM Average\", min(value) AS \"RPM Minimum\", max(value) AS \"RPM Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.rpm'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Engine speed",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Throttle Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Throttle Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Throttle Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Brake Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Brake Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Brake Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "id": 26,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Throttle Average\", min(min) AS \"Throttle Minimum\", max(max) AS \"Throttle Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.throttle_pos'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Throttle Average\", min(value) AS \"Throttle Minimum\", max(value) AS \"Throttle Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.throttle_pos'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Brake Average\", min(min) AS \"Brake Minimum\", max(max) AS \"Brake Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.brake_pedal_switch'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Brake Average\", min(value) AS \"Brake Minimum\", max(value) AS \"Brake Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.brake_pedal_switch'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "D"
+        }
+      ],
+      "title": "Throttle and brake",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "velocitykmh"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Speed Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Speed Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Speed Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "id": 27,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Speed Average\", min(min) AS \"Speed Minimum\", max(max) AS \"Speed Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.vehicle_speed'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Speed Average\", min(value) AS \"Speed Minimum\", max(value) AS \"Speed Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.vehicle_speed'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Vehicle speed",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gear Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Gear Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gear Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 34
+      },
+      "id": 28,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Gear Average\", min(min) AS \"Gear Minimum\", max(max) AS \"Gear Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.gear'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Gear Average\", min(value) AS \"Gear Minimum\", max(value) AS \"Gear Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.gear'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Gear",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kelvin"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Coolant Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Coolant Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Coolant Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 42
+      },
+      "id": 29,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Coolant Average\", min(min) AS \"Coolant Minimum\", max(max) AS \"Coolant Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.coolant_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Coolant Average\", min(value) AS \"Coolant Minimum\", max(value) AS \"Coolant Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.coolant_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Coolant temperature",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "kelvin"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Oil temperature Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Oil temperature Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Oil temperature Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 42
+      },
+      "id": 30,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Oil temperature Average\", min(min) AS \"Oil temperature Minimum\", max(max) AS \"Oil temperature Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Oil temperature Average\", min(value) AS \"Oil temperature Minimum\", max(value) AS \"Oil temperature Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Oil temperature",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "pressurekpa"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Oil pressure Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Oil pressure Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Oil pressure Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fuel pressure Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Fuel pressure Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fuel pressure Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 50
+      },
+      "id": 31,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Oil pressure Average\", min(min) AS \"Oil pressure Minimum\", max(max) AS \"Oil pressure Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Oil pressure Average\", min(value) AS \"Oil pressure Minimum\", max(value) AS \"Oil pressure Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Fuel pressure Average\", min(min) AS \"Fuel pressure Minimum\", max(max) AS \"Fuel pressure Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Fuel pressure Average\", min(value) AS \"Fuel pressure Minimum\", max(value) AS \"Fuel pressure Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "D"
+        }
+      ],
+      "title": "Oil and fuel pressure",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "pressurekpa"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "MAP Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "MAP Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "MAP Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 50
+      },
+      "id": 32,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"MAP Average\", min(min) AS \"MAP Minimum\", max(max) AS \"MAP Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.map'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"MAP Average\", min(value) AS \"MAP Minimum\", max(value) AS \"MAP Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.map'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Manifold pressure",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lambda Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Lambda Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lambda Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 58
+      },
+      "id": 33,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Lambda Average\", min(min) AS \"Lambda Minimum\", max(max) AS \"Lambda Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.lambda1'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Lambda Average\", min(value) AS \"Lambda Minimum\", max(value) AS \"Lambda Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.lambda1'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Lambda",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "volt"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Battery Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Battery Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Battery Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 58
+      },
+      "id": 34,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Battery Average\", min(min) AS \"Battery Minimum\", max(max) AS \"Battery Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.battery_v'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Battery Average\", min(value) AS \"Battery Minimum\", max(value) AS \"Battery Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.battery_v'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Battery voltage",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "dB"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Knock Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Knock Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Knock Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 66
+      },
+      "id": 35,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Knock Average\", min(min) AS \"Knock Minimum\", max(max) AS \"Knock Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.knock_level1'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Knock Average\", min(value) AS \"Knock Minimum\", max(value) AS \"Knock Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.knock_level1'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Knock level",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "litre"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fuel level Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Fuel level Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fuel level Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 66
+      },
+      "id": 36,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Fuel level Average\", min(min) AS \"Fuel level Minimum\", max(max) AS \"Fuel level Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_level'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Fuel level Average\", min(value) AS \"Fuel level Minimum\", max(value) AS \"Fuel level Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_level'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Fuel level",
+      "type": "timeseries",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+    }
+  ],
+  "preload": false,
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": [
+    "openlaps",
+    "car",
+    "engine"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "example-club-racer",
+          "value": "example-club-racer"
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
+        "includeAll": false,
+        "label": "Vehicle",
+        "name": "vehicle",
+        "options": [],
+        "query": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "includeAll": true,
+        "label": "Session (completed laps)",
+        "name": "session",
+        "options": [],
+        "query": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "refresh": 1,
+        "regex": "",
+        "sort": 2,
+        "type": "query"
+      },
+      {
+        "allowCustomValue": false,
+        "current": {
+          "text": "Session (1 s envelope)",
+          "value": "v_samples_1s_named"
+        },
+        "label": "Trace detail",
+        "name": "trace_source",
+        "options": [
+          {
+            "selected": true,
+            "text": "Session (1 s envelope)",
+            "value": "v_samples_1s_named"
+          },
+          {
+            "selected": false,
+            "text": "Raw (lap)",
+            "value": "v_samples_named"
+          }
+        ],
+        "query": "Session (1 s envelope) : v_samples_1s_named,Raw (lap) : v_samples_named",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Car and engine",
+  "uid": "car",
+  "version": 1,
+  "weekStart": "monday"
+}

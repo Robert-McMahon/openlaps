@@ -34,7 +34,7 @@
 #
 # Re-measure after widening. This is a local broker rather than the radio,
 # but the browser tab holding the dashboard is the thing that falls over.
-vehicle: example-club-racer-parity
+vehicle: example-club-racer
 
 defaults:
   max_hz: 10          # per-channel ceiling; 0 means unlimited

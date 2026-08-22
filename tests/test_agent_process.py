@@ -18,6 +18,7 @@ import serial
 from conftest import EXAMPLE_PROFILE
 
 from agent.agent import AgentSettings, VehicleAgent, agent_derived_channels
+from agent.pipeline import DERIVED_SOURCE_CLASS
 from core.pb import telemetry_pb2 as pb
 
 
@@ -83,6 +84,7 @@ def test_registry_includes_sys_agent_and_derived_channels(tmp_path: Path):
         "sys.agent.status",
         "sys.agent.unmapped_refs",
         "sys.agent.rbe_suppressed",
+        "sys.agent.encode_failures",
         "sys.agent.publish_drops",
         "sys.agent.publish_lag_ms",
         "sys.agent.drops.can0",
@@ -99,9 +101,32 @@ def test_health_samples_land_on_sys_agent_channels(tmp_path: Path):
     agent._emit_health_samples()
     samples = {s.source_ref: s.value for s in agent._agent_queue.drain()}
     assert samples["derived:sys.agent.publish_drops"] == 0
+    assert samples["derived:sys.agent.encode_failures"] == 0
     status = json.loads(samples["derived:sys.agent.status"])
     assert status["state"] == "running"
     assert set(status["collectors"]) == {"can0", "serial0", "host"}
+
+
+def test_encode_failures_reach_the_wire_as_their_own_channel(tmp_path: Path):
+    # A mis-typed catalog channel discards whole tick windows across every
+    # source class; the counter has to be visible off-box, not just in logs.
+    agent = VehicleAgent(_settings(tmp_path), bus_factory=_failing_bus_factory)
+    agent.pipeline.encode_failures = 2
+    agent._emit_health_samples()
+    for sample in agent._agent_queue.drain():
+        agent.pipeline.ingest(DERIVED_SOURCE_CLASS, sample)
+    batches = agent.pipeline.flush(agent.clock)
+
+    names = {channel.id: channel.name for channel in agent.catalog.registry.channels}
+    wire = {}
+    for batch in batches:
+        decoded = pb.SampleBatch()
+        decoded.ParseFromString(batch.payload)
+        for sample in decoded.samples:
+            wire[names[sample.channel_id]] = sample
+    # The health samples themselves encoded cleanly (the counter did not move).
+    assert agent.pipeline.encode_failures == 2
+    assert wire["sys.agent.encode_failures"].i == 2
 
 
 class _StubCollector:

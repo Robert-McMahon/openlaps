@@ -55,6 +55,7 @@ class Pipeline:
         self._reported_unmapped: set[str] = set()
         self._reported_failures: set[str] = set()
         self.unmapped_refs = 0
+        # Cumulative discarded tick windows (feeds ``sys.agent.encode_failures``).
         self.encode_failures = 0
 
     @property

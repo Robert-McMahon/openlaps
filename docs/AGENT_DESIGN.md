@@ -127,6 +127,7 @@ on the same dashboards, stored in the same DB, no side channel:
 | `sys.agent.publish_drops` | batches shed because local NATS was unavailable |
 | `sys.agent.publish_lag_ms` | age of oldest unacked publish |
 | `sys.agent.rbe_suppressed` | cumulative samples suppressed by RBE (sanity check on policies) |
+| `sys.agent.encode_failures` | cumulative tick windows discarded by an encode error (a mis-typed catalog channel silently guts the stream — alert on any rise) |
 
 ## Startup and shutdown
 

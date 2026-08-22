@@ -258,6 +258,20 @@ def test_a_class_inside_tolerance_does_not_fail_the_gate():
     assert beyond[0].startswith("can: measured 1350.0/s against 1600.0/s predicted")
 
 
+def test_a_discarded_tick_window_fails_the_gate_and_is_named():
+    """The mix alone looks merely quiet; an encode failure has to say so."""
+    result = bench_check.RunResult(mix=bench_check.Mix(elapsed_s=10.0), encode_failures=3)
+    for _ in range(13_970):
+        result.mix.add("can0:haltech.ENGINE1.RPM", mapped=True)
+
+    out = io.StringIO()
+    failures = bench_check.report_run(result, {bench_check.CAN_CLASS: 1397.0}, 0.10, 20, out)
+
+    assert "encode_failures=3" in out.getvalue()
+    assert len(failures) == 1
+    assert failures[0].startswith("encode: 3 tick window(s) discarded")
+
+
 def test_a_class_the_model_does_not_cover_is_reported_without_gating():
     """Derived lap/timing channels are real offered load and no model's business."""
     result = bench_check.RunResult(mix=bench_check.Mix(elapsed_s=1.0))

@@ -128,7 +128,9 @@
           }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -207,7 +209,9 @@
           }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -301,7 +305,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -377,7 +383,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -453,7 +461,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -536,7 +546,9 @@
           }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -619,7 +631,9 @@
           }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -702,7 +716,9 @@
           }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -785,7 +801,9 @@
           }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -869,7 +887,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -952,7 +972,9 @@
           }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -1035,7 +1057,9 @@
           }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "collapsed": false,
@@ -1122,7 +1146,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -1196,7 +1222,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -1270,7 +1298,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -1344,7 +1374,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -1418,7 +1450,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -1501,7 +1535,9 @@
         }
       ],
       "type": "stat",
-      "description": "Vehicle-side age of the oldest unacknowledged publish; this value goes stale when the radio link drops."
+      "description": "Vehicle-side age of the oldest unacknowledged publish; this value goes stale when the radio link drops.",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -1575,7 +1611,9 @@
         }
       ],
       "type": "stat",
-      "description": "Capture timestamp carried by the newest link-health MQTT message. A dead link leaves this visibly stale rather than zeroing it."
+      "description": "Capture timestamp carried by the newest link-health MQTT message. A dead link leaves this visibly stale rather than zeroing it.",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -1653,7 +1691,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "datasource": {
@@ -1727,7 +1767,9 @@
           }
         }
       ],
-      "type": "stat"
+      "type": "stat",
+      "timeFrom": "1m",
+      "maxDataPoints": 600
     },
     {
       "collapsed": false,

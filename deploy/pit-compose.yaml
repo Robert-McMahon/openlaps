@@ -283,7 +283,7 @@ services:
       # asynchronously and offers no supported way to decline them without
       # also declining this one. They are part of what the pinned image is,
       # not something this stack asked for.
-      GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.3.6}
+      GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.1.0}
       # Read by the provisioning YAML, which Grafana interpolates at load.
       # No password among them but the read-only one.
       TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}

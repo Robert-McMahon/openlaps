@@ -698,6 +698,14 @@ boundary — `laps` belongs to the ingest-writer — and an explicit
 operator amendment is the one case where the vehicle's stamp is known to
 be wrong.
 
+A boundary already recorded wrong is corrected the same way: re-stating
+the **in-car** driver with `at` moves the start of the current stint
+(and the end of the previous one) to `at`, in either direction, bounded
+by the previous stint's start. It is a correction, not a change —
+without `at` it stays the 409 it always was — and the same lap
+re-windowing applies. The first stint cannot be moved; it starts with
+the session.
+
 A backdated end moves the session's `ended` timestamp and nothing else.
 Laps recorded after `at` keep their session: the car believed the
 session was open when it crossed the line, and a lap with a session is
@@ -721,8 +729,9 @@ integration test covers the service side; this is the UI path over it); a
 driver change mid-session creates a new stint; ending a session sets
 `status = 'ended'`. A backdated driver change moves the stint boundary
 *and* re-points the laps in the affected window, verified against a
-seeded database; an `at` before the active stint started or in the
-future is refused with the existing 409 path; a backdated end sets
+seeded database; re-stating the in-car driver with `at` moves the
+current stint's boundary; an `at` before the active stint started or in
+the future is refused with the existing 409 path; a backdated end sets
 `ended` without detaching any lap; the roster's `tracks` list reaches
 the start form. `tests/test_session_control_http.py` grows cases for:
 same-origin POST accepted, cross-origin POST still 403, absent-Origin POST

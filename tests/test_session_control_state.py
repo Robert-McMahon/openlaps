@@ -78,6 +78,42 @@ def test_driver_change_validation():
     assert state.stints == []
 
 
+def test_amend_stint_start_moves_the_boundary_both_directions():
+    state = started()
+    state.change_driver("Bob", now_ms=T0 + 30 * MIN)
+
+    payload = state.amend_stint_start(T0 + 20 * MIN)
+    assert payload["driver"] == "Bob"
+    assert payload["stint_number"] == 2
+    assert payload["stint_start"] == T0 + 20 * MIN
+    assert payload["timestamp"] == T0 + 20 * MIN
+    assert state.stints[-1]["end_ms"] == T0 + 20 * MIN
+
+    payload = state.amend_stint_start(T0 + 40 * MIN)
+    assert payload["stint_start"] == T0 + 40 * MIN
+    assert state.stints[-1]["end_ms"] == T0 + 40 * MIN
+
+    # The corrected state still satisfies the strict restore validator.
+    restored = SessionState.from_dict(state.to_dict())
+    assert restored.stint_start_ms == T0 + 40 * MIN
+    assert restored.stints[-1]["end_ms"] == T0 + 40 * MIN
+
+
+def test_amend_stint_start_validation():
+    with pytest.raises(SessionError, match="no active session"):
+        SessionState().amend_stint_start(T0)
+
+    state = started()
+    with pytest.raises(SessionError, match="first stint"):
+        state.amend_stint_start(T0 + MIN)
+
+    state.change_driver("Bob", now_ms=T0 + 30 * MIN)
+    with pytest.raises(SessionError, match="previous stint started"):
+        state.amend_stint_start(T0 - MIN)
+    # A zero-length previous stint is allowed, matching change_driver's bound.
+    assert state.amend_stint_start(T0)["stint_start"] == T0
+
+
 def test_end_session_closes_last_stint():
     state = started()
     state.change_driver("Bob", now_ms=T0 + 90 * MIN)

@@ -89,6 +89,28 @@ class SessionState:
         self.stint_start_ms = now
         return self.payload(now)
 
+    def amend_stint_start(self, at_ms: int) -> dict[str, object]:
+        """Correct when the active stint began; the previous stint's end moves with it.
+
+        The boundary just recorded was wrong — the operator pressed the
+        button and only then worked out the real time. The correction can
+        move either direction, bounded by the previous stint's start (a
+        zero-length previous stint is allowed, matching ``change_driver``'s
+        own bound). The first stint cannot be moved: it starts with the
+        session.
+        """
+        if self.status != "active":
+            raise SessionError("no active session - start one first")
+        if self.stint_number < 2:
+            raise SessionError("the first stint starts with the session and cannot be moved")
+        previous = self.stints[-1]
+        previous_start = previous["start_ms"]
+        if not isinstance(previous_start, int) or at_ms < previous_start:
+            raise SessionError("stint start cannot move before the previous stint started")
+        previous["end_ms"] = at_ms
+        self.stint_start_ms = at_ms
+        return self.payload(at_ms)
+
     def end_session(self, now_ms: int | None = None) -> dict[str, object]:
         """Close the current stint and mark the session ended."""
         if self.status != "active":

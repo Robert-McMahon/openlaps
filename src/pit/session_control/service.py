@@ -233,7 +233,15 @@ class SessionController:
                     now_ms=now_ms,
                 )
             elif action == "driver":
-                payload = self.state.change_driver(_text(body.get("driver")), now_ms=now_ms)
+                driver = _text(body.get("driver")).strip()
+                if at is not None and self.state.status == "active" and driver == self.state.driver:
+                    # Re-stating the in-car driver with a time is a
+                    # correction of when their stint began — the boundary
+                    # just recorded was wrong — not a driver change. Without
+                    # `at` it stays the 409 it always was.
+                    payload = self.state.amend_stint_start(at)
+                else:
+                    payload = self.state.change_driver(driver, now_ms=now_ms)
             elif action == "end":
                 payload = self.state.end_session(now_ms=now_ms)
             else:

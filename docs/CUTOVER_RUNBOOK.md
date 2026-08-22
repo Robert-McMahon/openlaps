@@ -169,6 +169,21 @@ end-to-end with recorded data before any of it meets a car. This is
    uv run tools/replay.py --server nats://127.0.0.1:4222 --rate 1.0 --loop
    ```
 
+   > **Know what replay's default fixtures look like on a dashboard, or
+   > you will debug a healthy stack.** Each `--loop` cycle is the ~110 s
+   > GPS trace with the whole 5.3 s candump fixture replayed once at its
+   > head. On the gauges that is `car.*` alive for ~5 seconds out of
+   > every ~2 minutes and dead in between, and at the ingest-writer it is
+   > a **constant** `wall_lag` of ~5.5 s — the paced publish runs behind
+   > by the length of the CAN prelude. Both are artefacts of the harness,
+   > not faults in the stack; the tell for a *real* problem is a lag that
+   > climbs without resetting or `num_pending` growing on the pit
+   > consumer. For a continuous full-mix rehearsal — every gauge live at
+   > steady state, ~2,400 samples/s — run the measurement bench instead
+   > (`docs/BENCH_RUNBOOK.md` §5–§6: `vcan0`, two looped `canplayer`s,
+   > `bench_gps`, the real agent), which is the configuration every P4.3
+   > number was measured on.
+
 3. **Verify every hop** — `deploy/README.md` → "Verify each hop", in
    order: `leafs` is 1 at both ends, `TELE_VEHICLE` climbing toward `TELE`,
    `tools/decode.py` resolving real names, `mosquitto_sub` showing JSON,

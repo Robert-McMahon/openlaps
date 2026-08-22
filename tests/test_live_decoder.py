@@ -590,3 +590,22 @@ def test_health_reports_the_subject_it_decodes(tmp_path):
     snapshot = LiveDecoder(settings).health.snapshot()
     assert snapshot["stream"] == "TELE_VEHICLE"
     assert snapshot["subject_filter"] == "tele.car-7.>"
+
+
+def test_the_shipped_config_names_the_example_profiles_vehicle():
+    """`deploy/pit-config/live-decoder.yaml` must match the profile it decodes.
+
+    The service refuses to start on a vehicle-id mismatch, so a wrong id in
+    the shipped file is a pit whose gauges are down from the first boot.
+    This drifted once already: a parity run's throwaway vehicle id
+    (`example-club-racer-parity`) was committed in a conflict resolution,
+    and every fresh checkout inherited a live-decoder that decoded nothing.
+    """
+    from conftest import EXAMPLE_PROFILE
+
+    from core.config import load_profile
+
+    shipped = load_live_config(
+        Path(__file__).parents[1] / "deploy" / "pit-config" / "live-decoder.yaml"
+    )
+    assert shipped.vehicle == load_profile(EXAMPLE_PROFILE).vehicle.vehicle.id

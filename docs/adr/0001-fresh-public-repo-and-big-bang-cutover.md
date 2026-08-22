@@ -107,3 +107,35 @@ and ready as a rollback for the first on-track sessions on the new system.
   real RF link conditions.
 - Keeping the old repository bootable as a rollback is itself a small
   ongoing maintenance burden for the duration of the transition.
+
+## Amendment (2026-08-22)
+
+Two changes to this decision's foundations, recorded together because the
+second subsumes most of the first. The original text above is unchanged.
+
+**Cutover is not gated on a verified rollback** (Phase 5, locked decision
+5). The earlier plan carried a package that booted the predecessor stack to
+confirm this ADR's claim that it "remains bootable as an operational
+rollback". That package was dropped and the claim is not being relied upon.
+This matters to the original reasoning: the strangler pattern was rejected
+partly *because* "full retention of the old stack as rollback removes most
+of the risk the strangler pattern is normally chosen to mitigate" —
+removing the rollback removes that mitigation, and the rejection now rests
+on one fewer leg than it did. What carries the risk instead is the
+vehicle's JetStream file store (ADR 0002): the car keeps recording locally
+and durably even if every pit service is broken, so the failure mode of a
+bad first outing is a pit wall with no live view, not a lost session. The
+residual exposure is a race weekend run without live telemetry, and
+`docs/CUTOVER_RUNBOOK.md` states that plainly rather than implying a
+fallback nobody has tested.
+
+**There is no cutover event** (owner direction, 2026-08-22). The new stack
+is treated as a fresh installation, validated end-to-end on the bench by
+replaying recorded data, and then simply used. The old stack plays no part
+in any procedure — it is not installed alongside, not kept warm, and not a
+fallback; per the previous paragraph its bootability was already not being
+relied upon. What survives of "big-bang" is only the sequencing claim that
+mattered: the car runs the complete new system from its first session on
+it, never a hybrid. The gates the original decision named — replay parity
+plus the garage bench test — still gate that first session, and
+`docs/CUTOVER_RUNBOOK.md` records their state with provenance.

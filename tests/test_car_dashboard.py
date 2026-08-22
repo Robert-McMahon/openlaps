@@ -54,8 +54,7 @@ def test_car_dashboard_has_three_rows_and_operator_link() -> None:
         "Traces",
     ]
     assert any(
-        link["title"] == "Session control" and ":8080" in link["url"]
-        for link in dashboard["links"]
+        link["title"] == "Session control" and ":8080" in link["url"] for link in dashboard["links"]
     )
 
 
@@ -64,11 +63,7 @@ def test_live_and_context_panels_cover_the_required_mqtt_channels() -> None:
     mqtt_panels = [panel for panel in panels if panel["datasource"]["uid"] == "mqtt-live"]
 
     assert all(panel["title"].strip() for panel in mqtt_panels)
-    topics = {
-        target["topic"]
-        for panel in mqtt_panels
-        for target in panel["targets"]
-    }
+    topics = {target["topic"] for panel in mqtt_panels for target in panel["targets"]}
     expected_topics = {
         f"openlaps/$vehicle/{channel}" for channel in LIVE_CHANNELS | CONTEXT_CHANNELS
     }

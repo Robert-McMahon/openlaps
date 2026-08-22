@@ -566,7 +566,11 @@ is done, and a test that passes for the wrong reason is worse than none.
 
 **Specs:** `src/pit/session_control/service.py` (the HTTP handler, and
 specifically `do_OPTIONS`, `do_POST` and `_authorized`),
-`profiles/example-club-racer/session-roster.json`,
+`src/pit/session_control/state.py` (the transition machine and its
+`now_ms` parameters), `src/pit/session_control/database.py` (the
+snapshot upsert the backdating below rides on),
+`src/pit/ingest_writer/store.py` → `_resolve_session` (how a lap gets
+its stint), `profiles/example-club-racer/session-roster.json`,
 `docs/WIRE_FORMAT.md` → the `cmd.<vehicle>.session` payload schema,
 `tests/test_session_control_http.py`, `deploy/pit-compose.yaml`.
 
@@ -616,11 +620,29 @@ the session" is not an improvement over "anyone on the internet can".
   stay something a Python developer can read.
 - **Content**, mirroring what the API already offers: current session
   status polled from `GET /session` (type, driver, stint number, track,
-  car, elapsed); a start form with session type and driver as selects
-  populated from `GET /roster` and free-text track and car; a driver-change
-  form; and an end-session button behind a confirmation. Ending a session
-  by misclick during a race is a real cost — the legacy dashboard had a
-  confirm step and it was right to.
+  car, elapsed), **including the active session's stint history** —
+  `to_dict()` already carries the closed stints, so the UI shows who
+  drove when without a new endpoint, and that list is where a future
+  amendment affordance naturally hangs; a start form with session type
+  and driver as selects populated from `GET /roster`, car as free text,
+  and track as a `<datalist>` (see below); a driver-change form; and an
+  end-session button behind a confirmation. Ending a session by misclick
+  during a race is a real cost — the legacy dashboard had a confirm step
+  and it was right to.
+
+- **The selects are the data-quality mechanism, not a convenience.**
+  `drivers` rows are upserted **by name** the first time a stint
+  references them (`database.py` → `_upsert_driver`), with no link back
+  to the roster file — a typed name mints a permanent misspelt driver.
+  Tracks have the same failure mode twice over: `sessions.track_name` is
+  free text, and nothing reconciles it with the `track_name` the timing
+  engine stamps onto laps. So the roster file grows a **`tracks`** list
+  alongside `drivers` and `session_types`, and the start form offers it
+  as a `<datalist>` — suggested but not enforced, because a new track
+  must still be typeable at the track. `load_roster` treats `tracks` as
+  optional (an old roster file keeps working) and stays tolerant of
+  unknown keys, which it already is, so the roster can keep growing
+  without a lockstep deploy.
 - **Authentication**: the page asks for the API key once and holds it in
   browser storage, sending it as the bearer header. This is deliberately
   the simplest thing that works, and it is honest about the threat model —
@@ -641,11 +663,68 @@ the session" is not an improvement over "anyone on the internet can".
   the same commit. `deploy/pit-compose.yaml` already publishes port 8080,
   so no new port and no new service.
 
+### Transitions can be backdated, because buttons get pressed late
+
+The state machine is live and forward-only: every transition is stamped
+with the wall clock at the moment the button is pressed. At a real track
+the button is pressed when someone has a hand free, not when the driver
+actually changed. So `POST /session/driver` and `POST /session/end`
+accept an optional **`at`** field (epoch ms): the moment the transition
+really happened. It must lie within the active stint and not in the
+future; absent means now, which keeps every existing caller working. In
+the UI this is one optional "actually happened at" field on each of the
+two forms, defaulting to now — not a second workflow.
+
+The plumbing already exists. `change_driver` and `end_session` take
+`now_ms` and validate it against `stint_start_ms` (`state.py`); the HTTP
+layer just never passes it. The database write is a full-snapshot
+idempotent upsert (`database.py` → `_write_state`), so a corrected stint
+boundary simply rewrites the `stints` rows, and the
+`cmd.<vehicle>.session` payload carries the corrected `stint_start` with
+no schema change — the wire format stays frozen.
+
+**Backdating a driver change must re-attribute laps, or it is
+cosmetic.** A lap's stint is stamped *by the vehicle*: the agent puts
+`stint_number` into the `lap.event` payload from the session state it
+knew at the crossing, and the ingest-writer resolves it to a `stint_id`
+FK (`store.py` → `_resolve_session`). So laps completed between the real
+swap and the late button press carry the old stint — and those laps are
+the entire reason anyone bothers to backdate. When a driver change
+pressed at time B is backdated to `at = T`, session-control updates the
+laps in that session with `crossed_at >= T` that still point at the
+closing stint to point at the new one, in the same transaction as the
+stint rows. This is a deliberate, narrow crossing of an ownership
+boundary — `laps` belongs to the ingest-writer — and an explicit
+operator amendment is the one case where the vehicle's stamp is known to
+be wrong.
+
+A backdated end moves the session's `ended` timestamp and nothing else.
+Laps recorded after `at` keep their session: the car believed the
+session was open when it crossed the line, and a lap with a session is
+more useful than an orphan. Do not detach them.
+
+**Deferred on purpose, and named here so the next brief does not have to
+rediscover it:** amending an *ended* session — wrong track name, wrong
+car, a driver change nobody recorded at all, a session left open
+overnight. None of it touches the live state machine; all of it is
+surgery on `sessions` and `stints` plus the same lap re-attribution
+built above. What it needs that does not exist is a session *list*: the
+service knows only the current session, history lives only in the
+database, so that surface starts with a `GET /sessions?recent=…`
+endpoint and grows an edit form from there. It should reuse this
+package's `at`-validation and re-attribution logic rather than inventing
+parallel versions.
+
 **Acceptance:** starting a session from a browser produces a `sessions` row
 and a `cmd.<vehicle>.session` publish that reaches the vehicle (P3.4's
 integration test covers the service side; this is the UI path over it); a
 driver change mid-session creates a new stint; ending a session sets
-`status = 'ended'`. `tests/test_session_control_http.py` grows cases for:
+`status = 'ended'`. A backdated driver change moves the stint boundary
+*and* re-points the laps in the affected window, verified against a
+seeded database; an `at` before the active stint started or in the
+future is refused with the existing 409 path; a backdated end sets
+`ended` without detaching any lap; the roster's `tracks` list reaches
+the start form. `tests/test_session_control_http.py` grows cases for:
 same-origin POST accepted, cross-origin POST still 403, absent-Origin POST
 still accepted, the bearer key still required, the static page served, and
 a traversal attempt refused. No credential anywhere in the tree.
@@ -748,6 +827,31 @@ Also waiting on the other side of cutover:
   rate-cap settings in `catalog.yaml` to want tuning, and expect that to be
   a config push rather than a code change — which is the claim the whole
   catalog design makes and has not yet had to honour under fire.
+- **A configuration surface, and the ADR it forces.** The owner's
+  direction is that the session UI grows toward a control plane: roster
+  and tracks in P5.6, then the tuning knobs above, then a view of the
+  deployment at both ends and the ability to restart its services. Three
+  tensions have to be settled before any of it is built, recorded here
+  so the ADR does not start from scratch. **One:** UI-editable config is
+  exactly the drift this repository's ground rules exist to prevent —
+  `allowUiUpdates: false` is the same decision made in Grafana's domain.
+  The likely resolution is a tiered split: *operational* config expected
+  to change at the track (roster, tracks, rate caps, RBE deadbands)
+  becomes UI-editable and lives in a volume or the database, while
+  *engineering* config (wire format, signal definitions, input devices,
+  compose topology, the environment) stays repo-only with the UI at most
+  a read-only viewer — and deciding which knobs sit on which side is
+  most of the ADR. **Two:** restarting services means the docker socket,
+  which is root on the host. If restarts are wanted they belong in a
+  separate minimal supervisor with a hard allowlist, not in new powers
+  for session-control; the pit network being private makes this less
+  urgent, not different, and secrets in the environment never round-trip
+  through a browser regardless of tier. **Three:** vehicle-side config
+  pushes ride the `cmd.<vehicle>.*` path that session state already uses
+  — a versioned, acked `cmd.<vehicle>.config` subject — not a web server
+  reaching into the car by some other means. That is also the mechanism
+  the catalog's config-push claim implies and the previous bullet will
+  have exercised by hand.
 - **Backup and restore.** `PIT_SCHEMA.md` says "Timescale is the archive,
   not a buffer" and there is no retention policy by design. An archive with
   no backup is one disk away from not being an archive, and nothing in the

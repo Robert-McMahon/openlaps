@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 import psycopg
 import pytest
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
 
 from pit.db.dsn import dsn_from_env, redacted
 from pit.db.migrate import apply_migrations, discover, pending
@@ -76,6 +78,7 @@ def test_discover_returns_migrations_in_filename_order():
     names = [path.name for path in discover()]
     assert names == sorted(names)
     assert "001_init.sql" in names
+    assert "002_trace_read_surface.sql" in names
 
 
 def test_dsn_from_env_prefers_an_explicit_dsn():
@@ -131,6 +134,17 @@ def test_migrations_apply_from_empty_and_are_idempotent(timescale_dsn):
         assert recorded == len(applied)
 
 
+def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
+    first = next(path for path in discover() if path.name == "001_init.sql")
+    (tmp_path / first.name).write_text(first.read_text(encoding="utf-8"), encoding="utf-8")
+
+    with psycopg.connect(timescale_dsn) as conn:
+        assert apply_migrations(conn, tmp_path) == ["001_init.sql"]
+        assert [path.name for path in pending(conn)] == ["002_trace_read_surface.sql"]
+        assert apply_migrations(conn) == ["002_trace_read_surface.sql"]
+        assert pending(conn) == []
+
+
 def test_samples_is_an_hourly_hypertable(migrated):
     row = migrated.execute(
         "SELECT column_name, time_interval FROM timescaledb_information.dimensions "
@@ -161,6 +175,68 @@ def test_numeric_and_string_values_round_trip_through_the_named_view(migrated):
         ("car.rpm", "rpm", 6421.5, None),
         ("lap.event", "", None, '{"type":"lap_completed"}'),
     ]
+
+
+def test_samples_1s_buckets_numeric_rows_with_extrema_and_count(migrated):
+    rpm = _register(migrated, name="car.rpm", registry_seq=1, wire_id=7, units="rpm")
+    event = _register(migrated, name="lap.event", registry_seq=1, wire_id=8, value_type=STRING)
+    bucket = datetime(2026, 7, 27, 4, 30, tzinfo=UTC)
+    with migrated.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO samples (time, channel_key, value, value_text) VALUES (%s, %s, %s, %s)",
+            [
+                (bucket + timedelta(milliseconds=100), rpm, 6100.0, None),
+                (bucket + timedelta(milliseconds=500), rpm, 6500.0, None),
+                (bucket + timedelta(milliseconds=900), rpm, 7000.0, None),
+                (bucket + timedelta(milliseconds=200), event, None, '{"type":"lap_completed"}'),
+            ],
+        )
+    migrated.commit()
+    migrated.autocommit = True
+    migrated.execute(
+        "CALL refresh_continuous_aggregate('samples_1s', %s, %s)",
+        (bucket, bucket + timedelta(seconds=1)),
+    )
+    migrated.autocommit = False
+
+    rows = migrated.execute(
+        "SELECT time, vehicle_id, channel, units, avg, min, max, count "
+        "FROM v_samples_1s_named WHERE time = %s ORDER BY channel",
+        (bucket,),
+    ).fetchall()
+    assert rows == [(bucket, VEHICLE, "car.rpm", "rpm", 6533.333333333333, 6100.0, 7000.0, 3)]
+
+
+def test_samples_1s_policy_covers_late_data_and_keeps_recent_data_live(migrated):
+    schedule, start_offset, end_offset = migrated.execute(
+        "SELECT schedule_interval, (config ->> 'start_offset')::interval, "
+        "(config ->> 'end_offset')::interval FROM timescaledb_information.jobs "
+        "WHERE proc_name = 'policy_refresh_continuous_aggregate' "
+        "AND hypertable_name = 'samples_1s'"
+    ).fetchone()
+    materialized_only = migrated.execute(
+        "SELECT materialized_only FROM timescaledb_information.continuous_aggregates "
+        "WHERE view_name = 'samples_1s'"
+    ).fetchone()[0]
+
+    assert schedule == timedelta(seconds=30)
+    assert start_offset is None
+    assert end_offset == timedelta(seconds=2)
+    assert materialized_only is False
+
+
+def test_grafana_role_reads_every_view_but_not_base_tables(migrated, timescale_dsn):
+    migrated.commit()
+    grafana_dsn = make_conninfo(
+        timescale_dsn,
+        user="grafana_ro",
+        password="openlaps-grafana-test",
+    )
+    with psycopg.connect(grafana_dsn) as reader:
+        for view in ("v_samples_named", "v_samples_1s_named", "v_laps"):
+            reader.execute(sql.SQL("SELECT * FROM {} LIMIT 0").format(sql.Identifier(view)))
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            reader.execute("SELECT * FROM samples LIMIT 0")
 
 
 def test_one_channel_key_survives_a_registry_rollover(migrated):

@@ -13,6 +13,7 @@ this small.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -61,10 +62,26 @@ def apply_migrations(conn: Connection, directory: Path = MIGRATIONS_DIR) -> list
     with conn.transaction():
         conn.execute("SELECT pg_advisory_lock(%s)", (_ADVISORY_LOCK_KEY,))
     try:
-        return _apply_each(conn, pending(conn, directory))
+        todo = pending(conn, directory)
+        if any(path.name == "002_trace_read_surface.sql" for path in todo):
+            _configure_grafana_role(conn)
+        return _apply_each(conn, todo)
     finally:
         with conn.transaction():
             conn.execute("SELECT pg_advisory_unlock(%s)", (_ADVISORY_LOCK_KEY,))
+
+
+def _configure_grafana_role(conn: Connection) -> None:
+    """Pass deployment-only role credentials to migration 002 without SQL interpolation."""
+    user = os.environ.get("GRAFANA_DB_USER", "grafana_ro")
+    password = os.environ.get("GRAFANA_DB_PASSWORD", "")
+    if not user:
+        raise ValueError("GRAFANA_DB_USER must not be empty while migration 002 is pending")
+    if not password:
+        raise ValueError("GRAFANA_DB_PASSWORD is required while migration 002 is pending")
+    with conn.transaction():
+        conn.execute("SELECT set_config('openlaps.grafana_db_user', %s, false)", (user,))
+        conn.execute("SELECT set_config('openlaps.grafana_db_password', %s, false)", (password,))
 
 
 def _apply_each(conn: Connection, todo: Iterable[Path]) -> list[str]:

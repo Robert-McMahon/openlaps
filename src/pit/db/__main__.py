@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             applied = apply_migrations(conn)
             log.info("applied %d migration(s): %s", len(applied), ", ".join(applied) or "none")
-    except psycopg.Error as exc:
+    except (psycopg.Error, ValueError) as exc:
         print(f"openlaps-migrate: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

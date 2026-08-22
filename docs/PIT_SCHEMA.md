@@ -31,6 +31,13 @@ Nothing about the schema or the data model is configurable; only the wiring
 is. Concurrent appliers (two pit services migrating on boot) serialise on a
 Postgres advisory lock rather than racing each other's DDL.
 
+Migration `002_trace_read_surface.sql` also consumes `GRAFANA_DB_USER` and
+`GRAFANA_DB_PASSWORD` while it is pending. The applier passes them as
+session-local Postgres settings rather than interpolating them into the SQL:
+the role name is deployment wiring, the password is a secret, and neither
+belongs in a committed migration. The default role name is `grafana_ro`; the
+password has no default and migration fails closed when it is absent.
+
 Adding a migration means adding `002_*.sql`; existing files are never edited
 once applied anywhere.
 
@@ -127,6 +134,27 @@ turning it on is an explicit, reviewable decision.
 
 The working index is `samples(channel_key, time DESC)`.
 
+### One-second traces
+
+`samples_1s` is a Timescale continuous aggregate for session-length trace
+panels. It contains one row per `(one-second bucket, channel_key)` with
+`avg`, `min`, `max`, and `count`. Only rows whose numeric `value` is non-NULL
+participate; text channels such as `lap.event` are deliberately absent.
+
+The refresh job runs every 30 seconds, materialising through two seconds
+behind the present. Real-time aggregation supplies that newest two-second
+edge from `samples`, so a current trace does not acquire an artificial gap.
+Its start offset is unbounded rather than a fixed lookback: vehicle backlog
+and historical imports can insert old samples, and Timescale's invalidation
+log then refreshes the affected old buckets without recomputing unchanged
+history. There is intentionally only one bucket size. A coarser aggregate is
+added only if measured dashboard performance calls for one.
+
+`min` and `max` are part of the contract, not optional decoration. An average
+of a 100 Hz engine channel can hide a one-sample pressure drop or knock spike;
+a dashboard can draw the average as a line and the extrema as a band without
+returning the raw 100 rows.
+
 ### Sessions, stints, drivers
 
 | Table | Key | Holds |
@@ -210,11 +238,12 @@ enough.
 
 ADR 0007 puts the private companion repo downstream of this database, with no
 automated check spanning both repositories. So the contract has to be cheap
-to keep stable, and it is these two views:
+to keep stable, and it is these three views:
 
 | View | Columns |
 | --- | --- |
 | `v_samples_named` | `time, vehicle_id, channel, units, value, value_text` |
+| `v_samples_1s_named` | `time, vehicle_id, channel, units, avg, min, max, count` |
 | `v_laps` | `lap_id, vehicle_id, track_name, lap_number, crossed_at, lap_time_s, valid, pit_status, direction, session_id, session_type, car, stint_number, driver` |
 
 **The views are the stable surface. The base tables are not.** Anything
@@ -224,10 +253,24 @@ migration may reshape the base tables; when it does, the views are updated to
 keep presenting the same columns, and downstream readers are unaffected.
 
 `v_samples_named` joins `samples` to `channels`, so it answers in canonical
-channel names and never exposes a `channel_key` or a wire id. `v_laps`
-flattens `laps` with its session, stint and driver names, so the common
-question ("every lap by driver X in session type Y") is a `WHERE` clause
-rather than a four-table join.
+channel names and never exposes a `channel_key` or a wire id.
+`v_samples_1s_named` gives the continuous aggregate the same time, vehicle,
+channel and units columns, then exposes its four statistics. It answers
+session-length numeric traces; it deliberately does not answer event/text
+queries or preserve sub-second sample shape. `v_laps` flattens `laps` with
+its session, stint and driver names, so the common question ("every lap by
+driver X in session type Y") is a `WHERE` clause rather than a four-table
+join.
+
+Grafana's database role has `CONNECT` on this database, `USAGE` on the public
+schema, and `SELECT` on exactly these views. It has no privilege on `samples`
+or the other base tables. This makes the read-surface boundary enforceable in
+Postgres rather than relying on dashboard authors to remember it.
+
+Two further read views are deferred until a dashboard needs them:
+`v_lap_sectors` for lap/sector comparison and `v_pit_stops` for paired
+`pit_entry`/`pit_exit` events. Neither question is needed by the Phase 5 car
+dashboard, and neither is approximated in `v_samples_1s_named`.
 
 ## Related documents
 

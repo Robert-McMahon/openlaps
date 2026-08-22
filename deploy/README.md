@@ -326,6 +326,14 @@ save by writing a temporary file and renaming it over the original, which
 changes the inode; a single-file bind would keep pointing at the old one and
 the edit would never be seen.
 
+Widening the selection is cheap up to a point, and the point is the browser,
+not the broker. `defaults.total_max_hz` is the valve; the file's header
+records what the shipped selection actually measures against it, and
+`/health`'s `aggregate_sheds` says whether the valve has ever had to act. If
+you add rules, re-measure rather than assume -- a per-channel `max_hz` above
+about 10 Hz buys a human nothing on a gauge, and every one of them is a
+message the dashboard's browser tab has to handle.
+
 ## Changing a dashboard
 
 `pit-config/grafana/dashboards/*.json` is provisioned into Grafana's

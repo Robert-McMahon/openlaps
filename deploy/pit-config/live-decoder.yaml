@@ -6,6 +6,34 @@
 # OPENLAPS_VEHICLE_ID -- the other three pit services read that variable
 # directly, and this one refuses to start if the two disagree, because a
 # mismatch is otherwise indistinguishable from a car that never moved.
+#
+# The selection below covers the car dashboard's live row (P5.3). Rates are
+# chosen against the donor car's measured source cadence
+# (tests/fixtures/mqtt_payload_stats.json) and against what a human actually
+# reads off a gauge -- roughly 10 Hz, above which the extra samples land
+# between screen refreshes. `total_max_hz` is a safety valve, not a budget:
+# it should never be the thing doing the limiting.
+#
+# Measured aggregate publish rate for the selection below: **~189 msg/s**
+# in full steady state, against the 500 Hz valve -- about 2.6x headroom,
+# with `aggregate_sheds` and `mqtt_drops` zero throughout. It is the sum of
+# three measurements, because no single no-hardware rig produces all three
+# at once:
+#
+#   164.3/s  this file, the real live-decoder, a throwaway JetStream and
+#            Mosquitto, and two concurrent `tools/replay.py` processes (one
+#            CAN-only against a fixture tiled to run continuously, one
+#            GPS-only), counted on `openlaps/#` over a 60 s window.
+#     9  /s  the `sys.agent.*` strip: nine channels, health loop, 1 Hz.
+#            Measured against a real agent, because replay is the no-agent
+#            path and emits none of them.
+#    16  /s  `timing.delta_best` and `timing.predicted_lap`, which stay
+#            silent until a reference lap exists. Measured with
+#            `tools/lap_simulator.py --laps 3`, where they publish at the
+#            same rate as `timing.distance` from lap 2 onwards.
+#
+# Re-measure after widening. This is a local broker rather than the radio,
+# but the browser tab holding the dashboard is the thing that falls over.
 vehicle: example-club-racer
 
 defaults:
@@ -13,15 +41,82 @@ defaults:
   total_max_hz: 500   # aggregate safety valve; 0 means unlimited
 
 channels:
+  # GNSS, 50 Hz at source across 5 channels. The map trail and the speed
+  # trace are both smooth at the 10 Hz default; 50 Hz would be 200 extra
+  # publishes/s that no panel can draw.
   - match: "position.*"
+
+  # ---- driver inputs: the two traces read together, so rated together ----
+  # ENGINE1 broadcasts at ~43 Hz. 20 Hz is deliberately above the 10 Hz
+  # gauge rule: a tacho needle and a throttle trace are the two things on
+  # the dashboard where a human sees the sampling, not the value.
   - match: "car.rpm"
     max_hz: 20
-  - match: "car.accel_*"
+  - match: "car.throttle_pos"
+    max_hz: 20
+  # MISC5 at ~4.3 Hz: the cap never binds, and is here to bound the channel
+  # if the ECU's broadcast table is ever retimed.
+  - match: "car.brake_pedal_switch"
     max_hz: 5
+
+  # ---- engine health: pressures fast, temperatures slow ----
+  # ENGINE1/ENGINE2 at ~43 Hz. Oil pressure and manifold pressure move with
+  # the throttle and a momentary drop is the whole point of watching them,
+  # so they get the full 10 Hz. Fuel pressure is the slower, secondary one.
+  - match: "car.oil_pressure"
+    max_hz: 10
+  - match: "car.map"
+    max_hz: 10
+  - match: "car.fuel_pressure"
+    max_hz: 5
+  # WIDEBAND1 at ~17 Hz; mixture is read as a trend, not an instant.
+  - match: "car.lambda1"
+    max_hz: 10
+  # TEMPERATURE1 at ~4.2 Hz, and the thermal mass behind both is minutes,
+  # not milliseconds. 1 Hz is already four times what the physics needs.
+  # Both report KELVIN (docs/CATALOG.md) -- a panel must say so.
   - match: "car.coolant_temp"
     max_hz: 1
+  - match: "car.oil_temp"
+    max_hz: 1
+
+  # ---- drivetrain and electrics ----
+  # MISC10 / MISC3 at ~17 Hz. Gear is an int that changes a handful of
+  # times a lap, but the change wants to appear immediately, and the
+  # limiter conflates rather than queues, so 10 Hz costs nothing on a
+  # channel that rarely moves.
+  - match: "car.gear"
+    max_hz: 10
+  - match: "car.vehicle_speed"
+    max_hz: 10
+  # MISC4 at ~8.5 Hz. Charging voltage is a slow number; 2 Hz still catches
+  # an alternator dropping out well inside a driver's reaction time.
+  - match: "car.battery_v"
+    max_hz: 2
+
+  # IMU accelerometers at ~100 Hz at source: a g-g plot is a scatter, and 5
+  # Hz per axis is enough to see the envelope fill. Deliberately spelled
+  # [xyz] rather than `car.accel_*`, which also swept up
+  # car.accel_pedal_pos -- a ~43 Hz driver input published at 5 Hz by
+  # accident of the glob, which is worse than not publishing it.
+  - match: "car.accel_[xyz]"
+    max_hz: 5
+
+  # ---- timing ----
   - match: "lap.*"
     max_hz: 0          # rare events: publish every one
+  # Four channels (distance, lap_elapsed, delta_best, predicted_lap), each
+  # emitted once per GPS fix. The default 10 Hz is the delta's useful
+  # resolution: a driver reads it in tenths.
   - match: "timing.*"
-  - match: "sys.agent.status"
+
+  # The agent's health loop emits this whole namespace at exactly 1 Hz, so
+  # the cap is a statement of intent rather than a limit that bites. The
+  # dashboard's link-health strip wants publish_lag_ms, publish_drops and
+  # rbe_suppressed alongside the status payload.
+  # These channels exist only in an agent's registry, never in one built
+  # from catalog.yaml alone -- so `tools/replay.py` and `tools/lap_simulator.py`
+  # will list this rule under /health's `unmatched_rules`. That is the
+  # no-agent path saying so, not a broken glob.
+  - match: "sys.agent.*"
     max_hz: 1

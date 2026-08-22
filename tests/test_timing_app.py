@@ -71,6 +71,31 @@ def test_distance_accumulates_and_resets_on_lap_start(catalog, app):
     assert distances[-1] < max(distances)
 
 
+def test_lap_elapsed_runs_from_the_line_and_restarts_each_lap(catalog, app):
+    derived = _by_channel(_feed(app, catalog, lap_path(wanneroo_track(), laps=2)))
+    values = [sample.value for sample in derived["timing.lap_elapsed"]]
+    assert values and min(values) >= 0.0
+    # Climbs to about a lap time, then restarts near zero at each crossing.
+    assert max(values) == pytest.approx(93.0, abs=2.0)
+    restarts = [i for i in range(1, len(values)) if values[i] < values[i - 1]]
+    assert len(restarts) == 2
+    assert all(values[i] < 1.0 for i in restarts)
+
+
+def test_lap_elapsed_is_the_only_live_lap_time_before_a_reference_exists(catalog, app):
+    # `delta_best` and `predicted_lap` need a completed reference lap, so
+    # until the first one lands they emit nothing -- which is why this
+    # channel is emitted at all.
+    derived = _by_channel(_feed(app, catalog, lap_path(wanneroo_track(), laps=1)))
+    first_completion = min(
+        sample.t_mono_ns
+        for sample in derived["lap.event"]
+        if json.loads(sample.value)["type"] == "lap_completed"
+    )
+    assert [s for s in derived["timing.lap_elapsed"] if s.t_mono_ns < first_completion]
+    assert not [s for s in derived.get("timing.delta_best", []) if s.t_mono_ns < first_completion]
+
+
 def test_second_lap_gets_delta_and_predicted_from_the_reference(catalog, app):
     derived = _by_channel(_feed(app, catalog, lap_path(wanneroo_track(), laps=2)))
     deltas = derived.get("timing.delta_best")

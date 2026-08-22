@@ -531,3 +531,62 @@ channels: [{match: 'car.*'}]
     assert sent == []
     assert decoder.health.malformed_payloads == 2
     assert caplog.text.count("malformed protobuf") == 2
+
+
+def _minimal_config(tmp_path: Path, vehicle: str) -> Path:
+    return _write(
+        tmp_path / "live.yaml",
+        f"vehicle: {vehicle}\nchannels:\n  - match: car.rpm\n",
+    )
+
+
+def test_a_vehicle_id_the_yaml_disagrees_with_is_fatal_at_startup(tmp_path):
+    # The failure this replaces was silent by construction: the service came
+    # up, connected, subscribed to `tele.<yaml-vehicle>.>` on a stream that
+    # only ever carried `tele.<env-vehicle>.>`, and reported healthy zeroes
+    # for two 35-minute bench runs. Refusing to start is the only outcome
+    # that cannot be mistaken for a car sitting in the paddock.
+    settings = LiveDecoderSettings(
+        config_path=_minimal_config(tmp_path, "example-club-racer"),
+        nats_url="nats://pit:4222",
+        vehicle_id="example-club-racer-parity",
+    )
+    with pytest.raises(ValueError) as excinfo:
+        LiveDecoder(settings)
+    message = str(excinfo.value)
+    assert "example-club-racer-parity" in message
+    assert "tele.example-club-racer.>" in message
+
+
+def test_an_agreeing_vehicle_id_starts_and_an_absent_one_defers_to_the_yaml(tmp_path):
+    config_path = _minimal_config(tmp_path, "car-7")
+    agreeing = LiveDecoderSettings(
+        config_path=config_path, nats_url="nats://pit:4222", vehicle_id="car-7"
+    )
+    assert LiveDecoder(agreeing).subject_filter == "tele.car-7.>"
+    # The YAML stays the source of truth; the env var is only a cross-check,
+    # so a deployment that does not set one is unaffected.
+    unset = LiveDecoderSettings(config_path=config_path, nats_url="nats://pit:4222")
+    assert LiveDecoder(unset).subject_filter == "tele.car-7.>"
+
+
+def test_settings_carry_the_pit_wide_vehicle_id(tmp_path):
+    settings = LiveDecoderSettings.from_env(
+        {"OPENLAPS_VEHICLE_ID": "car-7"}, config_path=tmp_path / "live.yaml"
+    )
+    assert settings.vehicle_id == "car-7"
+    blank = LiveDecoderSettings.from_env(
+        {"OPENLAPS_VEHICLE_ID": "  "}, config_path=tmp_path / "live.yaml"
+    )
+    assert blank.vehicle_id is None
+
+
+def test_health_reports_the_subject_it_decodes(tmp_path):
+    settings = LiveDecoderSettings(
+        config_path=_minimal_config(tmp_path, "car-7"),
+        nats_url="nats://pit:4222",
+        stream="TELE_VEHICLE",
+    )
+    snapshot = LiveDecoder(settings).health.snapshot()
+    assert snapshot["stream"] == "TELE_VEHICLE"
+    assert snapshot["subject_filter"] == "tele.car-7.>"

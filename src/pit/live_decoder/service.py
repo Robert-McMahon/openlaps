@@ -45,6 +45,8 @@ _CONNECT_BACKOFF_MAX_S = 15.0
 _REGISTRY_SCAN_TIMEOUT_S = 1.0
 _CONSUME_POLL_S = 0.05
 _REPORT_INTERVAL_S = 1.0
+_IDLE_WARN_AFTER_S = 30.0
+_IDLE_WARN_REPEAT_S = 60.0
 
 
 def mqtt_message(vehicle: str, update: LiveUpdate) -> tuple[str, bytes]:
@@ -73,6 +75,10 @@ class LiveDecoderSettings:
     health_port: int = 8082
     config_poll_s: float = 5.0
     mqtt_queue_size: int = 1_000
+    # The pit-wide vehicle id, if the deployment sets one. Not the source of
+    # truth -- the YAML's `vehicle:` key is, because it survives a reload --
+    # but a cross-check against it, see `_check_vehicle_agreement`.
+    vehicle_id: str | None = None
 
     @classmethod
     def from_env(
@@ -112,7 +118,32 @@ class LiveDecoderSettings:
             health_port=health_port,
             config_poll_s=poll_s,
             mqtt_queue_size=queue_size,
+            vehicle_id=env.get("OPENLAPS_VEHICLE_ID", "").strip() or None,
         )
+
+
+def _check_vehicle_agreement(settings: LiveDecoderSettings, config: LiveConfig) -> None:
+    """Refuse to start subscribed to a vehicle that nothing publishes.
+
+    The vehicle id reaches this service twice: through the pit-wide
+    ``OPENLAPS_VEHICLE_ID`` that every other pit service reads directly, and
+    through the ``vehicle:`` key of the live view YAML, which is the only one
+    the subject filter is built from. Let those drift apart and the service is
+    simultaneously healthy and useless -- it connects, subscribes to
+    ``tele.<yaml-vehicle>.>`` against a stream carrying only
+    ``tele.<env-vehicle>.>``, matches nothing, and reports zeroes for as long
+    as you care to watch it. Nothing downstream can tell that apart from a car
+    that is parked, so the disagreement has to be caught here, where the two
+    values are side by side.
+    """
+    expected = settings.vehicle_id
+    if expected is None or expected == config.vehicle:
+        return
+    raise ValueError(
+        f"{settings.config_path}: vehicle {config.vehicle!r} disagrees with "
+        f"OPENLAPS_VEHICLE_ID={expected!r}; this service would subscribe to "
+        f"tele.{config.vehicle}.> and decode nothing. Make them match."
+    )
 
 
 class MqttSink:
@@ -236,13 +267,22 @@ class LiveDecoder:
         self.settings = settings
         self.reloader = ConfigReloader(settings.config_path, settings.config_poll_s)
         self.config: LiveConfig = self.reloader.config
+        _check_vehicle_agreement(settings, self.config)
         self.cache = RegistryCache()
         self.limiter = ConflatingLimiter(self.config)
         self.health = HealthState()
         self.health.config_mtime_ns = self.reloader.mtime_ns
+        self.health.stream = settings.stream
+        self.health.subject_filter = self.subject_filter
         self.sink = MqttSink(settings, self.config.vehicle, self.health)
         self.ready = asyncio.Event()
+        self.messages_seen = 0
         self._last_registry: pb.ChannelRegistry | None = None
+
+    @property
+    def subject_filter(self) -> str:
+        """The stream subject this service decodes. The vehicle cannot change."""
+        return f"tele.{self.config.vehicle}.>"
 
     async def run(self, stop: asyncio.Event) -> None:
         health_server = serve_health(self.health, self.settings.health_port)
@@ -255,12 +295,7 @@ class LiveDecoder:
                 return
             js = client.jetstream()
             await self._scan_registries(js)
-            subscription = await js.subscribe(
-                f"tele.{self.config.vehicle}.>",
-                stream=self.settings.stream,
-                ordered_consumer=True,
-                deliver_policy=api.DeliverPolicy.NEW,
-            )
+            subscription = await self._subscribe(js, self.subject_filter, api.DeliverPolicy.NEW)
             self.ready.set()
             await self._consume(subscription, stop)
         finally:
@@ -312,20 +347,48 @@ class LiveDecoder:
         self.health.nats_reconnects += 1
         logger.info("live-decoder: NATS reconnected")
 
+    async def _subscribe(
+        self,
+        js: JetStreamContext,
+        subject: str,
+        deliver_policy: api.DeliverPolicy,
+    ) -> JetStreamContext.PushSubscription:
+        """Subscribe against the *named* stream, saying so when it fails.
+
+        The pit's ``TELE_VEHICLE`` deliberately declares no subjects (see
+        deploy/provision_pit_streams.py), so nats-py's subject-to-stream
+        lookup finds nothing and every subscription here must pass ``stream=``.
+        When that lookup fails anyway the exception unwinds `run`, taking the
+        health endpoint down with it -- but only after this line has named
+        both halves of the lookup, so the log says which stream and which
+        subject rather than leaving a bare NotFoundError to be guessed at.
+        """
+        try:
+            return await js.subscribe(
+                subject,
+                stream=self.settings.stream,
+                ordered_consumer=True,
+                deliver_policy=deliver_policy,
+            )
+        except Exception as exc:
+            logger.error(
+                "live-decoder: cannot subscribe to %s on stream %r: %s",
+                subject,
+                self.settings.stream,
+                exc,
+            )
+            raise
+
     async def _scan_registries(self, js: JetStreamContext) -> None:
         subject = f"tele.{self.config.vehicle}.{REGISTRY_SOURCE_CLASS}"
-        subscription = await js.subscribe(
-            subject,
-            stream=self.settings.stream,
-            ordered_consumer=True,
-            deliver_policy=api.DeliverPolicy.ALL,
-        )
+        subscription = await self._subscribe(js, subject, api.DeliverPolicy.ALL)
         try:
             while True:
                 try:
                     message = await subscription.next_msg(timeout=_REGISTRY_SCAN_TIMEOUT_S)
                 except TimeoutError:
                     break
+                self.messages_seen += 1
                 self._add_registry(message.data)
         finally:
             try:
@@ -356,6 +419,7 @@ class LiveDecoder:
             self._sync_limiter_health()
 
     def _handle_message(self, message: Msg, now: float) -> None:
+        self.messages_seen += 1
         candidates: list[LiveUpdate] = []
         kind = (message.headers or {}).get(MSG_TYPE_HEADER, "batch")
         if kind == MSG_TYPE_REGISTRY:
@@ -433,6 +497,8 @@ class LiveDecoder:
         self.health.aggregate_sheds = self.limiter.aggregate_sheds
 
     async def _report_loop(self, stop: asyncio.Event) -> None:
+        started = time.monotonic()
+        next_idle_warning = _IDLE_WARN_AFTER_S
         while not stop.is_set():
             await _sleep_unless(stop, _REPORT_INTERVAL_S)
             self.health.roll()
@@ -442,6 +508,23 @@ class LiveDecoder:
                 self.health.mqtt_drops,
                 self.health.aggregate_sheds,
             )
+            if self.messages_seen:
+                continue
+            # A publish rate of zero reads the same whether the car is
+            # parked or the subscription is aimed at a subject nobody
+            # publishes. Having never seen a single message narrows it, and
+            # naming the subject makes the second case answerable from one
+            # line of log.
+            idle = time.monotonic() - started
+            if idle >= next_idle_warning:
+                next_idle_warning = idle + _IDLE_WARN_REPEAT_S
+                logger.warning(
+                    "live-decoder: no message in %.0fs on %s of stream %r; "
+                    "check the vehicle id and that the stream is being sourced",
+                    idle,
+                    self.subject_filter,
+                    self.settings.stream,
+                )
 
 
 async def _sleep_unless(stop: asyncio.Event, delay: float) -> None:

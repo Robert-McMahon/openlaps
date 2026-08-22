@@ -30,6 +30,10 @@ class HealthState:
         self.config_reloads = 0
         self.config_mtime_ns = 0
         self.unmatched_rules: list[str] = []
+        # Reported so that a run of zeroes carries its own explanation: the
+        # subject a service decodes is the first thing you want beside them.
+        self.stream = ""
+        self.subject_filter = ""
         self.publish_rate = 0.0
         self._started = time.monotonic()
         self._window_publishes = 0
@@ -56,6 +60,8 @@ class HealthState:
         channels = sorted(set(self.published) | set(self.suppressed))
         return {
             "uptime_s": round(max(0.0, current - self._started), 1),
+            "stream": self.stream,
+            "subject_filter": self.subject_filter,
             "publish_rate": round(self.publish_rate, 1),
             "channels": {
                 channel: {

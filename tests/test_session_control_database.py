@@ -182,3 +182,66 @@ def test_session_with_two_stints_round_trips_to_timescale(timescale_dsn):
             T0 + 90 * MIN,
             T0 + 200 * MIN,
         ]
+
+
+def test_backdated_driver_change_reattributes_laps(timescale_dsn):
+    """Moving a stint boundary re-points the laps in the moved window.
+
+    The vehicle stamps stint_number into lap.event from the session state it
+    knew at the crossing, so laps completed between the real driver change
+    and the late button press arrive attributed to the closed stint. The
+    snapshot write re-windows them (docs/plan/PHASE5.md -> P5.6); a lap the
+    ingest-writer left with a NULL stint is not touched.
+    """
+    with psycopg.connect(timescale_dsn) as conn:
+        apply_migrations(conn)
+
+    state = SessionState()
+    state.start_session("race", "Driver A", track_name="Wanneroo", now_ms=T0)
+
+    def record_snapshot(snapshot: dict[str, object]) -> None:
+        async def push() -> None:
+            database = SessionDatabase(timescale_dsn, VEHICLE)
+            assert await database.connect_once()
+            assert await database.record(snapshot)
+            await database.close()
+
+        asyncio.run(push())
+
+    record_snapshot(state.to_dict())
+
+    # Laps as the ingest-writer wrote them: all stamped stint 1, because the
+    # driver-change button had not been pressed yet. Lap 4 arrived before
+    # session-control's rows existed and carries no stint at all.
+    with psycopg.connect(timescale_dsn) as conn:
+        stint_1 = conn.execute("SELECT stint_id FROM stints WHERE stint_number = 1").fetchone()
+        assert stint_1 is not None
+        for lap_number, crossed_ms, stint_id in [
+            (1, T0 + 10 * MIN, stint_1[0]),
+            (2, T0 + 35 * MIN, stint_1[0]),
+            (3, T0 + 50 * MIN, stint_1[0]),
+            (4, T0 + 40 * MIN, None),
+        ]:
+            conn.execute(
+                """
+                INSERT INTO laps (vehicle_id, session_id, stint_id, lap_number, crossed_at)
+                VALUES (%s, %s, %s, %s, to_timestamp(%s / 1000.0))
+                """,
+                (VEHICLE, state.session_id, stint_id, lap_number, crossed_ms),
+            )
+
+    # The swap actually happened at T0+30min; the button is pressed later
+    # and backdated (the controller passes `at` through as now_ms).
+    state.change_driver("Driver B", now_ms=T0 + 30 * MIN)
+    record_snapshot(state.to_dict())
+
+    with psycopg.connect(timescale_dsn) as conn:
+        rows = conn.execute(
+            """
+            SELECT l.lap_number, st.stint_number
+            FROM laps l
+            LEFT JOIN stints st USING (stint_id)
+            ORDER BY l.lap_number
+            """
+        ).fetchall()
+        assert rows == [(1, 1), (2, 2), (3, 2), (4, None)]

@@ -1,0 +1,124 @@
+/* Designed for the actual conditions: a phone or tablet, held by someone in
+   a hurry, possibly in sunlight. Large touch targets, high contrast, current
+   state legible at arm's length (docs/plan/PHASE5.md -> P5.6). */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #e8e8e8;
+  color: #111;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: #1c1c1c;
+  color: #fff;
+}
+
+h1 { font-size: 1.25rem; font-weight: 600; }
+h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+
+.health { font-size: 0.9rem; color: #9be89b; white-space: nowrap; }
+.health.degraded { color: #ffd35c; }
+.health.down { color: #ff8a80; }
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* The one thing that must be readable at arm's length: is a session open,
+   and who is in the car. */
+.status-badge {
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 0.75rem;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+}
+.status-badge.none   { background: #d7d7d7; color: #333; }
+.status-badge.active { background: #1a7f37; color: #fff; }
+.status-badge.ended  { background: #1f5fbf; color: #fff; }
+
+.detail {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+}
+.detail dt { font-weight: 600; color: #444; }
+.detail dd { font-variant-numeric: tabular-nums; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+th, td {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #ddd;
+  font-variant-numeric: tabular-nums;
+}
+th { font-size: 0.85rem; text-transform: uppercase; color: #555; }
+tr.current td { font-weight: 600; background: #eaf6ec; }
+
+form, section label { display: flex; flex-direction: column; gap: 0.35rem; }
+form { gap: 0.85rem; }
+label { font-weight: 600; }
+.hint { font-weight: 400; color: #666; font-size: 0.85rem; }
+
+input, select, button {
+  font: inherit;
+  min-height: 3rem;
+  border-radius: 8px;
+  border: 2px solid #999;
+  padding: 0.4rem 0.75rem;
+  background: #fff;
+  width: 100%;
+}
+input:focus, select:focus, button:focus {
+  outline: 3px solid #1f5fbf;
+  outline-offset: 1px;
+}
+
+button { font-weight: 700; cursor: pointer; border: none; }
+button.primary { background: #1f5fbf; color: #fff; }
+button.danger  { background: #b91c1c; color: #fff; }
+/* Ending a session by misclick during a race is a real cost: the end button
+   arms on the first press and only acts on the second. */
+button.danger.armed { background: #7f1010; }
+
+/* Action results are shown, never assumed. */
+.notice { padding: 0.75rem 1rem; border-radius: 8px; font-weight: 600; }
+.notice.ok    { background: #d7efdb; color: #14531f; }
+.notice.error { background: #fbd9d9; color: #7f1010; }
+
+/* Fail visibly: unreachable service or degraded backends get a banner, not
+   a console message. */
+.banner {
+  padding: 0.75rem 1rem;
+  text-align: center;
+  font-weight: 700;
+  color: #fff;
+}
+.banner.warn { background: #a35f00; }
+.banner.down { background: #b91c1c; }
+
+.hidden { display: none; }
+
+code { font-size: 0.85em; background: #eee; padding: 0.1em 0.3em; border-radius: 4px; }

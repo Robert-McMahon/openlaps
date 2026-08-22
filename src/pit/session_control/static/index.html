@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<!-- The session-control operator UI (P5.6). Hand-written, dependency-free,
+     buildless, per the Phase 5 ground rules: no framework, no npm. Served by
+     the service itself from a filename allowlist (service.py). -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>openlaps session control</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="banner" class="banner hidden"></div>
+
+  <header>
+    <h1>Session control</h1>
+    <div id="health" class="health">checking&hellip;</div>
+  </header>
+
+  <main>
+    <div id="notice" class="notice hidden"></div>
+
+    <section id="key-section" class="card hidden">
+      <h2>Operator key</h2>
+      <p>Enter the API key (<code>OPENLAPS_SESSION_API_KEY</code>). It is
+      kept in this browser only.</p>
+      <form id="key-form">
+        <input type="password" id="key-input" autocomplete="off"
+               placeholder="API key" required>
+        <button type="submit" class="primary">Unlock</button>
+      </form>
+    </section>
+
+    <section id="status-section" class="card">
+      <div id="status-badge" class="status-badge none">NO SESSION</div>
+      <dl id="status-detail" class="detail"></dl>
+      <table id="stint-table" class="hidden">
+        <thead>
+          <tr><th>Stint</th><th>Driver</th><th>Start</th><th>End</th><th>Length</th></tr>
+        </thead>
+        <tbody id="stint-rows"></tbody>
+      </table>
+    </section>
+
+    <section id="start-section" class="card hidden">
+      <h2>Start session</h2>
+      <form id="start-form">
+        <label>Type
+          <select id="start-type" required></select>
+        </label>
+        <label>Driver
+          <select id="start-driver" required></select>
+        </label>
+        <label>Track
+          <input type="text" id="start-track" list="track-list"
+                 autocomplete="off" placeholder="track name">
+          <datalist id="track-list"></datalist>
+        </label>
+        <label>Car
+          <input type="text" id="start-car" autocomplete="off"
+                 placeholder="car">
+        </label>
+        <button type="submit" class="primary">Start session</button>
+      </form>
+    </section>
+
+    <section id="driver-section" class="card hidden">
+      <h2>Driver change</h2>
+      <form id="driver-form">
+        <label>New driver
+          <select id="driver-select" required></select>
+        </label>
+        <label>Actually happened at <span class="hint">(optional; leave
+          empty for now)</span>
+          <input type="datetime-local" id="driver-at" step="1">
+        </label>
+        <button type="submit" class="primary">Change driver</button>
+      </form>
+    </section>
+
+    <section id="end-section" class="card hidden">
+      <h2>End session</h2>
+      <label>Actually ended at <span class="hint">(optional; leave empty
+        for now)</span>
+        <input type="datetime-local" id="end-at" step="1">
+      </label>
+      <button id="end-button" class="danger">End session</button>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

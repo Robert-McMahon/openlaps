@@ -1,0 +1,39 @@
+{
+  "clock": {
+    "method": "chrony selects radx4.lan; WSL2 host clock overrides",
+    "offset_ms": null,
+    "source": "system"
+  },
+  "consumer": "ingest-writer",
+  "csv_path": "/home/rmc/openlaps/runs/2026-08-21-steady-t20b-pit.csv",
+  "ended": "2026-08-22T00:01:29.261414+00:00",
+  "git_dirty": true,
+  "git_sha": "f5aa02d6ed5b7a95508a7f42073ac5f507e2c2bd",
+  "host": "SS2",
+  "interval_s": 1.0,
+  "nats_monitor": "http://127.0.0.1:8222",
+  "notes": [
+    "P4.3 steady state, tick 20 ms, second pass with radio sampling on both ends. Radio via ubus/iwinfo: HaLow 924 MHz HT20 mesh, vehicle wlan1 (192.168.12.1) to pit wlan0 (192.168.12.201), peers pinned by MAC. Note iw misreports this link as 5805 MHz/160 MHz, so ubus is selected explicitly rather than auto. Vehicle wire counters are real nft named counters on :7422. Pit wire counters disabled deliberately: the pit stack runs inside the Docker Desktop VM, so leafnode bytes never cross the netfilter hooks of the host being sampled. Clock: NOT GNSS-traceable, the UM980 holds no fix so the fix-gated PPS is silent and chrony runs on holdover plus NTP. Run made from branch feat/p5.1-grafana-in-the-pit-stack (f5af3d0), which is main plus P5.1 docs and deploy changes touching neither src nor profiles; registry generation 4, identical to the earlier t20 and t10 runs."
+  ],
+  "profile": {},
+  "radio": {
+    "adapter": "ubus",
+    "config": "HaLow 924 MHz HT20 mesh, wlan0, peer 94:83:C4:67:42:40",
+    "host": "halow-pit",
+    "iface": "wlan0",
+    "peer": "94:83:C4:67:42:40"
+  },
+  "role": "pit",
+  "samples": 2100,
+  "signal_source": null,
+  "started": "2026-08-21T23:26:29.085756+00:00",
+  "stream": "TELE_VEHICLE",
+  "tick_ms": null,
+  "tool": "tools/link_probe.py",
+  "wire": {
+    "counter_in": "openlaps_leaf_in",
+    "counter_out": "openlaps_leaf_out",
+    "interface": "eth0",
+    "nft_command": ""
+  }
+}

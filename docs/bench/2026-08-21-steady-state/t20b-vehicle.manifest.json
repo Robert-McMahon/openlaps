@@ -1,0 +1,44 @@
+{
+  "clock": {
+    "method": "chrony; GPS refclock stale (UM980 fix void), holdover + NTP fallback",
+    "offset_ms": null,
+    "source": "system"
+  },
+  "consumer": "ingest-writer",
+  "csv_path": "/mnt/data/openlaps/runs/2026-08-21-steady-t20b-veh.csv",
+  "ended": "2026-08-22T00:01:29.558906+00:00",
+  "git_dirty": true,
+  "git_sha": "f5af3d08e3784949fc0095654a4a5b43c8be3d25",
+  "host": "radx4",
+  "interval_s": 1.0,
+  "nats_monitor": "http://127.0.0.1:8222",
+  "notes": [
+    "P4.3 steady state, tick 20 ms, second pass with radio sampling on both ends. Radio via ubus/iwinfo: HaLow 924 MHz HT20 mesh, vehicle wlan1 (192.168.12.1) to pit wlan0 (192.168.12.201), peers pinned by MAC. Note iw misreports this link as 5805 MHz/160 MHz, so ubus is selected explicitly rather than auto. Vehicle wire counters are real nft named counters on :7422. Pit wire counters disabled deliberately: the pit stack runs inside the Docker Desktop VM, so leafnode bytes never cross the netfilter hooks of the host being sampled. Clock: NOT GNSS-traceable, the UM980 holds no fix so the fix-gated PPS is silent and chrony runs on holdover plus NTP. Run made from branch feat/p5.1-grafana-in-the-pit-stack (f5af3d0), which is main plus P5.1 docs and deploy changes touching neither src nor profiles; registry generation 4, identical to the earlier t20 and t10 runs."
+  ],
+  "profile": {
+    "catalog_sha256": "3abb3d5af9bc37053ff4816ee44274aff4dbfede3efcad0a8f72f391fa77ff6e",
+    "path": "profiles/example-club-racer-bench",
+    "registry_hash": "5218f635d8e31ef5be17b75e83609b84b91058fce1024b5630128d55aa08bf6f",
+    "registry_seq": 4
+  },
+  "radio": {
+    "adapter": "ubus",
+    "config": "HaLow 924 MHz HT20 mesh, wlan1, peer 94:83:C4:67:4B:E4",
+    "host": "halow-vehicle",
+    "iface": "wlan1",
+    "peer": "94:83:C4:67:4B:E4"
+  },
+  "role": "vehicle",
+  "samples": 2101,
+  "signal_source": "replayed CAN x2 on vcan0 + synthetic GPS 50 Hz",
+  "started": "2026-08-21T23:26:29.104605+00:00",
+  "stream": "TELE",
+  "tick_ms": 20,
+  "tool": "tools/link_probe.py",
+  "wire": {
+    "counter_in": "openlaps_leaf_in",
+    "counter_out": "openlaps_leaf_out",
+    "interface": "enp2s0",
+    "nft_command": "sudo -n nft -j list counters"
+  }
+}

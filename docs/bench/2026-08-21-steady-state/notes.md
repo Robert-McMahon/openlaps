@@ -141,3 +141,84 @@ with one satellite at 22 dB-Hz, suspected antenna. Inter-host clock offset
 51.9 ms. The radio-in-path correction above applies to this run too: it
 crossed HaLow, but with `--radio-adapter none`, so no radio series exist for
 either tick.
+
+---
+
+# Operator notes — t20b, the second 20 ms run
+
+2026-08-21 23:26 → 2026-08-22 00:01 UTC. Added specifically to collect the
+radio series the two runs above could not. The operator's `--note` is
+carried verbatim in both manifests; this file records what surrounds it.
+
+## It ran clean
+
+No aborts, no discarded attempt, nothing killed early. Both probes started
+from a shared epoch, 2101 vehicle samples and 2100 pit samples,
+`pit_offset_s` −0.114 s against `--merge`'s 0.5 s tolerance — better than
+the −0.383 s of the discarded 19 Aug run and comparable to the t20 run's
+−0.094 s. The pit probe's log is two lines and both are the expected ones.
+This is the first run in the series with full coverage at both ends and no
+caveat about how it was executed.
+
+## The two ends were at different commits
+
+The vehicle probe records `git_sha f5af3d0`, the pit records `f5aa02d`, and
+both record `git_dirty: true`. That is not a mistake to correct later, so it
+is written down now:
+
+- The vehicle ran from `feat/p5.1-grafana-in-the-pit-stack`, which at that
+  commit was `main` plus P5.1's docs and deploy changes. It touches neither
+  `src/` nor `profiles/`, so the agent and the bench profile are byte-identical
+  to `main`.
+- The pit could not fetch from GitHub at all (see the 20 ms run's notes), so
+  its checkout sat at `f5aa02d` with the changes it needed applied by hand as
+  uncommitted local edits — which is what `git_dirty` is reporting. One of
+  those edits *was* the ubus shell-quoting fix that makes this run possible.
+- Registry generation 4 on both, `registry_hash 5218f635…`, catalog
+  `3abb3d5a…` — identical to t20 and t10, which is what makes the three runs
+  comparable regardless of the SHA difference.
+
+## The radio adapter had to be pinned to ubus
+
+`iw` misreports this link as **5805 MHz / 160 MHz**, which is not what a
+924 MHz HaLow radio is doing. The probe was therefore run with
+`--radio-adapter ubus` explicitly rather than letting it auto-select, and
+peers were pinned by MAC at both ends (`94:83:C4:67:4B:E4` from the vehicle,
+`94:83:C4:67:42:40` from the pit) because several stations are associated.
+Anyone repeating this and trusting auto-selection will get plausible numbers
+off the wrong radio.
+
+## Pit wire counters were disabled on purpose
+
+`--nft-command ""`, not a fallback. The pit stack runs in the Docker Desktop
+VM and its leafnode bytes never cross the netfilter hooks of the host being
+sampled — established during the 10 ms run and unchanged. Stating it as a
+flag makes the resulting empty column a decision in the record rather than
+something to re-diagnose.
+
+## Things noticed in the data afterwards
+
+Recorded here because they were not visible during the run and they are what
+the next operator needs:
+
+- **Forward wire bytes came back below application bytes** (ratio 0.905),
+  which cannot be true as stated. `summary.md` has the full argument, the
+  ruled-out causes, and the S2-compression hypothesis. The check nobody has
+  run is to read `/leafz` *during* load rather than after it.
+- **`vehicle_leaf_rtt_ms` was 81.996 for every sample**, to three decimals,
+  for 35 minutes, while the pit's varied normally. Treat the vehicle's leaf
+  RTT as unreliable until someone works out where it comes from.
+- **`ntrip_reconnects` reached 4**, where both earlier runs held at 0. No
+  effect on `ntrip_bytes_per_s` that shows in the distribution, and nothing
+  else moved, but it is the first time that counter has been non-zero.
+- **`ingest_wall_lag_ms` is −29.4 ms**, negative throughout. That is the
+  inter-host clock offset appearing in the writer's own figure, not a lag
+  that ran backwards; it is another face of the 51.9 ms problem above.
+
+## Still unfixed, and it is the same list
+
+No GNSS fix — the UM980 still holds none, so this run is not GNSS-traceable
+either and the clock question is now three runs old. `vcan0` still does not
+survive a host reboot. The pit still could not fetch from GitHub at run
+time. None of these blocked the run; all three are the same entries the
+20 ms run's notes opened with.

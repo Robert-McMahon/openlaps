@@ -7,7 +7,7 @@ import json
 import time
 from pathlib import Path
 
-from conftest import EXAMPLE_PROFILE, lap_path, wanneroo_track
+from conftest import EXAMPLE_PROFILE, TEST_TELE_MAX_BYTES, lap_path, wanneroo_track
 
 from agent.publisher import JetStreamPublisher
 from agent.timing_app import build_lap_timing_app
@@ -43,6 +43,7 @@ def test_published_session_is_stamped_onto_lap_events(nats_url, tmp_path: Path):
         registry_payload=catalog.registry.SerializeToString(),
         registry_interval_s=3600,
         on_session=apply,
+        tele_max_bytes=TEST_TELE_MAX_BYTES,
     )
     agent.start()
     try:

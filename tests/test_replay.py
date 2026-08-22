@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import nats
+from conftest import TEST_TELE_MAX_BYTES
 from nats.js import api
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "tools"))
@@ -58,6 +59,8 @@ def test_candump_replay_delivers_the_expected_channels_and_samples(nats_url, tmp
             "50",
             "--can-frames",
             "2000",
+            "--tele-max-bytes",
+            str(TEST_TELE_MAX_BYTES),
             "--nmea",
             "",
             "--gps-trace",

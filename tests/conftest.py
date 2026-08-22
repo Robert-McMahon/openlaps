@@ -34,6 +34,27 @@ _LAP_POINT_ORDER = ("StartFinish", "Sector1", "Sector2")
 # half of it cannot be reserved twice over.
 TIGHT_STORE_BYTES = 64 * 1024 * 1024
 
+# Size of the leafnode pair's JetStream file stores. Left unset, nats-server
+# sizes `max_file_store` from the free space of whatever filesystem holds the
+# store, so whether a stream reservation succeeds depends on the machine the
+# tests happen to run on: the pit's 32 GiB stream is nothing on a workstation
+# and fails with "insufficient storage resources available" (10047) on a CI
+# runner with less than that free. A fixed tmpfs makes the limit the same
+# number everywhere. These tests move a few hundred small messages, so the
+# cap is three orders of magnitude clear of what they need.
+LEAF_STORE_BYTES = 256 * 1024 * 1024
+
+# Same reasoning for the single-server fixture below.
+SERVER_STORE_BYTES = 512 * 1024 * 1024
+
+# TELE's real 8 GiB reservation (src/agent/publisher.py) is sized for three
+# days of a running car. Reserving it in a test makes that test depend on the
+# free disk of whichever machine runs it, and the agent publisher retries the
+# rejection internally -- so the failure surfaces as "timed out waiting for
+# publisher connect", saying nothing about storage. Every test publisher asks
+# for this instead; nothing in the suite writes more than a few MiB.
+TEST_TELE_MAX_BYTES = 64 * 1024 * 1024
+
 
 def crossing_pair(line, offset_m: float = 20.0) -> tuple[tuple[float, float], tuple[float, float]]:
     """Two points straddling a timing line, ``offset_m`` either side of its middle."""
@@ -169,8 +190,16 @@ def _nats_server(*docker_args: str, server_args: tuple[str, ...] = ("-js",)):
 
 @pytest.fixture
 def nats_url():
-    """A fresh throwaway JetStream-enabled nats-server in docker (skip-less-able)."""
-    with _nats_server() as url:
+    """A fresh throwaway JetStream-enabled nats-server in docker (skip-less-able).
+
+    The store is a fixed-size tmpfs rather than the container's writable
+    layer, so `max_file_store` -- and therefore which stream reservations fit
+    -- is the same number on every machine instead of a function of the
+    host's free disk. See SERVER_STORE_BYTES.
+    """
+    with _nats_server(
+        "--tmpfs", f"/data:size={SERVER_STORE_BYTES}", server_args=("-js", "-sd", "/data")
+    ) as url:
         yield url
 
 
@@ -415,6 +444,11 @@ def leafnode_pair():
             # The client network is attached first, so the published ports
             # are mapped through it and survive the leafnode disconnect.
             client_net,
+            # A store of known size; see LEAF_STORE_BYTES. Severing the link
+            # disconnects a network rather than restarting the container, so
+            # nothing here loses its stream data mid-test.
+            "--tmpfs",
+            f"/data:size={LEAF_STORE_BYTES}",
             "-p",
             f"127.0.0.1:{client_port}:4222",
             "-p",

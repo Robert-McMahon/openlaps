@@ -21,6 +21,7 @@ from collections.abc import Callable
 import nats
 import psycopg
 import pytest
+from conftest import TEST_TELE_MAX_BYTES
 
 from agent.pipeline import TickBatch
 from agent.publisher import JetStreamPublisher
@@ -108,6 +109,7 @@ def _publish(nats_url: str, catalog, batches: list[TickBatch]) -> None:
         vehicle_id=VEHICLE,
         registry_payload=registry.SerializeToString(),
         registry_interval_s=3600.0,
+        tele_max_bytes=TEST_TELE_MAX_BYTES,
     )
     publisher.start()
     try:

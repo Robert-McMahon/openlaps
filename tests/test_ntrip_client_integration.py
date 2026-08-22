@@ -14,6 +14,7 @@ from collections.abc import Callable
 
 import nats
 import pytest
+from conftest import TEST_TELE_MAX_BYTES
 from nats.js.errors import NotFoundError
 
 from agent.publisher import JetStreamPublisher
@@ -176,6 +177,7 @@ def test_end_to_end_reaches_serial_write_back(nats_url):
             registry_payload=b"",
             registry_interval_s=3600.0,
             on_rtcm=collector.write_rtcm,
+            tele_max_bytes=TEST_TELE_MAX_BYTES,
         )
         publisher.start()
         try:

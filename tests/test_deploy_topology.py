@@ -52,6 +52,13 @@ from pit.live_decoder.service import LiveDecoder, LiveDecoderSettings  # noqa: E
 PIT_STREAM = "TELE_VEHICLE"
 DURABLE = "test-topology-writer"
 
+# The deployed 32 GiB cap is sized from the pit's actual free disk
+# (deploy/provision_pit_streams.py) -- a deployment knob, not a property of
+# the topology. Reserving it here would make these tests pass or fail on the
+# free space of whichever machine ran them; what they assert is the absent
+# `subjects` and the cross-domain source, and neither depends on the cap.
+PIT_STREAM_MAX_BYTES = 64 * 1024 * 1024
+
 
 # --- helpers ----------------------------------------------------------------
 
@@ -62,7 +69,12 @@ async def _provision_pit(pair) -> None:
     try:
         await provision.ensure_pit_stream(
             client.jetstream(),
-            provision.pit_stream_config(name=PIT_STREAM, source_stream="TELE", domain="veh"),
+            provision.pit_stream_config(
+                name=PIT_STREAM,
+                source_stream="TELE",
+                domain="veh",
+                max_bytes=PIT_STREAM_MAX_BYTES,
+            ),
         )
     finally:
         await client.close()

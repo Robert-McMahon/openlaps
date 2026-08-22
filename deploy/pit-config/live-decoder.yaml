@@ -1,5 +1,11 @@
 # Pit-side live gauge selection. First matching rule wins; an unmatched
 # channel is not published. Editing this file is picked up without a restart.
+#
+# `vehicle` is the subject filter: the service consumes tele.<vehicle>.> and
+# publishes to openlaps/<vehicle>/<channel>. It must equal the pit's
+# OPENLAPS_VEHICLE_ID -- the other three pit services read that variable
+# directly, and this one refuses to start if the two disagree, because a
+# mismatch is otherwise indistinguishable from a car that never moved.
 vehicle: example-club-racer
 
 defaults:

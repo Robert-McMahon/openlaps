@@ -185,6 +185,11 @@ class LapTimingApp:
         if state.lap_start_time > 0.0:
             emit("timing.distance", self._distance.lap_distance, always=True)
             elapsed = point.timestamp - state.lap_start_time
+            # Emitted rather than left for a consumer to derive: `delta_best`
+            # and `predicted_lap` below are silent until a reference lap
+            # exists, so on the out-lap and lap 1 this is the only live
+            # lap-time channel there is.
+            emit("timing.lap_elapsed", elapsed, always=True)
             delta = self._delta.delta(self._distance.lap_distance, elapsed)
             if delta is not None:
                 emit("timing.delta_best", delta, always=True)

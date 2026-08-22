@@ -56,6 +56,7 @@ DEFAULT_DERIVED_CHANNELS = (
     DerivedChannel("timing.delta_best", pb.DOUBLE, "s"),
     DerivedChannel("timing.predicted_lap", pb.DOUBLE, "s"),
     DerivedChannel("timing.distance", pb.DOUBLE, "m"),
+    DerivedChannel("timing.lap_elapsed", pb.DOUBLE, "s"),
 )
 
 

@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from agent.pipeline import TickBatch  # noqa: E402
-from agent.publisher import JetStreamPublisher  # noqa: E402
+from agent.publisher import DEFAULT_TELE_MAX_BYTES, JetStreamPublisher  # noqa: E402
 from agent.timing_app import LapTimingApp, build_lap_timing_app  # noqa: E402
 from core.catalog import RuntimeCatalog, build_runtime_catalog  # noqa: E402
 from core.config import ProfileConfig, load_profile  # noqa: E402
@@ -78,13 +78,25 @@ def build_timing_app(profile: ProfileConfig, catalog: RuntimeCatalog) -> LapTimi
     )
 
 
-def make_publisher(server: str, vehicle_id: str, catalog: RuntimeCatalog) -> JetStreamPublisher:
-    """A publisher wired exactly like the agent's, registry included."""
+def make_publisher(
+    server: str,
+    vehicle_id: str,
+    catalog: RuntimeCatalog,
+    tele_max_bytes: int = DEFAULT_TELE_MAX_BYTES,
+) -> JetStreamPublisher:
+    """A publisher wired exactly like the agent's, registry included.
+
+    `tele_max_bytes` is the agent's own default. JetStream reserves it up
+    front, so a server with a store smaller than that refuses to create TELE
+    at all -- worth lowering when replaying into a small throwaway server
+    rather than at a real pit.
+    """
     return JetStreamPublisher(
         nats_url=server,
         vehicle_id=vehicle_id,
         registry_payload=catalog.registry.SerializeToString(),
         registry_interval_s=3600.0,
+        tele_max_bytes=tele_max_bytes,
     )
 
 

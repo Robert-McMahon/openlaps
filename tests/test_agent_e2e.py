@@ -20,7 +20,7 @@ import can
 import nats
 import pytest
 import serial
-from conftest import EXAMPLE_PROFILE, lap_path, rmc_sentence, wanneroo_track
+from conftest import EXAMPLE_PROFILE, TEST_TELE_MAX_BYTES, lap_path, rmc_sentence, wanneroo_track
 from nats.js import api
 
 from agent.agent import AgentSettings, VehicleAgent
@@ -78,6 +78,7 @@ def test_candump_and_nmea_replay_end_to_end(nats_url, tmp_path: Path):
         vehicle_id=VEHICLE,
         registry_payload=catalog.registry.SerializeToString(),
         registry_interval_s=3600.0,
+        tele_max_bytes=TEST_TELE_MAX_BYTES,
     )
     publisher.start()
     try:
@@ -189,6 +190,7 @@ def test_full_agent_lifecycle_against_real_nats(nats_url, tmp_path: Path):
         tick_ms=10,
         state_dir=tmp_path / "state",
         health_interval_s=0.1,
+        tele_max_bytes=TEST_TELE_MAX_BYTES,
     )
     agent = VehicleAgent(settings, bus_factory=no_bus, serial_factory=no_port)
     agent.start()

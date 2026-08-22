@@ -57,6 +57,7 @@ import can
 from _bench import (
     DEFAULT_PROFILE,
     DEFAULT_SERVER,
+    DEFAULT_TELE_MAX_BYTES,
     build_timing_app,
     load_catalog,
     make_publisher,
@@ -228,6 +229,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--can-frames", type=int, default=None, help="limit the candump replay to this many frames"
     )
+    parser.add_argument(
+        "--tele-max-bytes",
+        type=int,
+        default=DEFAULT_TELE_MAX_BYTES,
+        help="TELE's JetStream reservation; lower it for a small throwaway server",
+    )
     return parser
 
 
@@ -244,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
         print("replay: no sources selected", file=sys.stderr)
         return 2
 
-    publisher = make_publisher(args.server, vehicle_id, catalog)
+    publisher = make_publisher(args.server, vehicle_id, catalog, args.tele_max_bytes)
     publisher.start()
     try:
         wait_connected(publisher)

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import nats
 import pytest
-from conftest import EXAMPLE_PROFILE, TIGHT_STORE_BYTES
+from conftest import EXAMPLE_PROFILE, TEST_TELE_MAX_BYTES, TIGHT_STORE_BYTES
 from nats.js import api
 
 from agent.pipeline import Pipeline, TickBatch
@@ -43,6 +43,8 @@ def catalog(tmp_path: Path):
 
 
 def _publisher(nats_url: str, catalog, **kwargs) -> JetStreamPublisher:
+    # Overridable: the reservation tests below pin their own size.
+    kwargs.setdefault("tele_max_bytes", TEST_TELE_MAX_BYTES)
     return JetStreamPublisher(
         nats_url=nats_url,
         vehicle_id=VEHICLE,

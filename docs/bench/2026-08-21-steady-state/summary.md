@@ -1,15 +1,22 @@
 # P4.3 steady state — 2026-08-21
 
-Two 35-minute runs on the bench profile with replayed CAN and synthetic GPS:
-one at `OPENLAPS_TICK_MS=20`, one at `10`, as the brief requires. Both ran
-registry generation 4 (163 channels, catalog `3abb3d5a…`), so they are
-directly comparable.
+Three 35-minute runs on the bench profile with replayed CAN and synthetic
+GPS: one at `OPENLAPS_TICK_MS=20`, one at `10`, as the brief requires, and a
+second 20 ms pass (**t20b**) added afterwards to sample the radio at both
+ends. All three ran registry generation 4 (163 channels, catalog
+`3abb3d5a…`), so they are directly comparable.
 
 Provenance: `t20-vehicle.manifest.json`, `t20-pit.manifest.json`,
-`t10-vehicle.manifest.json`. **There is no `t10-pit.manifest.json`** — the pit
+`t10-vehicle.manifest.json`, `t20b-vehicle.manifest.json`,
+`t20b-pit.manifest.json`. **There is no `t10-pit.manifest.json`** — the pit
 probe failed to start for the 10 ms run (see `notes.md`), so that run is
 vehicle-side only. Both headline results below are vehicle-side measurements
 and are unaffected.
+
+The t20b section near the end is where the radio numbers live, and it
+carries two findings that bear on sections above it: a run-to-run spread at
+one tick, and a framing-overhead measurement that contradicts the one in
+"Framing overhead" below.
 
 ## Offered load, and the tick lever
 
@@ -154,21 +161,158 @@ untested by the bench at any tick**, and a defect confined to those channels
 would not show in any run built on these fixtures. Worth stating in the
 commissioning report rather than discovering later.
 
+## t20b — the radio, sampled
+
+A third run, 2026-08-21 23:26 → 2026-08-22 00:01 UTC, 2100 s, tick 20 ms
+again. It exists because the two runs above crossed HaLow with
+`--radio-adapter none` and collected no radio series at all; the ubus
+adapter could not be used until the shell-quoting fix (PR #20) let the
+probe's `ubus` JSON argument survive `ssh`. Provenance:
+`t20b-vehicle.manifest.json`, `t20b-pit.manifest.json`. Both ends sampled,
+2101 and 2100 samples, `pit_offset_s` −0.114 s against `--merge`'s 0.5 s
+tolerance.
+
+### The link, at last measured
+
+Load window (n=2015), radio via `ubus`/`iwinfo` on both routers:
+
+| | vehicle (`wlan1`) | pit (`wlan0`) |
+| --- | ---: | ---: |
+| signal | −13.4 dBm | −15.2 dBm |
+| tx bitrate | 32.5 Mbit/s | 32.5 Mbit/s |
+| rx bitrate | 32.5 Mbit/s | 32.5 Mbit/s |
+| tx retries, whole run | +851 | +1014 |
+| tx failed, whole run | +0 | +0 |
+
+The MCS never moved off 32.5 Mbit/s in either direction, retries are a
+rounding error against 128,364 transmitted packets, and nothing failed. This
+is a link under no stress whatsoever.
+
+### Airtime efficiency is still not measured, and this run cannot measure it
+
+`link_probe` computes an `airtime_efficiency` series and it reads **0.016**.
+**Do not cite that against §5's assumed 0.5.** It is wire goodput ÷ PHY
+rate at the offered load, which is link *utilisation*; §5's 0.5 is the
+fraction of PHY rate obtainable as goodput at **saturation**. This run
+offers 469.4 kbit/s to a 32.5 Mbit/s link and never approaches saturation,
+so it measures how little of the radio the telemetry uses, not how much of
+the radio is usable.
+
+What it does establish, and this is worth having: **about sixty times more
+PHY rate than offered load, at −13 dBm with zero failed transmissions.**
+That bounds the headroom question for the bench. It does not transfer to a
+track — −13 dBm is two radios in one room, and §5's assumption governs
+behaviour at the range where MCS actually drops.
+
+### Framing overhead contradicts the 10 ms run
+
+Vehicle-side `nft` named counters on `:7422`, `wire_source: nft` for all
+2101 samples with an empty `reasons` field — the same instrumentation path
+that produced §2's first measurement above.
+
+```
+forward   wire 118,243,713 B  ÷  leaf 130,698,113 B  =  0.905
+reverse   wire   8,667,096 B  ÷  leaf   4,383,828 B  =  1.977
+```
+
+**The forward ratio is below 1, which is not physically possible** for a
+like-for-like comparison: wire bytes carry the application bytes plus TCP,
+IP and Ethernet headers, so the ratio has a floor above 1. Something between
+the two counts is not what it appears to be, and until it is identified
+**neither this run's 0.905 nor the 1.082 in "Framing overhead" above should
+be quoted as the framing overhead of this link.**
+
+Ruled out: `deploy/nats/vehicle.conf` and `pit.conf` configure no
+compression, and the direction mapping in `deploy/nft/bench-vehicle.nft` is
+correct (`sport 7422` → `openlaps_leaf_out`), which the reverse ratio's
+plausible 1.977 independently supports — small ack packets, header
+dominated, exactly as expected.
+
+Leading hypothesis, **unconfirmed**: nats-server negotiates S2 compression
+on leafnodes whether or not the config mentions it. Reading `/leafz` on the
+pit after the run reports `"compression": "s2_uncompressed"` at an idle RTT
+of 9.9 ms — and `s2_auto` selects its mode from RTT. The vehicle reported
+`leaf_rtt_ms` of 82.0 for the entire run. If the connection sat in a
+compressed mode while loaded, compressible protobuf batches would put wire
+below application bytes in the forward direction and leave the
+incompressible reverse direction alone, which is exactly the shape of the
+two ratios. **The check is to read `/leafz` during a loaded run, not after
+one**, and nobody has done that.
+
+If it holds, framing overhead is not a constant of this link at all — it is
+a function of whichever S2 mode the leafnode happens to be in, and §2 needs
+rewriting around that rather than around a single number.
+
+### An instrument reading that is not a measurement
+
+`vehicle_leaf_rtt_ms` is **81.996 for all 2015 load-window samples**, to
+three decimal places, while the pit's own `leaf_rtt_ms` varied across
+8.6–12.0 over the same period. A value that constant across 35 minutes is a
+cached figure, not a measurement. It is load-bearing for the compression
+hypothesis above, so it needs resolving before that hypothesis is tested on
+it.
+
+### Pit health, and the MQTT branch at 20 ms
+
+| series | mean | p50 | p95 | max |
+| --- | ---: | ---: | ---: | ---: |
+| `ingest_rows_per_s` | 3075.3 | 3105.0 | 3171.7 | 4106.1 |
+| `ingest_lag_ms` | 22.3 | 22.5 | 29.2 | 50.9 |
+| `consumer_num_pending` | 0.31 | 0.00 | 3.00 | 49.00 |
+| `live_publish_rate` | 93.9 | 92.9 | 98.9 | 103.9 |
+
+286,139 batches by both the vehicle's and the pit's `stream_last_seq` delta
+— identical, so nothing was lost across the link — and ~6,194,929 rows by
+integrating `ingest_rows_per_s` over the run. Zero on `unknown_seq_batches`,
+`bad_version_batches`, `dropped_flushes`, `mqtt_drops`, `aggregate_sheds`,
+`slow_consumers` at both ends, and `db_errors`.
+
+**This is the first 20 ms run in which live-decoder published anything** —
+it was broken for the original t20 and fixed before t10 — so the MQTT branch
+of the pit is now exercised at both ticks.
+
+Two things moved that had not before: `ntrip_reconnects` reached **4**
+during the run, where earlier runs held at 0; and `ingest_wall_lag_ms` sits
+at −29.4 ms, negative, which is the unresolved inter-host clock offset
+showing through the writer's own figure rather than a lag that ran backwards.
+
+### Offered load, and how much of the tick result is noise
+
+| run | load-window mean | p50 | n | vs modelled 544.4 |
+| --- | ---: | ---: | ---: | ---: |
+| tick 20 ms (t20) | 529.0 kbit/s | 529.7 | 2015 | −2.8% |
+| tick 20 ms (t20b) | 518.9 kbit/s | 519.9 | 2015 | **−4.7%** |
+| tick 10 ms | 570.2 kbit/s | 570.9 | 2015 | +3.1% |
+
+**Two nominally identical 20 ms runs differ by 1.9%.** That is the first
+estimate this bench has of its own repeatability, and it is the number to
+read the tick comparison against: the measured 20 → 10 ms change of +7.8% is
+about four times the run-to-run spread, so "the model understates the
+sensitivity" survives — but it survives as a factor of four, not as a
+precise fivefold. Any future claim resting on a difference smaller than
+about 2% at one tick is inside the noise.
+
 ## What P4.3 still does not answer
 
-- **Airtime efficiency** (`wire goodput ÷ PHY rate`), replacing §5's assumed
-  0.5. Not yet measured, but measurable: the radio *is* in the path. The
-  vehicle is wired to the vehicle router (192.168.12.1) and the pit is wired
-  to an access point (192.168.12.201); those two bridge to each other over
-  HaLow. The bridge is transparent, which is why neither host's routing table
-  shows it. Both devices answer ping with ssh open, so `link_probe`'s
-  `--radio-host` / `--radio-adapter` path should reach them for PHY rate and
-  station statistics.
+- **Airtime efficiency** (`wire goodput ÷ PHY rate` at saturation),
+  replacing §5's assumed 0.5. The radio is now sampled at both ends — t20b
+  did what this bullet asked for — and the answer is that **sampling the
+  radio was never the hard part.** The bench offers 469 kbit/s to a
+  32.5 Mbit/s link at −13 dBm, so it measures utilisation, not efficiency;
+  §5's 0.5 describes goodput at capacity and needs a load that approaches
+  capacity or a range that drops the MCS. Neither exists on this bench as
+  built. See "Airtime efficiency is still not measured" above.
 - **Absolute source-to-row latency** against the under-500 ms target. P4.8's
   chain is installed and working, but the UM980 held no fix in either run
   (RMC status `V`, one satellite at 22 dB-Hz), so the fix-gated PPS was silent
   and the hosts sat 51.9 ms apart. `ingest_lag_ms` above is the writer's own
   lag, not source-to-row.
-- **Wire bytes at 20 ms**, and any pit-side wire figure at all — the pit's
-  stack runs inside Docker Desktop's VM, so its leafnode bytes never cross the
-  netfilter hooks of the host we can instrument.
+- **Any pit-side wire figure at all** — the pit's stack runs inside Docker
+  Desktop's VM, so its leafnode bytes never cross the netfilter hooks of the
+  host we can instrument. t20b passes `--nft-command ""` explicitly to make
+  that a stated choice rather than a silent fallback.
+- **What the vehicle's `nft` counters are actually counting.** t20b supplies
+  wire bytes at 20 ms, which this bullet used to ask for, and they came back
+  *below* the application bytes they contain. Until that is explained,
+  §2's framing-overhead figure has one measurement supporting it and one
+  contradicting it, and the section should say so.

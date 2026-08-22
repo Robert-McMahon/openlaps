@@ -47,6 +47,14 @@ LEAF_STORE_BYTES = 256 * 1024 * 1024
 # Same reasoning for the single-server fixture below.
 SERVER_STORE_BYTES = 512 * 1024 * 1024
 
+
+@pytest.fixture(autouse=True)
+def _grafana_migration_credentials(monkeypatch):
+    """Give schema migrations throwaway Grafana credentials in tests."""
+    monkeypatch.setenv("GRAFANA_DB_USER", "grafana_ro")
+    monkeypatch.setenv("GRAFANA_DB_PASSWORD", "openlaps-grafana-test")
+
+
 # TELE's real 8 GiB reservation (src/agent/publisher.py) is sized for three
 # days of a running car. Reserving it in a test makes that test depend on the
 # free disk of whichever machine runs it, and the agent publisher retries the

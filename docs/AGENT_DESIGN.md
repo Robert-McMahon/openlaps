@@ -132,6 +132,7 @@ on the same dashboards, stored in the same DB, no side channel:
 | `sys.agent.publish_lag_ms` | age of oldest unacked publish |
 | `sys.agent.clock_offset_ms`, `sys.agent.clock_source` | clock discipline state |
 | `sys.agent.rbe_suppressed` | cumulative samples suppressed by RBE (sanity check on policies) |
+| `sys.agent.encode_failures` | cumulative tick windows discarded by an encode error (a mis-typed catalog channel silently guts the stream — alert on any rise) |
 
 ## Startup and shutdown
 

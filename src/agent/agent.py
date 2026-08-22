@@ -143,6 +143,7 @@ def agent_derived_channels(collector_names: list[str]) -> tuple[DerivedChannel, 
         DerivedChannel("sys.agent.status", pb.STRING),
         DerivedChannel("sys.agent.unmapped_refs", pb.INT64),
         DerivedChannel("sys.agent.rbe_suppressed", pb.INT64),
+        DerivedChannel("sys.agent.encode_failures", pb.INT64),
         DerivedChannel("sys.agent.publish_drops", pb.INT64),
         DerivedChannel("sys.agent.publish_lag_ms", pb.DOUBLE, "ms"),
         DerivedChannel("sys.agent.clock_offset_ms", pb.DOUBLE, "ms"),
@@ -388,6 +389,7 @@ class VehicleAgent:
         emit("sys.agent.status", self._status_payload(status))
         emit("sys.agent.unmapped_refs", self.pipeline.unmapped_refs)
         emit("sys.agent.rbe_suppressed", self.pipeline.rbe_suppressed)
+        emit("sys.agent.encode_failures", self.pipeline.encode_failures)
         emit("sys.agent.publish_drops", self.publisher.publish_drops)
         emit("sys.agent.publish_lag_ms", self.publisher.publish_lag_ms())
         emit("sys.agent.clock_offset_ms", self.clock.offset_ms)

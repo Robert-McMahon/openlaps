@@ -240,6 +240,7 @@ class RunResult:
     payload_bytes: int = 0
     unmapped_refs: int = 0
     rbe_suppressed: int = 0
+    encode_failures: int = 0
     queue_drops: dict[str, int] = field(default_factory=dict)
     transport_notes: dict[str, str] = field(default_factory=dict)
 
@@ -318,6 +319,7 @@ def run_live(
 
     result.unmapped_refs = pipeline.unmapped_refs
     result.rbe_suppressed = pipeline.rbe_suppressed
+    result.encode_failures = pipeline.encode_failures
     for collector, queue in collectors:
         result.queue_drops[queue.source_class] = queue.dropped
         note = _transport_note(collector)
@@ -439,9 +441,18 @@ def report_run(
     drops = {name: count for name, count in result.queue_drops.items() if count}
     print(
         f"  health: unmapped_refs={result.unmapped_refs} "
-        f"rbe_suppressed={result.rbe_suppressed} queue_drops={drops or 'none'}",
+        f"rbe_suppressed={result.rbe_suppressed} encode_failures={result.encode_failures} "
+        f"queue_drops={drops or 'none'}",
         file=out,
     )
+    if result.encode_failures:
+        # One mis-typed catalog channel discards whole tick windows across
+        # every source class; the measured mix above just looks quiet, so the
+        # gate has to name it (docs/AGENT_DESIGN.md -> Health and status).
+        failures.append(
+            f"encode: {result.encode_failures} tick window(s) discarded by an encode error "
+            "(a catalog channel's type does not match the value feeding it)"
+        )
     for name, note in sorted(result.transport_notes.items()):
         print(f"  transport {name}: {note}", file=out)
     return failures

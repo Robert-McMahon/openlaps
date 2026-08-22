@@ -1,0 +1,27 @@
+# The live gauge feed: the pit-local mosquitto broker's websockets listener.
+#
+# This is the only non-core Grafana plugin this stack installs (locked
+# decision 4 of docs/plan/PHASE5.md). It subscribes to the topics
+# live-decoder publishes -- QoS 0, non-retained, one topic per channel --
+# and every value on it is worthless a second later. Anything durable is a
+# Timescale query, not an MQTT topic.
+#
+# ws://mosquitto:9001 is the compose-network name of the `listener 9001 /
+# protocol websockets` block in deploy/mosquitto/mosquitto.conf. Grafana's
+# MQTT datasource is a *backend* plugin, so this connection is made from the
+# grafana container and not from the operator's browser; the address is
+# therefore the container name, not the pit host.
+apiVersion: 1
+
+datasources:
+  - name: MQTT Live
+    uid: mqtt-live
+    type: grafana-mqtt-datasource
+    access: proxy
+    # Explicit, not merely absent: a panel that forgets to name its
+    # datasource should fall back to the database, not to a live feed that
+    # has no history in it.
+    isDefault: false
+    jsonData:
+      uri: ws://mosquitto:9001
+    editable: false

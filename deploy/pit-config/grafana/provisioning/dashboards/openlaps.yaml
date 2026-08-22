@@ -1,0 +1,29 @@
+# One file provider, and the repository is the source of truth.
+#
+# `allowUiUpdates: false` is the whole point of this file. The predecessor
+# stack set it true, which is exactly how eight dashboards drifted away from
+# the repository that was supposed to define them: a panel edited in the
+# browser saved cleanly, looked right, and existed nowhere in git. Here a
+# browser edit cannot be saved back, so the only way to change a dashboard is
+# a commit -- and `docker compose restart grafana` (or the provider's own
+# rescan) to pick it up.
+#
+# `disableDeletion: true` stops the same thing happening in the other
+# direction: a dashboard deleted through the UI would come back at the next
+# provisioning pass anyway, confusingly, so refuse the deletion outright.
+apiVersion: 1
+
+providers:
+  - name: openlaps
+    orgId: 1
+    folder: openlaps
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    # A dashboard is a checked-in file that changes when someone deploys, not
+    # every few seconds. Ten was the predecessor's value and it re-read the
+    # whole directory six times a minute for nothing.
+    updateIntervalSeconds: 60
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

@@ -12,6 +12,7 @@ that.
 | JetStream domain | `veh` | `pit` |
 | Streams | `TELE`, `CMD` (created by the agent) | `TELE_VEHICLE` (created by `provision_pit_streams.py`) |
 | Services | agent | ingest-writer, live-decoder, session-control, ntrip-client |
+| Read surface | — | Grafana on `:3000` |
 
 **The pit dials the vehicle**, never the reverse. The vehicle runs a
 leafnode *listener* on `:7422`; the pit config carries the `remotes:` entry.
@@ -87,6 +88,13 @@ None of it is in this repository, and none of it should be.
 - **`TIMESCALE_PASSWORD`**, and **`NTRIP_USER`/`NTRIP_PASSWORD`** if you are
   running RTK. NTRIP credentials live only at the pit and never reach the
   vehicle (ADR 0006).
+- **`GRAFANA_ADMIN_PASSWORD` and `GRAFANA_DB_PASSWORD`**, both mandatory —
+  the pit stack refuses to start without them. The second is *not*
+  `TIMESCALE_PASSWORD`: Grafana connects to the database as a read-only role
+  (`GRAFANA_DB_USER`, default `grafana_ro`) that holds `SELECT` on the views
+  and nothing else. The grafana container is given an explicit list of
+  environment variables rather than the pit's `.env`, so it cannot see the
+  owner credential even by accident.
 
 ## Bring-up
 
@@ -198,7 +206,14 @@ runbook:
 3. `nats` becomes healthy and connects its leafnode.
 4. **`provision-streams` runs to completion**, creating or converging
    `TELE_VEHICLE`.
-5. The four services start.
+5. The four services start, and Grafana with them.
+
+**The first bring-up needs internet.** Grafana installs one plugin —
+`grafana-mqtt-datasource`, the live gauge feed, and the only plugin this
+stack asks for — before it finishes starting. It lands in the `grafana-data`
+volume and is not fetched again, so a pit that will be offline at the track
+only has to have been online once. A fresh volume on a disconnected pit is
+a Grafana that does not come up.
 
 ### 3. Verify each hop
 
@@ -243,9 +258,23 @@ docker compose -f deploy/pit-compose.yaml exec timescaledb psql -U openlaps -d o
 | ingest-writer | 8081 | `OPENLAPS_INGEST_HEALTH_PORT` |
 | live-decoder | 8082 | `OPENLAPS_LIVE_HEALTH_PORT` |
 | ntrip-client | 8083 | `OPENLAPS_NTRIP_HEALTH_PORT` |
+| grafana | 3000 | fixed (`GET /api/health`) |
 
 ```bash
 for port in 8080 8081 8082 8083; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
+```
+
+**Grafana is up and both datasources are green.** The web UI is on
+`:3000`; these are the two things worth checking without it. `Database
+Connection OK` means the read-only role exists and the views are readable;
+`MQTT Connected` means the websockets listener answered.
+
+```bash
+curl -fsS http://127.0.0.1:3000/api/health
+```
+
+```bash
+for uid in timescale mqtt-live; do echo "--- $uid"; curl -fsS -u "admin:$GRAFANA_ADMIN_PASSWORD" "http://127.0.0.1:3000/api/datasources/uid/$uid/health"; echo; done
 ```
 
 **Control reaches the car.** Start a session at the pit and confirm the
@@ -296,6 +325,26 @@ The mount is a bind of the *directory*, not of the single file. Most editors
 save by writing a temporary file and renaming it over the original, which
 changes the inode; a single-file bind would keep pointing at the old one and
 the edit would never be seen.
+
+## Changing a dashboard
+
+`pit-config/grafana/dashboards/*.json` is provisioned into Grafana's
+`openlaps` folder with `allowUiUpdates: false`, so **a panel changed in the
+browser and not committed does not exist** — the UI will not let you save it
+back. Edit, export the JSON model, commit it, and
+`docker compose -f deploy/pit-compose.yaml restart grafana`. The full
+procedure and the rules panels have to follow are in
+`pit-config/grafana/dashboards/README.md`.
+
+Datasources are provisioned the same way and are equally read-only in the
+UI. Panels reference them by uid — `timescale` for SQL, `mqtt-live` for the
+gauge feed — and those uids are stable on purpose: without an explicit one
+Grafana generates a per-install value and a dashboard authored anywhere else
+fails to load.
+
+SQL panels read the **views** (`docs/PIT_SCHEMA.md`), which is not a
+convention here but a grant: Grafana's database role has `SELECT` on the
+views and no access at all to `samples` or `laps`.
 
 ## Tear-down
 

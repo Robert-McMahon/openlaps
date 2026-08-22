@@ -500,6 +500,26 @@ def test_backdated_transitions_over_http(tmp_path: Path):
             assert body["stint_number"] == 2
             assert body["stint_start"] == session_start + 1
 
+            # Re-stating the in-car driver with `at` corrects the boundary
+            # just recorded; without `at` it stays the 409 it always was.
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/driver",
+                {"driver": "Driver B", "at": session_start + 5},
+            )
+            assert code == 200
+            assert body["driver"] == "Driver B"
+            assert body["stint_number"] == 2
+            assert body["stint_start"] == session_start + 5
+
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/driver",
+                {"driver": "Driver B"},
+            )
+            assert code == 409
+            assert "already the active driver" in body["error"]
+
             code, body = await asyncio.to_thread(
                 _request,
                 f"{base}/session/end",
@@ -511,11 +531,11 @@ def test_backdated_transitions_over_http(tmp_path: Path):
             code, body = await asyncio.to_thread(
                 _request,
                 f"{base}/session/end",
-                {"at": session_start + 2},
+                {"at": session_start + 6},
             )
             assert code == 200
             assert body["status"] == "ended"
-            assert body["timestamp"] == session_start + 2
+            assert body["timestamp"] == session_start + 6
         finally:
             server.shutdown()
             server.server_close()

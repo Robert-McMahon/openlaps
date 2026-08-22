@@ -11,6 +11,7 @@ const show = (el, visible) => el.classList.toggle("hidden", !visible);
 
 let apiKey = localStorage.getItem(KEY_STORAGE) || "";
 let session = null; // last GET /session payload
+let rosterData = null; // last GET /roster payload
 // Server-minus-browser clock offset, from the payload's own timestamp, so
 // the elapsed readouts survive a pit laptop with a drifted clock.
 let clockOffsetMs = 0;
@@ -115,6 +116,32 @@ function renderSession() {
   show($("driver-section"), Boolean(apiKey) && active);
   show($("end-section"), Boolean(apiKey) && active);
   if (ended) resetEndButton();
+  updateDriverSelect();
+}
+
+// The driver select marks whoever is in the car and preselects the first
+// driver who is not: the common action is a change, and any number of
+// changes (including back to an earlier driver) is supported. Rebuilt only
+// when the in-car driver changes, so it never fights an operator who has
+// the list open.
+let markedDriver = null;
+
+function updateDriverSelect() {
+  if (rosterData === null) return;
+  const current =
+    session !== null && session.status === "active" ? session.driver : null;
+  if (current === markedDriver) return;
+  markedDriver = current;
+  const select = $("driver-select");
+  select.innerHTML = "";
+  for (const driver of rosterData.drivers) {
+    const option = document.createElement("option");
+    option.value = driver;
+    option.textContent = driver === current ? driver + " (in car)" : driver;
+    select.append(option);
+  }
+  const next = rosterData.drivers.find((driver) => driver !== current);
+  if (next !== undefined) select.value = next;
 }
 
 function renderStints(active) {
@@ -208,13 +235,14 @@ async function refreshHealth() {
 }
 
 async function loadRoster() {
-  const roster = await api("/roster");
-  fillSelect($("start-type"), roster.session_types);
-  fillSelect($("start-driver"), roster.drivers);
-  fillSelect($("driver-select"), roster.drivers);
+  rosterData = await api("/roster");
+  fillSelect($("start-type"), rosterData.session_types);
+  fillSelect($("start-driver"), rosterData.drivers);
+  markedDriver = undefined; // force a rebuild against the fresh roster
+  updateDriverSelect();
   const tracks = $("track-list");
   tracks.innerHTML = "";
-  for (const name of roster.tracks || []) {
+  for (const name of rosterData.tracks || []) {
     const option = document.createElement("option");
     option.value = name;
     tracks.append(option);

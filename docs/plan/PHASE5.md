@@ -116,6 +116,14 @@ relitigate:
    decision 3 was taken. Grafana Live push remains the documented escape
    hatch and remains untested.
 
+   **Amended 2026-08-23 (Phase 6):** the single-plugin restriction is
+   lifted — see `PHASE6.md` locked decision 7. The engineering constraints
+   that motivated it survive as ground rules (exact version pins,
+   pre-staged before an event, a stated reason core Grafana cannot do it);
+   the cap on the number of plugins does not. The rest of this decision —
+   MQTT as the live path, live-decoder needing config rather than code, and
+   Grafana Live remaining an untested escape hatch — stands unchanged.
+
 5. **Cutover is no longer gated on a verified rollback.** The earlier draft
    carried a package that booted the predecessor stack to confirm ADR
    0001's claim that it "remains bootable as an operational rollback". That

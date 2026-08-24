@@ -565,6 +565,25 @@ def test_pit_stops_pair_events_and_derive_explicit_stop_types(migrated):
     ]
 
 
+def test_pit_stops_stay_open_on_a_mismatched_exit_line_type(migrated):
+    """A refuel entry answered by a service exit is a missed crossing, not a
+    stop: pairing them used to present a phantom closed refuel stop spanning
+    the whole gap between two separate bench runs."""
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    _insert_pit_events(
+        migrated,
+        [
+            (start, "pit_entry", "PitEntryRefuel"),
+            (start + timedelta(minutes=19), "pit_exit", "PitExitService"),
+        ],
+    )
+
+    rows = migrated.execute(
+        "SELECT exit_at, is_open, stop_type, entry_line, exit_line FROM v_pit_stops"
+    ).fetchall()
+    assert rows == [(None, True, "refuel", "PitEntryRefuel", None)]
+
+
 def test_pit_stops_discard_an_exit_without_a_preceding_entry(migrated):
     start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
     _insert_pit_events(migrated, [(start, "pit_exit", "PitExitService")])

@@ -133,12 +133,11 @@ def test_dry_run_cli_exits_clean_without_touching_nats(capsys):
     assert "path" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("pit_stop", ["refuel", "service"])
-def test_simulated_pit_stops_emit_only_the_selected_exact_line_names(
-    profile, track_and_path, tmp_path: Path, pit_stop: str
-):
-    track, frame, _path, _length = track_and_path
-    path, _length = sim.build_path(track.lines, frame, track.length_m, pit_stop=pit_stop)
+def _simulated_pit_events(
+    profile, track, frame, tmp_path: Path, pit_stop: str, laps: int
+) -> list[tuple[str, str]]:
+    """Ordered (type, line) pit events from a pit run wired exactly as the CLI wires it."""
+    path, _length, closing_path = sim.build_paths(track.lines, frame, track.length_m, pit_stop)
     catalog = build_runtime_catalog(profile, state_path=tmp_path / f"registry-{pit_stop}.json")
 
     batches, _reported_times = sim.simulate(
@@ -149,21 +148,56 @@ def test_simulated_pit_stops_emit_only_the_selected_exact_line_names(
         frame=frame,
         path=path,
         label="Wanneroo_sim",
-        laps=1,
+        laps=laps,
         rate_hz=20.0,
         seed=42,
+        closing_path=closing_path,
     )
-
-    pit_events = [
+    return [
         (event["type"], event["line"])
         for event in _lap_events(batches, catalog)
         if event["type"] in {"pit_entry", "pit_exit"}
     ]
+
+
+@pytest.mark.parametrize("pit_stop", ["refuel", "service"])
+def test_simulated_pit_stops_emit_only_the_selected_exact_line_names(
+    profile, track_and_path, tmp_path: Path, pit_stop: str
+):
+    track, frame, _path, _length = track_and_path
+
+    pit_events = _simulated_pit_events(profile, track, frame, tmp_path, pit_stop, laps=1)
+
     expected = {
         ("pit_entry", f"PitEntry{pit_stop.title()}"),
         ("pit_exit", f"PitExit{pit_stop.title()}"),
     }
     assert set(pit_events) == expected
+
+
+@pytest.mark.parametrize("pit_stop", ["refuel", "service"])
+def test_the_closing_loop_exits_the_pit_without_reentering_it(
+    profile, track_and_path, tmp_path: Path, pit_stop: str
+):
+    """A pit run must close every stop it opens.
+
+    An entry crossing is only ever closed by the *next* loop's exit crossing,
+    so the closing loop -- driven purely to supply the final crossings --
+    drives an out-lap: through the pit exit, never back through the entry.
+    When it drove the full pit path instead, its own entry crossing ended
+    every `--pit-stop` run with a dangling open stop, which `v_pit_stops`
+    then paired with whatever exit the *next* bench run produced.
+    """
+    track, frame, _path, _length = track_and_path
+
+    pit_events = _simulated_pit_events(profile, track, frame, tmp_path, pit_stop, laps=2)
+
+    entry = ("pit_entry", f"PitEntry{pit_stop.title()}")
+    exit_ = ("pit_exit", f"PitExit{pit_stop.title()}")
+    # Loop 0 exits the (never-entered) pit just after start/finish; each timed
+    # lap then enters just before the line and the following loop exits just
+    # after it. The closing loop supplies the final exit and nothing more.
+    assert pit_events == [exit_, entry, exit_, entry, exit_]
 
 
 def test_cli_accepts_distinct_refuel_and_service_stop_modes():

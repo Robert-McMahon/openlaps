@@ -131,12 +131,17 @@ def build_path(
     target_len: float,
     *,
     pit_stop: str | None = None,
+    out_lap: bool = False,
 ) -> tuple[list[Point], float]:
     """Build a closed lap, optionally routing through one Wanneroo pit.
 
     A pit lap leaves through its exit just after start/finish and reaches its
     entry just before the next start/finish crossing.  Selecting the line pair
     by its exact KML suffix keeps refuel and service events distinguishable.
+
+    With ``out_lap`` the loop still leaves through the pit exit -- closing the
+    stop that the previous loop's entry crossing opened -- but never reaches
+    the entry again: the lap that follows the run's last stop.
     """
 
     def mid(line: TimingLine) -> Point:
@@ -166,7 +171,7 @@ def build_path(
         )
         anchors.append(mid(pit_exit))
     anchors.extend(mid(sector) for sector in sectors)
-    if pit_entry is not None:
+    if pit_entry is not None and not out_lap:
         anchors.append(mid(pit_entry))
 
     def left_offset(a: Point, b: Point, dist: float) -> Point:
@@ -200,6 +205,27 @@ def build_path(
         else:
             hi = bulge
     return _started_before_the_line(path), path_length(path)
+
+
+def build_paths(
+    lines: list[TimingLine],
+    frame: Frame,
+    target_len: float,
+    pit_stop: str | None,
+) -> tuple[list[Point], float, list[Point] | None]:
+    """The run's lap path, its length, and the closing loop's path.
+
+    A pit run's timed laps drive the pit path, but the closing loop -- fed
+    only to supply the final crossings, see `simulate` -- drives an out-lap
+    instead: through the pit exit, which closes the last timed lap's stop,
+    and never back through the entry, which would open a stop nothing will
+    ever close. Without a pit stop the closing loop is just the lap path.
+    """
+    path, length = build_path(lines, frame, target_len, pit_stop=pit_stop)
+    closing_path = None
+    if pit_stop is not None:
+        closing_path, _ = build_path(lines, frame, target_len, pit_stop=pit_stop, out_lap=True)
+    return path, length, closing_path
 
 
 def _started_before_the_line(path: list[Point]) -> list[Point]:
@@ -361,6 +387,7 @@ def simulate(
     laps: int,
     rate_hz: float,
     seed: int,
+    closing_path: list[Point] | None = None,
 ) -> tuple[list[TickBatch], list[float]]:
     """Feed ``laps`` synthetic laps through the real pipeline.
 
@@ -394,11 +421,17 @@ def simulate(
     # following loop to supply its closing crossing -- so one extra loop is
     # driven purely to supply it, and its geometric estimate is dropped
     # below: `laps` requested laps takes `laps + 1` loops around the path.
+    #
+    # That extra loop is not a timed lap, so when the lap path routes through
+    # a pit it drives ``closing_path`` -- an out-lap through the pit exit but
+    # not the entry (`build_paths`) -- rather than opening one more stop the
+    # run then ends inside of.
     lap_times: list[float] = []
     t0 = 0.0
-    for pace in lap_paces(laps + 1, rng):
-        v = speed_profile(path, pace=pace)
-        fixes, lap_time = lap_points(path, v, rate_hz, rng)
+    for index, pace in enumerate(lap_paces(laps + 1, rng)):
+        loop_path = path if closing_path is None or index < laps else closing_path
+        v = speed_profile(loop_path, pace=pace)
+        fixes, lap_time = lap_points(loop_path, v, rate_hz, rng)
         lap_times.append(lap_time)
         for t_s, x, y, speed_ms, heading in fixes:
             lat, lon = frame.to_ll(x, y)
@@ -464,7 +497,7 @@ def main(argv: list[str] | None = None) -> int:
         (start_finish.start.lon + start_finish.end.lon) / 2,
     )
     target_len = track.length_m or 2500.0
-    path, length = build_path(track.lines, frame, target_len, pit_stop=args.pit_stop)
+    path, length, closing_path = build_paths(track.lines, frame, target_len, args.pit_stop)
     print(
         f"lap-simulator: {track.name}: path {len(path)} pts, length {length:.0f} m "
         f"(target {target_len:.0f} m), label {label!r}",
@@ -503,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
             laps=args.laps,
             rate_hz=args.gps_hz,
             seed=args.seed,
+            closing_path=closing_path,
         )
         print(
             f"lap-simulator: {args.laps} lap(s), target times: "

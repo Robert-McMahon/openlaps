@@ -26,14 +26,22 @@ JOIN lap_sectors ls ON ls.lap_id = vl.lap_id;
 
 -- Pit stops remain events in samples. Restrict and parse the JSON once, then
 -- pair each entry with the next pit event for the same vehicle. An exit can
--- therefore never manufacture a stop without an entry.
+-- therefore never manufacture a stop without an entry, and an exit whose line
+-- type differs from the entry's (a refuel entry answered by a service exit --
+-- a missed crossing somewhere between them) leaves the stop open rather than
+-- closing it into a phantom stop spanning the gap.
 CREATE VIEW v_pit_stops AS
 WITH pit_events AS (
     SELECT
         s.time,
         c.vehicle_id,
         s.value_text::jsonb ->> 'type' AS event_type,
-        s.value_text::jsonb ->> 'line' AS line
+        s.value_text::jsonb ->> 'line' AS line,
+        CASE
+            WHEN lower(s.value_text::jsonb ->> 'line') LIKE '%refuel%' THEN 'refuel'
+            WHEN lower(s.value_text::jsonb ->> 'line') LIKE '%service%' THEN 'service'
+            ELSE 'unknown'
+        END AS line_type
     FROM samples s
     JOIN channels c ON c.channel_key = s.channel_key
     WHERE c.name = 'lap.event'
@@ -45,29 +53,34 @@ WITH pit_events AS (
         vehicle_id,
         event_type,
         line AS entry_line,
+        line_type AS stop_type,
         lead(time) OVER vehicle_events AS next_at,
         lead(event_type) OVER vehicle_events AS next_type,
-        lead(line) OVER vehicle_events AS next_line
+        lead(line) OVER vehicle_events AS next_line,
+        lead(line_type) OVER vehicle_events AS next_line_type
     FROM pit_events
     WINDOW vehicle_events AS (PARTITION BY vehicle_id ORDER BY time)
+), classified AS (
+    SELECT
+        paired.*,
+        -- NULL when there is no next event at all; every CASE below falls
+        -- through to its open-stop branch on NULL exactly as it does on false.
+        next_type = 'pit_exit' AND next_line_type = stop_type AS closes
+    FROM paired
+    WHERE event_type = 'pit_entry'
 )
 SELECT
     vehicle_id,
     entry_at,
-    CASE WHEN next_type = 'pit_exit' THEN next_at END AS exit_at,
+    CASE WHEN closes THEN next_at END AS exit_at,
     extract(epoch FROM (
-        CASE WHEN next_type = 'pit_exit' THEN next_at ELSE clock_timestamp() END - entry_at
+        CASE WHEN closes THEN next_at ELSE clock_timestamp() END - entry_at
     )) AS duration_s,
-    next_type IS DISTINCT FROM 'pit_exit' AS is_open,
-    CASE
-        WHEN lower(entry_line) LIKE '%refuel%' THEN 'refuel'
-        WHEN lower(entry_line) LIKE '%service%' THEN 'service'
-        ELSE 'unknown'
-    END AS stop_type,
+    NOT coalesce(closes, false) AS is_open,
+    stop_type,
     entry_line,
-    CASE WHEN next_type = 'pit_exit' THEN next_line END AS exit_line
-FROM paired
-WHERE event_type = 'pit_entry';
+    CASE WHEN closes THEN next_line END AS exit_line
+FROM classified;
 
 -- A lap's counter window is irregular, so this remains a lateral lookup over
 -- raw numeric samples. Inspect every adjacent pair: comparing endpoints alone

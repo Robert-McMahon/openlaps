@@ -1,5 +1,6 @@
 """Serial transport capture, configuration, and reconnect tests."""
 
+import json
 import threading
 
 import serial
@@ -218,3 +219,50 @@ def test_stop_keeps_live_thread_registered_after_join_timeout():
     release.set()
     collector.stop(timeout=1)
     assert not collector.is_running()
+
+
+def test_raw_log_tees_received_lines_stamped_and_pre_decode(tmp_path):
+    stop = threading.Event()
+    oversized = b"$" + b"x" * (MAX_SENTENCE_BYTES + 10)
+    port = FakeSerial([RMC, oversized], stop)
+    collector = SerialCollector(
+        _config(configure_on_start=False),
+        lambda sample: None,
+        wall_clock=lambda monotonic_ns: monotonic_ns / 1e6,
+        serial_factory=lambda config: port,
+        raw_log_dir=tmp_path,
+    )
+
+    collector.run(stop)
+
+    runs = sorted((tmp_path / "serial0").iterdir())
+    assert len(runs) == 1
+    manifest = json.loads((runs[0] / "manifest.json").read_text())
+    assert manifest["source"] == "serial0"
+    assert manifest["format"] == "nmea-raw"
+    raw = b"".join(path.read_bytes() for path in sorted(runs[0].glob("*.log")))
+    lines = raw.split(b"\r\n")
+    assert lines[0].startswith(b"(") and lines[0].endswith(RMC.rstrip(b"\r\n"))
+    # The oversized junk decode drops is still captured raw.
+    assert oversized[: MAX_SENTENCE_BYTES + 1] in raw
+    assert collector.stats.oversized_lines == 1
+    assert collector.stats.raw_log_failures == 0
+
+
+def test_raw_log_failure_counts_and_never_stops_decoding(tmp_path):
+    stop = threading.Event()
+    port = FakeSerial([RMC], stop)
+    blocked = tmp_path / "captures"
+    blocked.write_text("a file where the capture directory should go")
+    samples: list[Sample] = []
+    collector = SerialCollector(
+        _config(configure_on_start=False),
+        samples.append,
+        serial_factory=lambda config: port,
+        raw_log_dir=blocked,
+    )
+
+    collector.run(stop)
+
+    assert collector.stats.raw_log_failures == 1
+    assert len(samples) == 5, "telemetry must survive a capture failure"

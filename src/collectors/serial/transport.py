@@ -7,11 +7,13 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 import serial
 
 from collectors.clock import Emit, MonotonicWallClock, WallClock
+from collectors.rawlog import RawLogWriter
 from collectors.serial.nmea import NmeaDecoder
 from collectors.serial.um980 import UM980ConfigurationError, UM980Driver
 from core.config import SerialConfig
@@ -22,6 +24,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_BACKOFF_START_S = 0.5
 DEFAULT_BACKOFF_MAX_S = 30.0
 MAX_SENTENCE_BYTES = 1024
+RAW_LOG_RETRY_S = 60.0
 
 
 class SerialPort(Protocol):
@@ -51,6 +54,7 @@ class SerialTransportStats:
     samples: int = 0
     oversized_lines: int = 0
     rtcm_write_failures: int = 0
+    raw_log_failures: int = 0
 
 
 class SerialCollector:
@@ -65,6 +69,7 @@ class SerialCollector:
         serial_factory: SerialFactory | None = None,
         backoff_start_s: float = DEFAULT_BACKOFF_START_S,
         backoff_max_s: float = DEFAULT_BACKOFF_MAX_S,
+        raw_log_dir: Path | None = None,
     ) -> None:
         device = config.driver.name if config.driver is not None else config.decoder
         if config.decoder != "nmea":
@@ -82,6 +87,9 @@ class SerialCollector:
         self._backoff_max_s = backoff_max_s
         self._active_lock = threading.Lock()
         self._active_driver: UM980Driver | None = None
+        self._raw_log_dir = raw_log_dir
+        self._raw_writer: RawLogWriter | None = None
+        self._raw_retry_mono = 0.0
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -122,6 +130,16 @@ class SerialCollector:
     def run(self, stop: threading.Event | None = None) -> None:
         """Read until stopped, retrying open/config/read failures with backoff."""
         stop = self._stop if stop is None else stop
+        try:
+            self._run(stop)
+        finally:
+            # The raw capture run spans reconnects; a device gap is just a
+            # time gap in the file. Close it only when the collector stops.
+            if self._raw_writer is not None:
+                self._raw_writer.close()
+                self._raw_writer = None
+
+    def _run(self, stop: threading.Event) -> None:
         backoff = self._backoff_start_s
         while not stop.is_set():
             port = self._open()
@@ -211,11 +229,54 @@ class SerialCollector:
             if not line:
                 continue
             received = True
+            t_mono_ns = time.monotonic_ns()
+            if self._raw_log_dir is not None:
+                # Before the oversized check on purpose: raw capture keeps
+                # everything the port produced, including what decode skips.
+                self._raw_capture(line, t_mono_ns)
             if len(line) > MAX_SENTENCE_BYTES and not line.endswith((b"\n", b"\r")):
                 self.stats.oversized_lines += 1
                 continue
-            self.handle_line(line, t_mono_ns=time.monotonic_ns())
+            self.handle_line(line, t_mono_ns=t_mono_ns)
         return received
+
+    def _raw_capture(self, line: bytes, t_mono_ns: int) -> None:
+        """Tee one received line, wall-clock stamped, to the capture run.
+
+        Capture must never take down telemetry: any ``OSError`` counts a
+        stat, drops the writer, and backs off ``RAW_LOG_RETRY_S`` before a
+        fresh run is attempted.
+        """
+        if time.monotonic() < self._raw_retry_mono:
+            return
+        try:
+            if self._raw_writer is None:
+                assert self._raw_log_dir is not None
+                self._raw_writer = RawLogWriter(
+                    self._raw_log_dir,
+                    self.name,
+                    manifest={
+                        "format": "nmea-raw",
+                        "port": self.config.port,
+                        "baud": self.config.baud,
+                        "line_prefix": "(wall clock seconds) ",
+                    },
+                )
+                logger.info("serial %s: raw capture to %s", self.name, self._raw_writer.run_dir)
+            stamp = f"({self._wall_clock(t_mono_ns) / 1000.0:.6f}) ".encode()
+            self._raw_writer.write_line(stamp + line)
+        except OSError:
+            self.stats.raw_log_failures += 1
+            self._raw_retry_mono = time.monotonic() + RAW_LOG_RETRY_S
+            logger.warning(
+                "serial %s: raw capture failed, retrying in %.0fs",
+                self.name,
+                RAW_LOG_RETRY_S,
+                exc_info=True,
+            )
+            if self._raw_writer is not None:
+                self._raw_writer.close()
+                self._raw_writer = None
 
 
 def _open_serial(config: SerialConfig) -> SerialPort:

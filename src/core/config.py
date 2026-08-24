@@ -149,13 +149,19 @@ class DriverConfig(StrictModel):
 
 
 class SerialConfig(StrictModel):
-    """A serial transport and its decoder/optional device driver."""
+    """A serial transport and its decoder/optional device driver.
+
+    ``raw_log`` asks the agent to tee every received line, before decode, to
+    crash-safe capture files (``docs/RAW_CAPTURE.md``). The profile says
+    *whether* to capture; *where* is deploy wiring (``OPENLAPS_RAW_CAPTURE_DIR``).
+    """
 
     name: _NON_EMPTY
     port: _NON_EMPTY
     baud: Annotated[int, Field(gt=0)]
     decoder: _NON_EMPTY
     driver: DriverConfig | None = None
+    raw_log: bool = False
 
 
 class HostConfig(StrictModel):

@@ -33,6 +33,11 @@ serial:
     port: /dev/ttyUSB0
     baud: 115200
     decoder: nmea
+    # Tee every received line, pre-decode, to crash-safe capture files for
+    # future development (docs/RAW_CAPTURE.md). Capture only engages when
+    # the deployment also sets OPENLAPS_RAW_CAPTURE_DIR; CAN capture is the
+    # separate openlaps-canlog@<bus> service, not a profile setting.
+    raw_log: false
     driver:
       name: um980
       config:

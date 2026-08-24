@@ -86,7 +86,7 @@ the bus and `canplayer` takes one file per invocation:
 
 | Fixture | Frames | Span | Frames/s | Mapped samples/s |
 | --- | ---: | ---: | ---: | ---: |
-| `candump-sample.log` (ECU + PD16A + WB1) | 8,000 | 5.29 s | 1,513.5 | 1,397.0 |
+| `candump-sample.log` (ECU + PD16A + WB1) | 45,861 | 30.00 s | 1,528.9 | 2,012.1 |
 | `candump-imu-sample.log` (FDI DETA10A) | 1,255 | 4.99 s | 251.5 | 752.5 |
 
 `canplayer -l i` loops a file. The loop seam is a timestamp discontinuity:
@@ -111,15 +111,15 @@ before every series: a bench that has silently lost GPS or the IMU still
 produces a perfectly plausible bandwidth figure, of the wrong signal set.
 
 It also prints the bench's predicted mix against `LINK_BUDGET.md` §2's
-modelled 4,087 samples/s, and **the two do not agree**:
+modelled 4,262 samples/s, and **the two do not agree**:
 
 | Class | Predicted here | §2 modelled | Delta |
 | --- | ---: | ---: | ---: |
-| CAN (ECU + PD16A + WB1) | 2,034.6/s | 2,787.2/s | −27.0% |
+| CAN (ECU + PD16A + WB1) | 2,012.1/s | 2,962.2/s | −32.1% |
 | IMU | 752.5/s | 1,000.0/s | −24.8% |
 | GPS | 250.0/s | 300.0/s | −16.7% |
 | Host (`sys.host.clock_*`, 5 s poll) | 0.8/s | — | n/a |
-| **Total** | **3,037.8/s** | **4,087.2/s** | **−25.7%** |
+| **Total** | **3,015.4/s** | **4,262.2/s** | **−29.3%** |
 
 That gap is not a bench fault and no wiring change closes it. §2 counts
 every signal in each DBC-known CAN message where the catalog maps a subset
@@ -133,7 +133,7 @@ and ~9/s of `sys.agent.*`/`sys.host.*` health that §2 does not model at all (me
 predicted-vs-modelled (`--model-tolerance` makes the latter fatal for anyone
 who wants it to be). Reconciling the model with the truth is P4.3's
 signal-mix ground truth; this table is where that starts, and until it is
-done a bench bandwidth figure should be read as measuring ~59% of the
+done a bench bandwidth figure should be read as measuring ~71% of the
 offered load `LINK_BUDGET.md` §3 predicts.
 
 ## Not here

@@ -19,10 +19,10 @@ enough that one worked example, re-run when the signal mix changes, is more
 useful than a slider panel.
 
 **Headline result:** the full-rate stream, including 100 Hz IMU that never
-crossed the old link at all, offers **~0.55 Mbit/s** — about **4.4× smaller**
+crossed the old link at all, offers **~0.57 Mbit/s** — about **4.3× smaller**
 than the predecessor's measured **~2.4 Mbit/s** JSON-over-MQTT baseline —
 and clears the smallest HaLow channel/MCS combination worth considering
-(2 MHz MCS4) with **~3.5× headroom**, leaving room to share the radio with a
+(2 MHz MCS4) with **~3.4× headroom**, leaving room to share the radio with a
 video stream.
 
 ## 2. Method
@@ -34,8 +34,8 @@ hand-rolled tag/varint arithmetic. The signal mix modelled:
 
 - **CAN**, from measured per-message frame rates in
   [`tests/fixtures/mqtt_payload_stats.json`](../tests/fixtures/mqtt_payload_stats.json)
-  (the same stats file WP4's round-trip tests use): **36 messages, ~822
-  frames/s, ~2,787 signal updates/s**. Each signal update becomes one
+  (the same stats file WP4's round-trip tests use): **36 messages, ~853
+  frames/s, ~2,962 signal updates/s**. Each signal update becomes one
   `DOUBLE` `Sample`. This is the measured donor car's real signal mix —
   the example profile — not a hypothetical.
 - **GPS**, modelled at 50 Hz, 6 doubles per fix (lat, lon, speed, heading,
@@ -80,8 +80,8 @@ Actual tool output, both ticks, default stats file:
 
 | Tick | Samples/s | Batches/s | Mean batch bytes (protobuf only) | Framed batch bytes (+20 B NATS) | Offered load |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 10 ms | 4,087 | 100 | 671 B | 691 B | **552.8 kbit/s** |
-| 20 ms | 4,087 | 50 | 1,341 B | 1,361 B | **544.4 kbit/s** |
+| 10 ms | 4,262 | 100 | 703 B | 723 B | **578.4 kbit/s** |
+| 20 ms | 4,262 | 50 | 1,390 B | 1,410 B | **564.0 kbit/s** |
 
 Samples/s is identical between ticks (same signal mix, same 1-second
 window); what changes is how many times per second the fixed ~20 B
@@ -119,8 +119,8 @@ crossings than the idle case, so treat 77 kbit/s as an upper bound on the
 RBE benefit for this stream, not a number to subtract unconditionally from
 the headline offered load.
 
-*(Marginal per-sample cost check: a 41-sample batch header-only vs.
-header-plus-samples measures 671 B − 20 B header ≈ 651 B for 41 samples =
+*(Marginal per-sample cost check: a 43-sample batch header-only vs.
+header-plus-samples measures 703 B − 20 B header ≈ 683 B for 43 samples =
 15.9 B/sample, computed directly from the generated bindings the same way
 `size_batch.py` does.)*
 
@@ -129,37 +129,37 @@ header-plus-samples measures 671 B − 20 B header ≈ 651 B for 41 samples =
 Required PHY rate at the standard **0.5 airtime-efficiency** planning
 figure (802.11ah ACKs, backoff, retries, beacons — reused from the
 predecessor notebook), using the slightly heavier 10 ms figure
-(552.8 kbit/s) as the conservative case:
+(578.4 kbit/s) as the conservative case:
 
 ```
-required_phy = offered / airtime_efficiency = 0.553 Mbit/s / 0.5 ≈ 1.1 Mbit/s
+required_phy = offered / airtime_efficiency = 0.578 Mbit/s / 0.5 ≈ 1.2 Mbit/s
 ```
 
 Against the HaLow PHY rate table (802.11ah, 1 spatial stream, long guard
 interval — reused from the predecessor notebook's `HALOW_PHY_MBPS` table):
 
-| Channel · MCS | PHY rate | Required (1.1 Mbit/s) | Fits? | Headroom |
+| Channel · MCS | PHY rate | Required (1.2 Mbit/s) | Fits? | Headroom |
 | --- | ---: | ---: | :--: | ---: |
-| 1 MHz · MCS0 | 0.30 Mbps | 1.1 Mbit/s | ✗ | — |
-| 1 MHz · MCS4 | 1.80 Mbps | 1.1 Mbit/s | ✓ | 1.6× |
-| 1 MHz · MCS7 | 3.00 Mbps | 1.1 Mbit/s | ✓ | 2.7× |
-| 2 MHz · MCS0 | 0.65 Mbps | 1.1 Mbit/s | ✗ | — |
-| **2 MHz · MCS4** | **3.90 Mbps** | 1.1 Mbit/s | **✓** | **~3.5×** |
-| 2 MHz · MCS7 | 6.50 Mbps | 1.1 Mbit/s | ✓ | 5.9× |
-| 4 MHz · MCS4 | 8.10 Mbps | 1.1 Mbit/s | ✓ | 7.3× |
-| 4 MHz · MCS7 | 13.50 Mbps | 1.1 Mbit/s | ✓ | 12.2× |
-| 8 MHz · MCS4 | 17.55 Mbps | 1.1 Mbit/s | ✓ | 15.9× |
-| 8 MHz · MCS7 | 29.25 Mbps | 1.1 Mbit/s | ✓ | 26.5× |
+| 1 MHz · MCS0 | 0.30 Mbps | 1.2 Mbit/s | ✗ | — |
+| 1 MHz · MCS4 | 1.80 Mbps | 1.2 Mbit/s | ✓ | 1.6× |
+| 1 MHz · MCS7 | 3.00 Mbps | 1.2 Mbit/s | ✓ | 2.6× |
+| 2 MHz · MCS0 | 0.65 Mbps | 1.2 Mbit/s | ✗ | — |
+| **2 MHz · MCS4** | **3.90 Mbps** | 1.2 Mbit/s | **✓** | **~3.4×** |
+| 2 MHz · MCS7 | 6.50 Mbps | 1.2 Mbit/s | ✓ | 5.6× |
+| 4 MHz · MCS4 | 8.10 Mbps | 1.2 Mbit/s | ✓ | 7.0× |
+| 4 MHz · MCS7 | 13.50 Mbps | 1.2 Mbit/s | ✓ | 11.7× |
+| 8 MHz · MCS4 | 17.55 Mbps | 1.2 Mbit/s | ✓ | 15.2× |
+| 8 MHz · MCS7 | 29.25 Mbps | 1.2 Mbit/s | ✓ | 25.3× |
 
 **Verdict:** the full-rate stream fits **2 MHz MCS4** (3.90 Mbps PHY) with
-**~3.5× headroom**, and even the narrower **1 MHz MCS4** (1.80 Mbps) works,
+**~3.4× headroom**, and even the narrower **1 MHz MCS4** (1.80 Mbps) works,
 with ~1.6× headroom. Folding in the TCP/IP+802.11 framing caveat from §2
-(worst case ~13% at 10 ms batches) nudges required PHY to ~1.25 Mbit/s,
-which does not change either verdict — 2 MHz MCS4 headroom drops to ~3.1×,
+(worst case ~13% at 10 ms batches) nudges required PHY to ~1.3 Mbit/s,
+which does not change either verdict — 2 MHz MCS4 headroom drops to ~3.0×,
 still comfortable.
 
 At 2 MHz MCS4, usable goodput (PHY × airtime efficiency) is 3.90 × 0.5 =
-1.95 Mbit/s; against ~0.55 Mbit/s of telemetry that leaves roughly
+1.95 Mbit/s; against ~0.57 Mbit/s of telemetry that leaves roughly
 **1.4 Mbit/s** free — enough headroom for a video stream in the ~1–2 Mbit/s
 class sharing the same link. On 4 MHz MCS4 (usable 4.05 Mbit/s) the
 telemetry+video budget is even more comfortable.
@@ -169,9 +169,9 @@ telemetry+video budget is even more comfortable.
 | | Offered load | Fits 2 MHz MCS4 (3.90 Mbps)? |
 | --- | ---: | :--: |
 | Predecessor (JSON-over-MQTT, per-signal topics, `docs/mqtt_bandwidth.py` "as configured today") | ~2.4 Mbit/s | ✗ — required PHY ~4.8 Mbit/s |
-| openlaps (protobuf `SampleBatch` over NATS, this document, 20 ms tick) | ~0.544 Mbit/s | ✓ — ~3.5× headroom |
+| openlaps (protobuf `SampleBatch` over NATS, this document, 20 ms tick) | ~0.564 Mbit/s | ✓ — ~3.4× headroom |
 
-That is a **~4.4×** reduction (2.4 / 0.544 ≈ 4.4) at **full data rate with
+That is a **~4.3×** reduction (2.4 / 0.564 ≈ 4.3) at **full data rate with
 zero decimation** — and the new figure *includes* 100 Hz IMU, which the old
 bridge topic list excluded entirely (`telemetry/imu/data` never crossed the
 link; only a 10 Hz decimated `imu/live` copy did). The old design's problem
@@ -208,8 +208,8 @@ erodes the margin.
 
   | Tick | `double` (baseline) | `float32` | `mixed` |
   | --- | ---: | ---: | ---: |
-  | 10 ms | 552.8 kbit/s | 421.6 kbit/s (**−23.7%**) | 411.2 kbit/s (**−25.6%**) |
-  | 20 ms | 544.4 kbit/s | 413.2 kbit/s (**−24.1%**) | 404.8 kbit/s (**−25.6%**) |
+  | 10 ms | 578.4 kbit/s | 440.8 kbit/s (**−23.8%**) | 430.4 kbit/s (**−25.6%**) |
+  | 20 ms | 564.0 kbit/s | 428.0 kbit/s (**−24.1%**) | 419.6 kbit/s (**−25.6%**) |
 
   In line with the earlier estimate (~25% from halving the value field on
   channels that don't need double's range), and confirms `mixed` buys only
@@ -238,22 +238,26 @@ erodes the margin.
   per-channel basis, exactly where it matters least (steady-state analog
   monitoring channels, not fast-changing engine/chassis signals).
 - **Longer ticks — marginal, and here's why.** §3 shows 10 ms → 20 ms only
-  moves offered load from 552.8 to 544.4 kbit/s, a **1.5%** change, because
+  moves offered load from 578.4 to 564.0 kbit/s, a **2.5%** change, because
   the only tick-dependent cost is the fixed ~20 B/batch header (protobuf) +
   ~20 B/batch (NATS framing) being paid 100×/s instead of 50×/s — at most
-  ~2,000 B/s of a ~69,000 B/s stream. Going longer than 20 ms buys almost
+  ~2,000 B/s of a ~72,000 B/s stream. Going longer than 20 ms buys almost
   nothing further on bandwidth while directly adding to live-feed latency
   (tick length is the batching-latency floor per `WIRE_FORMAT.md`), so it's
   not a lever worth reaching for here.
 
 ## 8. Caveats
 
-- **Rates come from a 5.3 s bench capture**, not a track session
-  (`tests/fixtures/mqtt_payload_stats.json`, sourced from a ~5.286 s CAN
-  candump and a ~4.99 s IMU candump). The Haltech/PD16 broadcast rates are
-  device-configured rather than engine-speed-dependent, so they should hold
-  on track, but this has not been confirmed against a full-session capture
-  — re-measure before treating any of this as commissioned.
+- **Rates come from a 30 s garage capture spanning a real engine start**,
+  not a track session (`tests/fixtures/mqtt_payload_stats.json`, sourced
+  from the ~30.0 s CAN candump fixture and a ~4.99 s IMU candump). The
+  Haltech ECU broadcast rates are device-configured and measured identical
+  engine-off vs. running, but the PD16A's status messages are not:
+  `PD16A_OUTPUT_STATUS` and `PD16A_DIAGNOSTICS` roughly **double** their
+  rate once the engine runs (38→67 Hz and 10→20 Hz vs. the earlier key-on
+  capture), which is why these figures moved when the fixture gained an
+  engine start. A full-session track capture has still not been measured —
+  re-measure before treating any of this as commissioned.
 - **Airtime efficiency (0.5) is the softest input.** It's a standard
   planning figure for a clean link; range, interference and retries at a
   real track push it lower, and required PHY rate scales inversely with

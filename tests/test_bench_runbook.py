@@ -242,7 +242,7 @@ def test_clean_slate_targets_tables_that_exist(table: str):
 
 @pytest.mark.parametrize(
     ("fixture", "frames"),
-    [("candump-sample.log", 8000), ("candump-imu-sample.log", 1255)],
+    [("candump-sample.log", 45861), ("candump-imu-sample.log", 1255)],
 )
 def test_runbook_quotes_the_fixture_sizes_correctly(fixture: str, frames: int):
     """§6 tells the operator how long a `canplayer -l i` loop is."""

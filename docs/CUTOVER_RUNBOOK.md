@@ -171,15 +171,17 @@ end-to-end with recorded data before any of it meets a car. This is
 
    > **Know what replay's default fixtures look like on a dashboard, or
    > you will debug a healthy stack.** Each `--loop` cycle is the ~110 s
-   > GPS trace with the whole 5.3 s candump fixture replayed once at its
-   > head. On the gauges that is `car.*` alive for ~5 seconds out of
-   > every ~2 minutes and dead in between, and at the ingest-writer it is
-   > a **constant** `wall_lag` of ~5.5 s — the paced publish runs behind
-   > by the length of the CAN prelude. Both are artefacts of the harness,
-   > not faults in the stack; the tell for a *real* problem is a lag that
-   > climbs without resetting or `num_pending` growing on the pit
+   > GPS trace with the whole 30 s engine-start candump fixture replayed
+   > once at its head. On the gauges that is `car.*` alive for ~30 seconds
+   > out of every ~2 minutes and dead in between, and at the ingest-writer
+   > it is a **constant** `wall_lag` of ~30 s — the paced publish runs
+   > behind by the length of the CAN prelude. Both are artefacts of the
+   > harness, not faults in the stack; the tell for a *real* problem is a
+   > lag that climbs without resetting or `num_pending` growing on the pit
    > consumer. For a continuous full-mix rehearsal — every gauge live at
-   > steady state, ~2,400 samples/s — run the measurement bench instead
+   > steady state, ~3,000–3,100 samples/s (the current fixtures predict
+   > 3,015.4/s offered; the 2026-08-21 P4.3 runs measured 3,091.0/s into
+   > `v_samples_named`) — run the measurement bench instead
    > (`docs/BENCH_RUNBOOK.md` §5–§6: `vcan0`, two looped `canplayer`s,
    > `bench_gps`, the real agent), which is the configuration every P4.3
    > number was measured on.

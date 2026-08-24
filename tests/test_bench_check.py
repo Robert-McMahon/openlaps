@@ -78,11 +78,11 @@ def test_the_candump_fixtures_predict_the_rate_they_actually_contain(tmp_path: P
 
     mix = bench_check.predict_can(profile, catalog, CANDUMPS)
 
-    assert mix.rate(bench_check.CAN_CLASS) == pytest.approx(2034.6, rel=0.01)
+    assert mix.rate(bench_check.CAN_CLASS) == pytest.approx(2012.1, rel=0.01)
     assert mix.rate(bench_check.IMU_CLASS) == pytest.approx(752.5, rel=0.01)
     devices = mix.device_rates()
     assert set(devices) == {"haltech", "haltech2", "wideband", "imu"}
-    assert devices["haltech"] == pytest.approx(1264.6, rel=0.01)
+    assert devices["haltech"] == pytest.approx(1246.7, rel=0.01)
 
 
 def test_a_fixture_with_no_usable_timeline_is_refused(tmp_path: Path):
@@ -128,10 +128,10 @@ def test_the_bench_profile_and_the_example_profile_predict_the_same_mix(tmp_path
 def test_the_modelled_rates_are_link_budget_section_2s_own_numbers():
     modelled = bench_check.modelled_rates(STATS)
 
-    assert modelled[bench_check.CAN_CLASS] == pytest.approx(2787.2, rel=0.001)
+    assert modelled[bench_check.CAN_CLASS] == pytest.approx(2962.2, rel=0.001)
     assert modelled[bench_check.IMU_CLASS] == 1000.0
     assert modelled[bench_check.GPS_CLASS] == 300.0
-    assert sum(modelled.values()) == pytest.approx(4087.2, rel=0.001)
+    assert sum(modelled.values()) == pytest.approx(4262.2, rel=0.001)
 
 
 # -- the live run ------------------------------------------------------------------
@@ -296,7 +296,7 @@ def test_predict_mode_needs_no_hardware_and_reports_the_model_gap():
     assert status == 0
     assert "vcan0" in text
     assert "Predicted bench mix vs. LINK_BUDGET.md §2 model" in text
-    assert "3037.8" in text and "4087.2" in text
+    assert "3015.4" in text and "4262.2" in text
 
 
 def test_the_model_gap_can_be_made_fatal_for_those_who_want_it():

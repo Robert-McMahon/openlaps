@@ -23,11 +23,12 @@ from core.samples import Sample
 EXAMPLE_PROFILE = Path(__file__).parents[1] / "profiles" / "example-club-racer"
 CANDUMP_DIR = Path(__file__).parent / "fixtures" / "candump"
 ENGINE_LOG = CANDUMP_DIR / "candump-sample.log"
+KEYON_LOG = CANDUMP_DIR / "candump-keyon-sample.log"
 IMU_LOG = CANDUMP_DIR / "candump-imu-sample.log"
 
 # Physical limits (not expected operating values) for signals that must appear
-# in any capture taken with the car powered up. The engine capture was taken at
-# walking pace while loading a trailer, so keep the bounds wide.
+# in any capture taken with the car powered up. The engine capture spans a
+# real start — cranking sag included — so keep the bounds wide.
 EXPECTED_RANGES = {
     "can0:haltech.ENGINE1.ENGINE_SPEED": (0, 16000),
     "can0:haltech.ENGINE1.THROTTLE_POSITION": (0, 100),
@@ -105,7 +106,7 @@ def test_recorded_engine_capture_decodes_into_plausible_samples(engine_replay):
     collector, samples = engine_replay
     stats = collector.decode_stats
 
-    assert stats.frames == 8000
+    assert stats.frames == 45861
     assert stats.decoded_frames + stats.unknown_frames == stats.frames
     assert stats.malformed_frames == 0
     assert stats.samples == len(samples)
@@ -117,6 +118,32 @@ def test_recorded_engine_capture_decodes_into_plausible_samples(engine_replay):
         observed = values[source_ref]
         assert observed, f"{source_ref} never appeared in the capture"
         assert low <= min(observed) and max(observed) <= high, f"{source_ref} out of range"
+
+
+def test_engine_capture_contains_a_real_engine_start(engine_replay):
+    """The reason this fixture replaced the key-on one (issue #41): rate- and
+    delta-dependent channels need source data that actually moves."""
+    _, samples = engine_replay
+    values = collections.defaultdict(list)
+    for sample in samples:
+        values[sample.source_ref].append(sample.value)
+
+    rpm = values["can0:haltech.ENGINE1.ENGINE_SPEED"]
+    assert min(rpm) == 0 and max(rpm) > 1500, "capture must span stopped -> running"
+    # Cranking shows up as a battery sag no static capture has.
+    assert min(values["can0:haltech.MISC4.BATTERY_VOLTAGE"]) < 11.0
+    # The fuel counter climbs monotonically, so a per-lap delta is testable.
+    fuel = values["can0:haltech.MISC12.TOTAL_FUEL_USED"]
+    assert fuel[0] == 0 and fuel[-1] > 0
+    assert all(b >= a for a, b in zip(fuel, fuel[1:], strict=False))
+
+
+def test_keyon_capture_stays_engine_off():
+    """The key-on/engine-off state is kept as its own fixture: a derived
+    channel reading 0 against it is correct behaviour, not a dead channel."""
+    _, samples = _replay(KEYON_LOG)
+    rpm = [s.value for s in samples if s.source_ref == "can0:haltech.ENGINE1.ENGINE_SPEED"]
+    assert rpm and set(rpm) == {0}
 
 
 def test_recorded_capture_uses_the_device_alias_of_the_dbc_that_decoded_it(

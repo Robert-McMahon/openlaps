@@ -198,7 +198,8 @@
         }
       ],
       "timeFrom": "1m",
-      "maxDataPoints": 600
+      "maxDataPoints": 600,
+      "hideTimeOverride": true
     },
     {
       "id": 2,
@@ -273,7 +274,8 @@
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "description": "Authoritative vehicle elapsed beside the pit-side extrapolated clock, which keeps counting through a radio dropout and corrects at the next crossing."
+      "description": "Authoritative vehicle elapsed beside the pit-side extrapolated clock, which keeps counting through a radio dropout and corrects at the next crossing.",
+      "hideTimeOverride": true
     },
     {
       "id": 3,
@@ -340,7 +342,8 @@
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "description": "Pit-side extrapolated sector clock; visibly derived rather than vehicle telemetry."
+      "description": "Pit-side extrapolated sector clock; visibly derived rather than vehicle telemetry.",
+      "hideTimeOverride": true
     },
     {
       "id": 4,
@@ -414,7 +417,8 @@
         }
       ],
       "timeFrom": "1m",
-      "maxDataPoints": 600
+      "maxDataPoints": 600,
+      "hideTimeOverride": true
     },
     {
       "id": 5,
@@ -488,7 +492,8 @@
         }
       ],
       "timeFrom": "1m",
-      "maxDataPoints": 600
+      "maxDataPoints": 600,
+      "hideTimeOverride": true
     },
     {
       "id": 6,
@@ -571,7 +576,8 @@
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "description": "Trail uses latitude/longitude and speed; stale data remains visible rather than becoming zero."
+      "description": "Trail uses latitude/longitude and speed; stale data remains visible rather than becoming zero.",
+      "hideTimeOverride": true
     },
     {
       "id": 7,
@@ -638,7 +644,8 @@
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "description": "RTK fixed/float/autonomous quality determines how much confidence to place in the trail."
+      "description": "RTK fixed/float/autonomous quality determines how much confidence to place in the trail.",
+      "hideTimeOverride": true
     },
     {
       "id": 8,

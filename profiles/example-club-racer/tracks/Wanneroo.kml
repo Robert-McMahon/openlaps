@@ -2,7 +2,7 @@
 <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
 <Document>
 	<name>Wanneroo</name>
-	<gx:CascadingStyle kml:id="__managed_style_2474C30DF138997FB1E8">
+	<gx:CascadingStyle kml:id="__managed_style_0072A3842241680E75D4_highlight">
 		<Style>
 			<IconStyle>
 				<scale>1.2</scale>
@@ -14,7 +14,7 @@
 			<LabelStyle>
 			</LabelStyle>
 			<LineStyle>
-				<color>ff2dc0fb</color>
+				<color>ff2f2fd3</color>
 				<width>4</width>
 			</LineStyle>
 			<PolyStyle>
@@ -25,7 +25,7 @@
 			</BalloonStyle>
 		</Style>
 	</gx:CascadingStyle>
-	<gx:CascadingStyle kml:id="__managed_style_108C7BB5E138997FB1E8">
+	<gx:CascadingStyle kml:id="__managed_style_0072A3842241680E75D4_normal">
 		<Style>
 			<IconStyle>
 				<Icon>
@@ -35,6 +35,46 @@
 			</IconStyle>
 			<LabelStyle>
 			</LabelStyle>
+			<LineStyle>
+				<color>ff2f2fd3</color>
+				<width>2.66667</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+				<displayMode>hide</displayMode>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<StyleMap id="__managed_style_0072A3842241680E75D4">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#__managed_style_0072A3842241680E75D4_normal</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#__managed_style_0072A3842241680E75D4_highlight</styleUrl>
+		</Pair>
+	</StyleMap>
+	<StyleMap id="__managed_style_0702990A2C38997FB1E8">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#__managed_style_108C7BB5E138997FB1E8</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#__managed_style_2474C30DF138997FB1E8</styleUrl>
+		</Pair>
+	</StyleMap>
+	<gx:CascadingStyle kml:id="__managed_style_108C7BB5E138997FB1E8">
+		<Style>
+			<IconStyle>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
 			<LineStyle>
 				<color>ff2dc0fb</color>
 				<width>2.66667</width>
@@ -47,14 +87,80 @@
 			</BalloonStyle>
 		</Style>
 	</gx:CascadingStyle>
-	<StyleMap id="__managed_style_0702990A2C38997FB1E8">
+	<gx:CascadingStyle kml:id="__managed_style_04D9A9025941681173F0_highlight">
+		<Style>
+			<IconStyle>
+				<scale>1.2</scale>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LabelStyle>
+			</LabelStyle>
+			<LineStyle>
+				<color>ff6abb66</color>
+				<width>4</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+				<displayMode>hide</displayMode>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<gx:CascadingStyle kml:id="__managed_style_2474C30DF138997FB1E8">
+		<Style>
+			<IconStyle>
+				<scale>1.2</scale>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LineStyle>
+				<color>ff2dc0fb</color>
+				<width>4</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+				<displayMode>hide</displayMode>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<gx:CascadingStyle kml:id="__managed_style_04D9A9025941681173F0_normal">
+		<Style>
+			<IconStyle>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LabelStyle>
+			</LabelStyle>
+			<LineStyle>
+				<color>ff6abb66</color>
+				<width>2.66667</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+				<displayMode>hide</displayMode>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<StyleMap id="__managed_style_04D9A9025941681173F0">
 		<Pair>
 			<key>normal</key>
-			<styleUrl>#__managed_style_108C7BB5E138997FB1E8</styleUrl>
+			<styleUrl>#__managed_style_04D9A9025941681173F0_normal</styleUrl>
 		</Pair>
 		<Pair>
 			<key>highlight</key>
-			<styleUrl>#__managed_style_2474C30DF138997FB1E8</styleUrl>
+			<styleUrl>#__managed_style_04D9A9025941681173F0_highlight</styleUrl>
 		</Pair>
 	</StyleMap>
 	<Placemark id="0B2590B87638997FB1D6">
@@ -69,10 +175,10 @@
 			<range>163.3652694585908</range>
 			<altitudeMode>absolute</altitudeMode>
 		</LookAt>
-		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
+		<styleUrl>#__managed_style_04D9A9025941681173F0</styleUrl>
 		<LineString>
 			<coordinates>
-				115.7863013154122,-31.66416353021594,0 115.7864928902992,-31.66416871602571,0 
+				115.7863021696968,-31.66416661339796,0 115.7864919675396,-31.66417081090334,0 
 			</coordinates>
 		</LineString>
 	</Placemark>
@@ -91,16 +197,16 @@
 		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
 		<LineString>
 			<coordinates>
-				115.7865703665766,-31.6630247286147,0 115.7866825854551,-31.66301252181903,0
+				115.7865703665766,-31.6630247286147,0 115.786762317146,-31.6630081971789,0 
 			</coordinates>
 		</LineString>
 	</Placemark>
-	<Placemark>
+	<Placemark id="0417D5725441680DAE59">
 		<name>PitExitRefuel</name>
-		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
+		<styleUrl>#__managed_style_0072A3842241680E75D4</styleUrl>
 		<LineString>
 			<coordinates>
-				115.7866825854551,-31.66301252181903,0 115.7867948043336,-31.66300031502335,0
+				115.7862053798418,-31.66302877830474,0 115.7863037372164,-31.66303898252562,0 
 			</coordinates>
 		</LineString>
 	</Placemark>
@@ -119,16 +225,16 @@
 		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
 		<LineString>
 			<coordinates>
-				115.7865253827996,-31.66498449171058,0 115.7865951675239,-31.66498649269999,0
+				115.7865253827996,-31.66498449171058,0 115.7866492002761,-31.66499081670709,0 
 			</coordinates>
 		</LineString>
 	</Placemark>
-	<Placemark>
+	<Placemark id="192F8F1E8241680DAE59">
 		<name>PitEntryRefuel</name>
-		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
+		<styleUrl>#__managed_style_0072A3842241680E75D4</styleUrl>
 		<LineString>
 			<coordinates>
-				115.7865951675239,-31.66498649269999,0 115.7866649522481,-31.6649884936894,0
+				115.7861218695957,-31.6651043807033,0 115.7862090061752,-31.66513047340767,0 
 			</coordinates>
 		</LineString>
 	</Placemark>
@@ -147,7 +253,7 @@
 		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
 		<LineString>
 			<coordinates>
-				115.7876014097591,-31.66262381524675,0 115.787751836914,-31.66262025043903,0 
+				115.787603000212,-31.66263178860705,0 115.787751836914,-31.66262025043903,0 
 			</coordinates>
 		</LineString>
 	</Placemark>
@@ -166,10 +272,9 @@
 		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
 		<LineString>
 			<coordinates>
-				115.7927186350148,-31.66484287660233,0 115.7927062333537,-31.66498223043188,0 
+				115.7927209520752,-31.66484763008645,0 115.7927062333537,-31.66498223043188,0 
 			</coordinates>
 		</LineString>
 	</Placemark>
 </Document>
 </kml>
-

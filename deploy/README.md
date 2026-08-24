@@ -298,6 +298,13 @@ bring-up needs no vehicle and no hardware:
 uv run tools/replay.py --server nats://127.0.0.1:4222 --rate 1.0 --loop
 ```
 
+The cycle's sources share one clock, so a CAN capture shorter than the GPS
+trace leaves every CAN-fed gauge frozen for the rest of each cycle. Until a
+full-length event capture exists, `tools/stitch_candump.py` repeats the
+capture we have to span the trace (`--target-seconds 92` for the default
+one) — dashboard-exercising data, not measurement data: totalizers reset at
+every seam.
+
 For a **measurement** bench rather than a bring-up one — the real agent
 reading real interfaces, with load injected below it at the socketCAN and
 serial boundaries — `docs/BENCH_RUNBOOK.md` is the operator document, and it

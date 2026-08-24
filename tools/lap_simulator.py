@@ -20,6 +20,8 @@ Examples:
 
     uv run tools/lap_simulator.py --dry-run
     uv run tools/lap_simulator.py --laps 10
+    uv run tools/lap_simulator.py --laps 1 --pit-stop refuel
+    uv run tools/lap_simulator.py --laps 1 --pit-stop service
 """
 
 from __future__ import annotations
@@ -52,6 +54,7 @@ from timing.tracks import TrackDefinition, load_tracks
 M_PER_DEG_LAT = 111_320.0
 DEFAULT_GPS_HZ = 20.0
 DEFAULT_NOISE_M = 0.015
+PIT_STOP_TYPES = ("refuel", "service")
 
 # How far before the start/finish line each loop begins, in metres (the path is
 # resampled at 1 m, so this is also a point count). See
@@ -123,9 +126,18 @@ def resample_by_arc(path: list[Point], step: float = 1.0) -> list[Point]:
 
 
 def build_path(
-    lines: list[TimingLine], frame: Frame, target_len: float
+    lines: list[TimingLine],
+    frame: Frame,
+    target_len: float,
+    *,
+    pit_stop: str | None = None,
 ) -> tuple[list[Point], float]:
-    """Closed loop through StartFinish -> sectors -> back, sized to ``target_len`` m."""
+    """Build a closed lap, optionally routing through one Wanneroo pit.
+
+    A pit lap leaves through its exit just after start/finish and reaches its
+    entry just before the next start/finish crossing.  Selecting the line pair
+    by its exact KML suffix keeps refuel and service events distinguishable.
+    """
 
     def mid(line: TimingLine) -> Point:
         return frame.to_xy((line.start.lat + line.end.lat) / 2, (line.start.lon + line.end.lon) / 2)
@@ -136,7 +148,26 @@ def build_path(
     )
     if not sectors:
         raise ValueError("track has no sector lines to route the closed loop through")
-    anchors = [mid(start_finish)] + [mid(sector) for sector in sectors]
+    anchors = [mid(start_finish)]
+    pit_entry = None
+    if pit_stop is not None:
+        if pit_stop not in PIT_STOP_TYPES:
+            raise ValueError(f"unknown pit stop type {pit_stop!r}")
+        suffix = pit_stop.title()
+        pit_exit = next(
+            line
+            for line in lines
+            if line.line_type == LineType.PIT_EXIT and line.name == f"PitExit{suffix}"
+        )
+        pit_entry = next(
+            line
+            for line in lines
+            if line.line_type == LineType.PIT_ENTRY and line.name == f"PitEntry{suffix}"
+        )
+        anchors.append(mid(pit_exit))
+    anchors.extend(mid(sector) for sector in sectors)
+    if pit_entry is not None:
+        anchors.append(mid(pit_entry))
 
     def left_offset(a: Point, b: Point, dist: float) -> Point:
         dx, dy = b[0] - a[0], b[1] - a[1]
@@ -399,6 +430,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--laps", type=int, default=10, help="laps to simulate (default: %(default)s)"
     )
     parser.add_argument(
+        "--pit-stop",
+        choices=PIT_STOP_TYPES,
+        default=None,
+        help="route each lap through the refuel or service pit (default: no pit stop)",
+    )
+    parser.add_argument(
         "--gps-hz", type=float, default=DEFAULT_GPS_HZ, help="GPS fix rate (default: %(default)s)"
     )
     parser.add_argument(
@@ -427,7 +464,7 @@ def main(argv: list[str] | None = None) -> int:
         (start_finish.start.lon + start_finish.end.lon) / 2,
     )
     target_len = track.length_m or 2500.0
-    path, length = build_path(track.lines, frame, target_len)
+    path, length = build_path(track.lines, frame, target_len, pit_stop=args.pit_stop)
     print(
         f"lap-simulator: {track.name}: path {len(path)} pts, length {length:.0f} m "
         f"(target {target_len:.0f} m), label {label!r}",

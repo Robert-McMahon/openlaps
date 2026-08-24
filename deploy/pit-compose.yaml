@@ -1,4 +1,4 @@
-# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the four pit
+# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the five pit
 # services.
 #
 #     docker compose -f deploy/pit-compose.yaml up -d
@@ -174,6 +174,34 @@ services:
       retries: 4
       start_period: 20s
 
+  timing-extrapolator:
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-timing-extrapolator"]
+    environment:
+      OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://nats:4222}
+      OPENLAPS_TIMING_STREAM: ${OPENLAPS_TIMING_STREAM:-TELE_VEHICLE}
+      OPENLAPS_TIMING_CONFIG: /config/timing-extrapolator.yaml
+      OPENLAPS_TIMING_HEALTH_PORT: "8084"
+      OPENLAPS_MQTT_HOST: mosquitto
+      OPENLAPS_MQTT_PORT: "1883"
+      OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
+    volumes:
+      - ./pit-config:/config:ro
+    ports:
+      - "8084:8084"
+    depends_on:
+      provision-streams:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8084/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
   session-control:
     <<: [*openlaps-image, *pit-env]
     command: ["openlaps-session-control"]
@@ -265,11 +293,12 @@ services:
       # this. Left at localhost they are unusable from any other machine on
       # the pit LAN, which is every machine that matters.
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
-      # Exactly one plugin this stack asks for, and locked decision 4 of
-      # docs/plan/PHASE5.md is the list. Pinned for the same reason the image
-      # is. It downloads at first start and then lives in the named volume,
-      # so a pit that is offline at the track only needs to have been online
-      # once.
+      # Every plugin this stack asks for is listed here with an exact version
+      # pin. Phase 6 lifts the old single-plugin cap but keeps the deployment
+      # discipline: downloads happen at first start and then live in the named
+      # volume, so an offline pit only needs to have been online once before
+      # the event. The dashboard contract derives its plugin allowlist from
+      # this value rather than maintaining a second hard-coded list.
       #
       # _SYNC, not the plain `preinstall`, and not the `GF_INSTALL_PLUGINS`
       # the brief names: that variable is deprecated in Grafana 12 and is now

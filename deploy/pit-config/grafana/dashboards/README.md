@@ -41,4 +41,19 @@ install) and leave `version` alone.
   showing `car.coolant_temp` with no unit set reads ~370 and looks entirely
   plausible. Read `units` from the view; never assume.
 
-This directory is empty of dashboards until P5.4.
+## Copyable relational variable block
+
+`car.json` is the canonical source for the shared relational template
+variables. New SQL dashboards should copy its `vehicle`, `session`, `driver`,
+`stint`, and `lap` entries together so their chaining does not drift:
+
+- `session` is scoped by `vehicle` and the selected dashboard time range;
+- `driver` is scoped by `vehicle`, `session`, and time range;
+- `stint` is scoped by `session` and uses `stint_number` as its value;
+- `lap` is scoped by `vehicle`, `session`, `driver`, and time range, uses
+  `lap_id` as its value, and labels each option with lap number, driver, and
+  crossing time.
+
+All five queries use the stable views rather than base tables. Keep the
+variable names unchanged: panel SQL and Grafana's chained-variable refresh
+behaviour depend on them.

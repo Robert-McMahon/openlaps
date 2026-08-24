@@ -99,9 +99,17 @@ def test_trace_panels_use_both_named_views_and_honour_the_time_picker() -> None:
 def test_dashboard_variables_come_from_the_stable_relational_read_surface() -> None:
     variables = {item["name"]: item for item in _dashboard()["templating"]["list"]}
 
-    assert set(variables) == {"vehicle", "session", "trace_source"}
+    assert set(variables) == {"vehicle", "session", "driver", "stint", "lap", "trace_source"}
     assert "v_samples_named" in variables["vehicle"]["query"]
     assert "v_laps" in variables["session"]["query"]
+    assert "v_laps" in variables["driver"]["query"]
+    assert "driver AS __value" in variables["driver"]["query"]
+    assert "FROM v_laps" in variables["stint"]["query"]
+    assert "$session" in variables["stint"]["query"]
+    assert "lap_id" in variables["lap"]["query"]
+    assert "lap_number" in variables["lap"]["query"]
+    assert "COALESCE(driver" in variables["lap"]["query"]
+    assert "$session" in variables["lap"]["query"]
     assert variables["trace_source"]["type"] == "custom"
     assert set(variables["trace_source"]["options"][index]["value"] for index in (0, 1)) == {
         "v_samples_1s_named",

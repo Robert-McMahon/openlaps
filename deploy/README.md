@@ -11,7 +11,7 @@ that.
 | NATS config | `nats/vehicle.conf` | `nats/pit.conf` |
 | JetStream domain | `veh` | `pit` |
 | Streams | `TELE`, `CMD` (created by the agent) | `TELE_VEHICLE` (created by `provision_pit_streams.py`) |
-| Services | agent | ingest-writer, live-decoder, session-control, ntrip-client |
+| Services | agent | ingest-writer, live-decoder, timing-extrapolator, session-control, ntrip-client |
 | Read surface | — | Grafana on `:3000` |
 
 **The pit dials the vehicle**, never the reverse. The vehicle runs a
@@ -51,9 +51,10 @@ each takes it as configuration:
 | --- | --- | --- |
 | ingest-writer | `OPENLAPS_INGEST_STREAM` | `TELE_VEHICLE` |
 | live-decoder | `OPENLAPS_LIVE_STREAM` | `TELE_VEHICLE` |
+| timing-extrapolator | `OPENLAPS_TIMING_STREAM` | `TELE_VEHICLE` |
 | ntrip-client (GGA feed only) | `OPENLAPS_NTRIP_STREAM` | `TELE_VEHICLE` |
 
-All three must name the stream `provision_pit_streams.py` actually created.
+All four must name the stream `provision_pit_streams.py` actually created.
 A service pointed at a stream that does not exist fails loudly at startup,
 which is the desired outcome — the alternative is a service that looks
 healthy and silently receives nothing.
@@ -206,7 +207,7 @@ runbook:
 3. `nats` becomes healthy and connects its leafnode.
 4. **`provision-streams` runs to completion**, creating or converging
    `TELE_VEHICLE`.
-5. The four services start, and Grafana with them.
+5. The five services start, and Grafana with them.
 
 **The first bring-up needs internet.** Grafana installs one plugin —
 `grafana-mqtt-datasource`, the live gauge feed, and the only plugin this
@@ -258,10 +259,11 @@ docker compose -f deploy/pit-compose.yaml exec timescaledb psql -U openlaps -d o
 | ingest-writer | 8081 | `OPENLAPS_INGEST_HEALTH_PORT` |
 | live-decoder | 8082 | `OPENLAPS_LIVE_HEALTH_PORT` |
 | ntrip-client | 8083 | `OPENLAPS_NTRIP_HEALTH_PORT` |
+| timing-extrapolator | 8084 | `OPENLAPS_TIMING_HEALTH_PORT` |
 | grafana | 3000 | fixed (`GET /api/health`) |
 
 ```bash
-for port in 8080 8081 8082 8083; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
+for port in 8080 8081 8082 8083 8084; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
 ```
 
 **Grafana is up and both datasources are green.** The web UI is on

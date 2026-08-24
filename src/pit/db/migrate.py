@@ -63,7 +63,11 @@ def apply_migrations(conn: Connection, directory: Path = MIGRATIONS_DIR) -> list
         conn.execute("SELECT pg_advisory_lock(%s)", (_ADVISORY_LOCK_KEY,))
     try:
         todo = pending(conn, directory)
-        if any(path.name == "002_trace_read_surface.sql" for path in todo):
+        # Every dashboard-facing migration uses the deployment role name for
+        # an explicit grant. Session settings do not survive between upgrade
+        # runs, so configure them whenever any read-surface migration is
+        # pending, not only when 002 creates the role for the first time.
+        if any(path.name >= "002_" for path in todo):
             _configure_grafana_role(conn)
         return _apply_each(conn, todo)
     finally:

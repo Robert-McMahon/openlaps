@@ -134,7 +134,7 @@ turning it on is an explicit, reviewable decision.
 
 The working index is `samples(channel_key, time DESC)`.
 
-### One-second traces
+### One-second and one-minute traces
 
 `samples_1s` is a Timescale continuous aggregate for session-length trace
 panels. It contains one row per `(one-second bucket, channel_key)` with
@@ -147,8 +147,15 @@ edge from `samples`, so a current trace does not acquire an artificial gap.
 Its start offset is unbounded rather than a fixed lookback: vehicle backlog
 and historical imports can insert old samples, and Timescale's invalidation
 log then refreshes the affected old buckets without recomputing unchanged
-history. There is intentionally only one bucket size. A coarser aggregate is
-added only if measured dashboard performance calls for one.
+history.
+
+`samples_1m` is the endurance-range aggregate. It cascades from `samples_1s`
+on TimescaleDB 2.28+, reducing a 36-hour range from 129,600 buckets per
+channel to 2,160. Its average is count-weighted (`sum(avg * count) /
+sum(count)`), not `avg(avg)`, because report-by-exception produces unequal
+sample counts; minima and maxima compose directly. It has the same
+numeric-only rule, real-time mode, unbounded refresh start, and named-view
+shape as the one-second aggregate.
 
 `min` and `max` are part of the contract, not optional decoration. An average
 of a 100 Hz engine channel can hide a one-sample pressure drop or knock spike;
@@ -238,13 +245,18 @@ enough.
 
 ADR 0007 puts the private companion repo downstream of this database, with no
 automated check spanning both repositories. So the contract has to be cheap
-to keep stable, and it is these three views:
+to keep stable, and it is these views:
 
 | View | Columns |
 | --- | --- |
 | `v_samples_named` | `time, vehicle_id, channel, units, value, value_text` |
 | `v_samples_1s_named` | `time, vehicle_id, channel, units, avg, min, max, count` |
+| `v_samples_1m_named` | `time, vehicle_id, channel, units, avg, min, max, count` |
 | `v_laps` | `lap_id, vehicle_id, track_name, lap_number, crossed_at, lap_time_s, valid, pit_status, direction, session_id, session_type, car, stint_number, driver` |
+| `v_lap_sectors` | The `v_laps` context, plus `sector`, `split_time_s`, and the sector's own `crossed_at` (`lap_crossed_at` retains the lap boundary) |
+| `v_pit_stops` | `vehicle_id, entry_at, exit_at, duration_s, is_open, stop_type, entry_line, exit_line` |
+| `v_lap_fuel` | The `v_laps` context, counter endpoints, `fuel_used_cc`, `fuel_used_l`, and `measurement_status` |
+| `v_stint_fuel_level` | Stint/session/driver context, accepted level sample count, start/end/used litres, and the level trend in L/hour |
 
 **The views are the stable surface. The base tables are not.** Anything
 reading this database from outside the pit services — the companion repo,
@@ -254,23 +266,36 @@ keep presenting the same columns, and downstream readers are unaffected.
 
 `v_samples_named` joins `samples` to `channels`, so it answers in canonical
 channel names and never exposes a `channel_key` or a wire id.
-`v_samples_1s_named` gives the continuous aggregate the same time, vehicle,
-channel and units columns, then exposes its four statistics. It answers
-session-length numeric traces; it deliberately does not answer event/text
-queries or preserve sub-second sample shape. `v_laps` flattens `laps` with
+The two named aggregate views give their continuous aggregates the same time,
+vehicle, channel and units columns, then expose the four statistics. They
+answer session- and endurance-length numeric traces; they deliberately do not
+answer event/text queries or preserve sub-second sample shape. `v_laps` flattens `laps` with
 its session, stint and driver names, so the common question ("every lap by
 driver X in session type Y") is a `WHERE` clause rather than a four-table
 join.
+
+`v_lap_sectors` emits one row per recorded sector and deliberately emits no
+NULL row for a lap with no sectors. `v_pit_stops` is the one stable view that
+parses raw `lap.event` JSON. It pairs each entry only with the immediately
+following exit for that vehicle, discards orphan exits, keeps an entry with no
+exit as `is_open`, and evaluates an open duration against the current clock.
+The JSON/window work makes it more expensive than the other views; materialise
+it later if a race-length query proves too slow.
+
+`v_lap_fuel` samples `car.fuel_total_used` inside each irregular lap window.
+It returns NULL with `measurement_status = 'missing'` when no samples exist,
+and NULL with `measurement_status = 'counter_reset'` if any adjacent counter
+pair decreases. A reset is never presented as negative or plausible fuel
+burn. Clean rows expose both cc and litres. `v_stint_fuel_level` remains
+separate because level regression has different failure modes: it rejects
+readings paired with battery voltage below 12 V to avoid cranking transients,
+then exposes the independent stint-scale level trend used to cross-check the
+counter model. Fuel-temperature correction is not part of this first model.
 
 Grafana's database role has `CONNECT` on this database, `USAGE` on the public
 schema, and `SELECT` on exactly these views. It has no privilege on `samples`
 or the other base tables. This makes the read-surface boundary enforceable in
 Postgres rather than relying on dashboard authors to remember it.
-
-Two further read views are deferred until a dashboard needs them:
-`v_lap_sectors` for lap/sector comparison and `v_pit_stops` for paired
-`pit_entry`/`pit_exit` events. Neither question is needed by the Phase 5 car
-dashboard, and neither is approximated in `v_samples_1s_named`.
 
 ## Related documents
 

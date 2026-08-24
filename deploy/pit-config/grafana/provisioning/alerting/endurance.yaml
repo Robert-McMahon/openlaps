@@ -1,0 +1,616 @@
+apiVersion: 1
+groups:
+- orgId: 1
+  name: openlaps-endurance
+  folder: openlaps
+  interval: 10s
+  rules:
+  - uid: oil-pressure-low
+    title: Oil pressure low against RPM
+    condition: C
+    for: 15s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      panelID: '1'
+      runbook_url: /d/reliability/reliability?var-alert=oil-pressure-low
+      summary: Oil pressure low against RPM
+    labels:
+      service: openlaps
+      scope: on track
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource: &id001
+          type: grafana-postgresql-datasource
+          uid: timescale
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", CASE WHEN COALESCE((SELECT value_text::jsonb
+          ->> 'pit_status' FROM v_samples_named WHERE vehicle_id = 'example-club-racer'
+          AND channel = 'lap.event' AND value_text IS NOT NULL ORDER BY time DESC
+          LIMIT 1), 'track') = 'track' AND COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = 'example-club-racer' AND channel = 'car.rpm' AND value
+          IS NOT NULL ORDER BY time DESC LIMIT 1), 0) >= 2000 THEN COALESCE((SELECT
+          value FROM v_samples_named WHERE vehicle_id = 'example-club-racer' AND channel
+          = 'car.oil_pressure' AND value IS NOT NULL ORDER BY time DESC LIMIT 1),
+          10000) ELSE 10000 END AS "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 200
+            type: lt
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: B
+        refId: C
+        type: threshold
+  - uid: coolant-temperature-high
+    title: Coolant temperature high
+    condition: C
+    for: 30s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      panelID: '2'
+      runbook_url: /d/reliability/reliability?var-alert=coolant-temperature-high
+      summary: Coolant temperature high
+    labels:
+      service: openlaps
+      scope: on track
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource: *id001
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", CASE WHEN COALESCE((SELECT value_text::jsonb
+          ->> 'pit_status' FROM v_samples_named WHERE vehicle_id = 'example-club-racer'
+          AND channel = 'lap.event' AND value_text IS NOT NULL ORDER BY time DESC
+          LIMIT 1), 'track') = 'track' THEN COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = 'example-club-racer' AND channel = 'car.coolant_temp'
+          AND value IS NOT NULL ORDER BY time DESC LIMIT 1), 273.15) ELSE 273.15 END
+          AS "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 383.15
+            type: gt
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: B
+        refId: C
+        type: threshold
+  - uid: oil-temperature-high
+    title: Oil temperature high
+    condition: C
+    for: 30s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      panelID: '3'
+      runbook_url: /d/reliability/reliability?var-alert=oil-temperature-high
+      summary: Oil temperature high
+    labels:
+      service: openlaps
+      scope: on track
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource: *id001
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", CASE WHEN COALESCE((SELECT value_text::jsonb
+          ->> 'pit_status' FROM v_samples_named WHERE vehicle_id = 'example-club-racer'
+          AND channel = 'lap.event' AND value_text IS NOT NULL ORDER BY time DESC
+          LIMIT 1), 'track') = 'track' THEN COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = 'example-club-racer' AND channel = 'car.oil_temp' AND
+          value IS NOT NULL ORDER BY time DESC LIMIT 1), 273.15) ELSE 273.15 END AS
+          "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 398.15
+            type: gt
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: B
+        refId: C
+        type: threshold
+  - uid: battery-voltage-low
+    title: Battery voltage low
+    condition: C
+    for: 30s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      panelID: '7'
+      runbook_url: /d/reliability/reliability?var-alert=battery-voltage-low
+      summary: Battery voltage low
+    labels:
+      service: openlaps
+      scope: on track
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource: *id001
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", CASE WHEN COALESCE((SELECT value_text::jsonb
+          ->> 'pit_status' FROM v_samples_named WHERE vehicle_id = 'example-club-racer'
+          AND channel = 'lap.event' AND value_text IS NOT NULL ORDER BY time DESC
+          LIMIT 1), 'track') = 'track' THEN COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = 'example-club-racer' AND channel = 'car.battery_v' AND
+          value IS NOT NULL ORDER BY time DESC LIMIT 1), 14.0) ELSE 14.0 END AS "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 11.5
+            type: lt
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: B
+        refId: C
+        type: threshold
+  - uid: knock-high
+    title: Knock high
+    condition: C
+    for: 15s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      panelID: '5'
+      runbook_url: /d/reliability/reliability?var-alert=knock-high
+      summary: Knock high
+    labels:
+      service: openlaps
+      scope: on track
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource: *id001
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", CASE WHEN COALESCE((SELECT value_text::jsonb
+          ->> 'pit_status' FROM v_samples_named WHERE vehicle_id = 'example-club-racer'
+          AND channel = 'lap.event' AND value_text IS NOT NULL ORDER BY time DESC
+          LIMIT 1), 'track') = 'track' THEN COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = 'example-club-racer' AND channel = 'car.knock_level1'
+          AND value IS NOT NULL ORDER BY time DESC LIMIT 1), 0.0) ELSE 0.0 END AS
+          "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 80.0
+            type: gt
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: B
+        refId: C
+        type: threshold
+  - uid: engine-protection-active
+    title: Engine protection active
+    condition: C
+    for: 10s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      panelID: '5'
+      runbook_url: /d/reliability/reliability?var-alert=engine-protection-active
+      summary: Engine protection active
+    labels:
+      service: openlaps
+      scope: on track
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource: *id001
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", CASE WHEN COALESCE((SELECT value_text::jsonb
+          ->> 'pit_status' FROM v_samples_named WHERE vehicle_id = 'example-club-racer'
+          AND channel = 'lap.event' AND value_text IS NOT NULL ORDER BY time DESC
+          LIMIT 1), 'track') = 'track' THEN COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = 'example-club-racer' AND channel = 'car.engine_protection_severity'
+          AND value IS NOT NULL ORDER BY time DESC LIMIT 1), 0.0) ELSE 0.0 END AS
+          "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 0.0
+            type: gt
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: B
+        refId: C
+        type: threshold
+  - uid: publish-lag-high
+    title: Publish lag high
+    condition: C
+    for: 30s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      panelID: '7'
+      runbook_url: /d/reliability/reliability?var-alert=publish-lag-high
+      summary: Publish lag high
+    labels:
+      service: openlaps
+      scope: on track
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource: *id001
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = 'example-club-racer' AND channel = 'sys.agent.publish_lag_ms'
+          AND value IS NOT NULL ORDER BY time DESC LIMIT 1), 0.0) AS "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 500.0
+            type: gt
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: B
+        refId: C
+        type: threshold
+  - uid: live-feed-stale
+    title: Live feed stale while on track
+    condition: C
+    for: 15s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      panelID: '7'
+      runbook_url: /d/reliability/reliability?var-alert=live-feed-stale
+      summary: Live feed stale while on track
+    labels:
+      service: openlaps
+      scope: on track
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource: *id001
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", CASE WHEN COALESCE((SELECT value_text::jsonb
+          ->> 'pit_status' FROM v_samples_named WHERE vehicle_id = 'example-club-racer'
+          AND channel = 'lap.event' AND value_text IS NOT NULL ORDER BY time DESC
+          LIMIT 1), 'track') = 'track' THEN COALESCE(extract(epoch FROM (now() - (SELECT
+          max(time) FROM v_samples_named WHERE vehicle_id = 'example-club-racer' AND
+          channel = 'car.rpm'))), 1000000.0) ELSE 0.0 END AS "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            params:
+            - 5.0
+            type: gt
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource:
+          type: __expr__
+          uid: '-100'
+        expression: B
+        refId: C
+        type: threshold
+contactPoints:
+- orgId: 1
+  name: openlaps-local
+  receivers:
+  - uid: openlaps-local-webhook
+    type: webhook
+    settings:
+      url: http://127.0.0.1:8080/grafana-alerts
+      httpMethod: POST
+    disableResolveMessage: false
+policies:
+- orgId: 1
+  receiver: openlaps-local
+  group_by:
+  - grafana_folder
+  - alertname
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h

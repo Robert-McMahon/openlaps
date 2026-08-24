@@ -1,0 +1,10 @@
+# Pit-side timing extrapolation policy. This service consumes only the
+# authoritative timing/clock channels it needs and publishes only the two
+# explicitly pit-owned channels listed in its code.
+vehicle: example-club-racer
+publish_hz: 10
+max_clock_offset_s: 0.1
+max_clock_stratum: 4
+allowed_clock_sources: [GPS, PPS, NTP]
+best_lap_multiple: 3.0
+fallback_max_lap_s: 300.0

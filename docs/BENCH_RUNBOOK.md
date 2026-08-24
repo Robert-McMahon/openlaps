@@ -628,3 +628,61 @@ instrument and no result from it means anything.** Find the difference
 before running P4.3 — the usual causes are an incomplete clean slate, a
 `canplayer` that died and was not noticed, and counters left loaded from a
 previous session.
+
+# Endurance alert firing drill (P6.12)
+
+Run this drill against a disposable bench database, never against the race
+archive.  Open Grafana's **Reliability watch** dashboard (`uid=reliability`)
+and Alerting page first.  The provisioned `openlaps-local` contact point posts
+only to the pit host (`127.0.0.1:8080/grafana-alerts`) and requires no external
+account.  A failed local delivery does not prevent Grafana showing the rule as
+Firing.
+
+Connect as the database owner and create this disposable helper.  It writes
+through the same registry/sample shape as ingest while keeping every alert
+query on the stable `v_samples_named` view:
+
+```sql
+CREATE OR REPLACE PROCEDURE bench_alert_sample(
+    channel_name text, numeric_value double precision, sample_time timestamptz DEFAULT now()
+)
+LANGUAGE plpgsql AS $$
+DECLARE key bigint;
+BEGIN
+  INSERT INTO channels (vehicle_id, name, units, value_type)
+  VALUES ('example-club-racer', channel_name, '', 1)
+  ON CONFLICT (vehicle_id, name) DO UPDATE SET name = excluded.name
+  RETURNING channel_key INTO key;
+  INSERT INTO samples (time, channel_key, value) VALUES (sample_time, key, numeric_value);
+END $$;
+
+-- All car-channel rules are explicitly on-track gated.  This event puts the
+-- bench in the on-track state; substitute "pit" to prove they remain Normal.
+WITH channel AS (
+  INSERT INTO channels (vehicle_id, name, units, value_type)
+  VALUES ('example-club-racer', 'lap.event', '', 4)
+  ON CONFLICT (vehicle_id, name) DO UPDATE SET name = excluded.name
+  RETURNING channel_key
+)
+INSERT INTO samples (time, channel_key, value_text)
+SELECT now(), channel_key, '{"type":"lap_completed","pit_status":"track"}' FROM channel;
+```
+
+Exercise one rule at a time, wait for its configured `for` period plus two
+10-second evaluation intervals, verify **Firing**, then write the reset value
+and verify **Normal**.  Temperatures below are Kelvin, not Celsius.
+
+| Rule uid | Firing sample | Reset sample |
+| --- | --- | --- |
+| `oil-pressure-low` | `CALL bench_alert_sample('car.rpm', 4000); CALL bench_alert_sample('car.oil_pressure', 150);` | `CALL bench_alert_sample('car.oil_pressure', 350);` |
+| `coolant-temperature-high` | `CALL bench_alert_sample('car.coolant_temp', 384.15);` | `CALL bench_alert_sample('car.coolant_temp', 363.15);` |
+| `oil-temperature-high` | `CALL bench_alert_sample('car.oil_temp', 399.15);` | `CALL bench_alert_sample('car.oil_temp', 373.15);` |
+| `battery-voltage-low` | `CALL bench_alert_sample('car.battery_v', 11.0);` | `CALL bench_alert_sample('car.battery_v', 13.8);` |
+| `knock-high` | `CALL bench_alert_sample('car.knock_level1', 90);` | `CALL bench_alert_sample('car.knock_level1', 0);` |
+| `engine-protection-active` | `CALL bench_alert_sample('car.engine_protection_severity', 2);` | `CALL bench_alert_sample('car.engine_protection_severity', 0);` |
+| `publish-lag-high` | `CALL bench_alert_sample('sys.agent.publish_lag_ms', 750);` | `CALL bench_alert_sample('sys.agent.publish_lag_ms', 0);` |
+| `live-feed-stale` | Stop the replay after an on-track `car.rpm` sample and wait more than 5 seconds. | Restart replay or `CALL bench_alert_sample('car.rpm', 3000);` |
+
+Finally write a `lap.event` with `"pit_status":"pit"`, repeat each car-channel
+firing sample, and verify the seven on-track-gated rules remain Normal.  The
+`publish-lag-high` pipeline rule deliberately remains active in the pits.

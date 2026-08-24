@@ -77,7 +77,7 @@
 		</LineString>
 	</Placemark>
 	<Placemark id="045B9A038C389983E857">
-		<name>PitExit</name>
+		<name>PitExitService</name>
 		<LookAt>
 			<longitude>115.7868460556727</longitude>
 			<latitude>-31.6632873103933</latitude>
@@ -91,12 +91,21 @@
 		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
 		<LineString>
 			<coordinates>
-				115.7865703665766,-31.6630247286147,0 115.7867948043336,-31.66300031502335,0 
+				115.7865703665766,-31.6630247286147,0 115.7866825854551,-31.66301252181903,0
+			</coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<name>PitExitRefuel</name>
+		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
+		<LineString>
+			<coordinates>
+				115.7866825854551,-31.66301252181903,0 115.7867948043336,-31.66300031502335,0
 			</coordinates>
 		</LineString>
 	</Placemark>
 	<Placemark id="0F1D007842389985DDDF">
-		<name>PitEntry</name>
+		<name>PitEntryService</name>
 		<LookAt>
 			<longitude>115.7866255206967</longitude>
 			<latitude>-31.66490420705041</latitude>
@@ -110,7 +119,16 @@
 		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
 		<LineString>
 			<coordinates>
-				115.7865253827996,-31.66498449171058,0 115.7866649522481,-31.6649884936894,0 
+				115.7865253827996,-31.66498449171058,0 115.7865951675239,-31.66498649269999,0
+			</coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<name>PitEntryRefuel</name>
+		<styleUrl>#__managed_style_0702990A2C38997FB1E8</styleUrl>
+		<LineString>
+			<coordinates>
+				115.7865951675239,-31.66498649269999,0 115.7866649522481,-31.6649884936894,0
 			</coordinates>
 		</LineString>
 	</Placemark>

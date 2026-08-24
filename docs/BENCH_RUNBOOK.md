@@ -341,7 +341,7 @@ not comparable and the manifest is what stops them being compared.
    canplayer -I tests/fixtures/candump/candump-imu-sample.log -l i vcan0=can0
    ```
 
-   The fixtures are 8,000 frames / 5.29 s and 1,255 frames / 4.99 s. `-l i`
+   The fixtures are 45,861 frames / 30.0 s and 1,255 frames / 4.99 s. `-l i`
    loops. **The loop seam is a timestamp discontinuity** — harmless for
    offered load, but per-signal rates must not be read across one.
 
@@ -385,11 +385,11 @@ uv run tools/bench_check.py --profile profiles/example-club-racer-bench
 ```
 
 It also prints the bench's predicted mix against `LINK_BUDGET.md` §2's
-modelled 4,087 samples/s, and **the two do not agree** — the bench offers
-~2,400/s, about 59%. That gap is a modelling gap, not a wiring fault; the
+modelled 4,262 samples/s, and **the two do not agree** — the bench offers
+~3,000/s, about 71%. That gap is a modelling gap, not a wiring fault; the
 bench profile's README has the per-class breakdown and the reasons.
 Reconciling it is P4.3's signal-mix ground truth. Until then, read a bench
-bandwidth figure as measuring ~59% of the load §3 predicts, and **say so in
+bandwidth figure as measuring ~71% of the load §3 predicts, and **say so in
 the write-up** rather than letting a reader infer otherwise.
 
 **Every hop is up.** `deploy/README.md` → "Verify each hop", unchanged:

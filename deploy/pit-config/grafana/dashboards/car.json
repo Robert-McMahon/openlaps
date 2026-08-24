@@ -3620,6 +3620,7 @@
   ],
   "preload": false,
   "refresh": "5s",
+  "livenow": true,
   "schemaVersion": 41,
   "tags": [
     "openlaps",

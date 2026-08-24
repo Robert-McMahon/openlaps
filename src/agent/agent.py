@@ -66,6 +66,7 @@ class AgentSettings:
     tele_max_bytes: int = DEFAULT_TELE_MAX_BYTES
     registry_interval_s: float = DEFAULT_REGISTRY_INTERVAL_S
     state_dir: Path | None = None
+    raw_capture_dir: Path | None = None
     health_interval_s: float = 1.0
 
     @classmethod
@@ -104,6 +105,7 @@ class AgentSettings:
         take("OPENLAPS_TELE_MAX_BYTES", "tele_max_bytes", int)
         take("OPENLAPS_REGISTRY_REPUBLISH_S", "registry_interval_s", float)
         take("OPENLAPS_STATE_DIR", "state_dir", Path)
+        take("OPENLAPS_RAW_CAPTURE_DIR", "raw_capture_dir", Path)
         return cls(**kwargs)
 
 
@@ -236,11 +238,22 @@ class VehicleAgent:
             self._supervised.append(_Supervised(collector, queue))
         for source in self.profile.vehicle.serial:
             queue = SampleQueue(source.name, settings.queue_maxlen)
+            raw_log_dir = None
+            if source.raw_log:
+                if settings.raw_capture_dir is None:
+                    logger.warning(
+                        "agent: serial %s: raw_log enabled but OPENLAPS_RAW_CAPTURE_DIR "
+                        "is not set; raw capture disabled",
+                        source.name,
+                    )
+                else:
+                    raw_log_dir = settings.raw_capture_dir
             serial_collector = SerialCollector(
                 source,
                 queue.put,
                 wall_clock=self.clock,
                 serial_factory=serial_factory,
+                raw_log_dir=raw_log_dir,
             )
             self._supervised.append(_Supervised(serial_collector, queue))
             if source.driver is not None:

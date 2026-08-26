@@ -117,7 +117,16 @@ def test_dashboard_variables_come_from_the_stable_relational_read_surface() -> N
     }
 
 
-def test_temperature_panels_declare_kelvin_and_dashboard_has_no_credentials() -> None:
+def _has_kelvin_to_celsius_conversion(panel: dict[str, Any]) -> bool:
+    return any(
+        transformation["id"] == "calculateField"
+        and transformation["options"]["binary"]["operator"] == "-"
+        and transformation["options"]["binary"]["right"]["fixed"] == "273.1"
+        for transformation in panel.get("transformations", [])
+    )
+
+
+def test_temperature_panels_declare_units_and_dashboard_has_no_credentials() -> None:
     dashboard = _dashboard()
     panels = _data_panels(dashboard)
     temperature_panels = [
@@ -125,7 +134,16 @@ def test_temperature_panels_declare_kelvin_and_dashboard_has_no_credentials() ->
     ]
 
     assert len(temperature_panels) == 4  # live and trace versions of each
-    assert all(panel["fieldConfig"]["defaults"]["unit"] == "kelvin" for panel in temperature_panels)
+    for panel in temperature_panels:
+        unit = panel["fieldConfig"]["defaults"]["unit"]
+        if panel["datasource"]["uid"] == "mqtt-live":
+            # Live gauges convert the Haltech Kelvin feed to Celsius in-panel.
+            assert unit == "celsius"
+            assert _has_kelvin_to_celsius_conversion(panel)
+        else:
+            # Trace panels plot the stored samples as-is, which are Kelvin.
+            assert unit == "kelvin"
+            assert not _has_kelvin_to_celsius_conversion(panel)
 
     serialized = json.dumps(dashboard).lower()
     assert not any(term in serialized for term in ("password", "api_key", "bearer "))

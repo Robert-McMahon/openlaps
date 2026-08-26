@@ -20,22 +20,34 @@ webrtc:
     listen: ":8555" # WebRTC media, TCP and UDP
 
 streams:
+    # `car` is what the pit dashboard embeds (src=car). H.265 on the N100's
+    # iGPU via VAAPI: measured on real camera footage, 500k HEVC matches
+    # 800k H.264 (SSIM 0.9804 vs 0.9800) — a ~40% cut in the link budget's
+    # video share for free, since the encode is hardware either way.
+    #
+    # The explicit exec producer, rather than go2rtc's h265/vaapi template,
+    # is load-bearing: the template omits the scale_vaapi NV12 conversion
+    # the encoder needs for the camera's 4:2:2 MJPEG. CPU encode is not an
+    # option on an SBC that is also running the agent.
+    #
+    # Playback caveats, both learned the hard way on the bench:
+    #   - Browsers will not take H.265 over WebRTC, and a default-mode
+    #     player "succeeds" with an audio-only WebRTC session — black frame,
+    #     engine noise. The dashboard therefore pins `mode=mse` in its URL.
+    #   - HEVC over MSE needs hardware HEVC decode on the *viewing* machine.
+    #     Every Intel pit box has it; a borrowed laptop that doesn't gets
+    #     `car_h264` below.
+    # Do not consume both streams at once — one process holds /dev/video0,
+    # and the loser's viewer sits on "loading" forever with no error.
     car:
-        # MJPEG off the USB camera, encoded to H.264 on the N100's iGPU via
-        # VAAPI. CPU encode is not an option on an SBC that is also running
-        # the agent; the raw args exist because go2rtc's vaapi template does
-        # not set bitrate caps.
-        - ffmpeg:device?video=/dev/video0&input_format=mjpeg&video_size=640x360#video=h264#hardware=vaapi#raw=-init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -b:v 800k -maxrate 1M -bufsize 2M
+        - exec:ffmpeg -hide_banner -v error -init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -hwaccel vaapi -hwaccel_output_format vaapi -f v4l2 -input_format mjpeg -video_size 640x360 -i /dev/video0 -vf format=vaapi|nv12,hwupload,scale_vaapi=out_color_matrix=bt709:out_range=tv:format=nv12 -c:v hevc_vaapi -g 50 -bf 0 -profile:v main -b:v 500k -maxrate 700k -bufsize 1400k -an -rtsp_transport tcp -f rtsp {output}
         # Cabin audio: ALSA capture, denoised, Opus at 64k.
         - exec:ffmpeg -f alsa -i plughw:0,0 -c:a libopus -ar:a 48000 -af afftdn=nr=20:nt=v:nf=-20 -ac:a 1 -rtsp_transport tcp -b:a 64k -f rtsp {output}
 
-    # H.265 variant — swap in for `car` once verified in the pit browser
-    # (don't run both at once; only one process can hold /dev/video0).
-    # Uses an explicit exec producer because go2rtc's h265/vaapi template
-    # omits the scale_vaapi NV12 conversion the encoder needs for 4:2:2
-    # MJPEG input. Resolutions: 640x360 (~500k), 1280x720 (~1-1.5M),
-    # 1920x1080 (~2-3M) — the upper two exceed the link budget's video
-    # reservation and are bench-LAN options only.
-    car_hevc:
-        - exec:ffmpeg -hide_banner -v error -init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -hwaccel vaapi -hwaccel_output_format vaapi -f v4l2 -input_format mjpeg -video_size 1920x1080 -i /dev/video0 -vf format=vaapi|nv12,hwupload,scale_vaapi=out_color_matrix=bt709:out_range=tv:format=nv12 -c:v hevc_vaapi -g 50 -bf 0 -profile:v main -b:v 1000k -maxrate 1400k -bufsize 2800k -an -rtsp_transport tcp -f rtsp {output}
+    # H.264 fallback for a viewer without hardware HEVC decode. The
+    # predecessor stack's proven pipeline, unchanged. Higher rate for the
+    # same quality — this is what `car` replaced, not a second feed to run
+    # alongside it.
+    car_h264:
+        - ffmpeg:device?video=/dev/video0&input_format=mjpeg&video_size=640x360#video=h264#hardware=vaapi#raw=-init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -b:v 800k -maxrate 1M -bufsize 2M
         - exec:ffmpeg -f alsa -i plughw:0,0 -c:a libopus -ar:a 48000 -af afftdn=nr=20:nt=v:nf=-20 -ac:a 1 -rtsp_transport tcp -b:a 64k -f rtsp {output}

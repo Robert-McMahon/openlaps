@@ -74,7 +74,7 @@
       },
       "options": {
         "videoType": "iframe",
-        "iframeURL": "${camera}/stream.html?src=car",
+        "iframeURL": "${camera}/stream.html?src=car&mode=mse",
         "customBackground": true,
         "backgroundColor": "#000000",
         "geolocate": false
@@ -101,7 +101,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "This frame is the **vehicle's** go2rtc player, reached directly — telemetry does not pass through it and it does not pass through telemetry. Blank frame: check `${camera}/` loads at all (go2rtc's own UI); if it does, the camera or its encoder is the problem, not the link. The player negotiates WebRTC first and falls back to MSE; if WebRTC will not traverse the radio link, append `&mode=mse` to the panel URL. Audio is muted by the browser until clicked."
+        "content": "This frame is the **vehicle's** go2rtc player, reached directly — telemetry does not pass through it and it does not pass through telemetry. The URL pins `mode=mse` deliberately: the stream is H.265, browsers will not take H.265 over WebRTC, and a default-mode player \"succeeds\" with a WebRTC session carrying **audio only** — a black frame with engine noise. Blank frame anyway: check `${camera}/` loads at all (go2rtc's own UI); if it does and this machine lacks hardware HEVC decode, open `${camera}/stream.html?src=car_h264` instead. Only one stream can hold the camera at a time — close other viewers before switching. Audio is muted by the browser until clicked."
       },
       "targets": []
     }

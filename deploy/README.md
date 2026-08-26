@@ -372,9 +372,10 @@ views and no access at all to `samples` or `laps`.
 
 Video is deliberately **not telemetry**. The vehicle runs
 [go2rtc](https://github.com/AlexxIT/go2rtc) beside the agent — USB camera,
-encoded to H.264 on the SBC's iGPU, cabin audio in Opus — and the pit
-operator's browser plays it *directly from the car*
-(`http://<vehicle-host>:1984/stream.html?src=car`), embedded in the `video`
+encoded to H.265 on the SBC's iGPU (H.264 fallback as `car_h264`), cabin
+audio in Opus — and the pit operator's browser plays it *directly from the
+car* (`http://<vehicle-host>:1984/stream.html?src=car&mode=mse` — the
+`mode=mse` matters, see `go2rtc/go2rtc.yaml`), embedded in the `video`
 Grafana dashboard. No video byte touches NATS, JetStream or the database, so
 a dead camera costs telemetry nothing, and dropping video is the degradation
 plan's cheapest lever: close the browser tab.

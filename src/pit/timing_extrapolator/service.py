@@ -23,6 +23,7 @@ from pit.registry_cache import (
     REGISTRY_SOURCE_CLASS,
     RegistryCache,
 )
+from pit.timing_display import pit_clock_display
 from pit.timing_extrapolator.config import TimingConfig, load_config
 from pit.timing_extrapolator.engine import ClockPolicy, ClockValue, TimingExtrapolator
 from pit.timing_extrapolator.health import HealthState, serve_health
@@ -70,9 +71,7 @@ class TimingServiceSettings:
         return cls(
             config_path=Path(
                 config_path
-                or env.get(
-                    "OPENLAPS_TIMING_CONFIG", "deploy/pit-config/timing-extrapolator.yaml"
-                )
+                or env.get("OPENLAPS_TIMING_CONFIG", "deploy/pit-config/timing-extrapolator.yaml")
             ),
             nats_url=env.get("OPENLAPS_NATS_URL", "nats://127.0.0.1:4222").strip(),
             stream=stream,
@@ -99,6 +98,7 @@ def mqtt_message(
     document: dict[str, object] = {
         "time": round(now_s * 1000),
         "value": value,
+        "display": pit_clock_display(value, status),
         "status": status,
         "source": "pit",
     }
@@ -126,7 +126,9 @@ class TimingService:
                 fallback_max_lap_s=self.config.fallback_max_lap_s,
                 max_clock_offset_s=self.config.max_clock_offset_s,
                 max_clock_stratum=self.config.max_clock_stratum,
-                allowed_clock_sources=tuple(source.upper() for source in self.config.allowed_clock_sources),
+                allowed_clock_sources=tuple(
+                    source.upper() for source in self.config.allowed_clock_sources
+                ),
                 best_lap_multiple=self.config.best_lap_multiple,
             )
         )
@@ -166,7 +168,7 @@ class TimingService:
 
     def _handle_message(self, message: object) -> None:
         kind = (getattr(message, "headers", None) or {}).get(MSG_TYPE_HEADER, "batch")
-        payload = getattr(message, "data")
+        payload = message.data
         if kind == MSG_TYPE_REGISTRY:
             registry = pb.ChannelRegistry()
             try:

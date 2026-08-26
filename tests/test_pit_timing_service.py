@@ -59,9 +59,26 @@ def test_mqtt_payload_marks_pit_values_and_extrapolation_status():
     assert json.loads(payload) == {
         "time": 1_780_000_000_250,
         "value": 42.5,
+        "display": "0:42.5",
         "status": "extrapolating",
         "source": "pit",
     }
+
+
+def test_mqtt_display_resolution_follows_status():
+    # Running clock: tenths. Crossing announcement: definitive, milliseconds.
+    # Gated: a labelled absence, not a stale number.
+    cases = (
+        (95.06, "extrapolating", None, "1:35.1"),
+        (92.5004, "authoritative", None, "1:32.500"),
+        (300.0, "degraded", "runaway", "5:00.0"),
+        (None, "gated", "clock_offset", "—"),
+    )
+    for value, status, reason, display in cases:
+        _, payload = mqtt_message(
+            "car-1", "timing.sector_elapsed_pit", 1_780_000_000.0, value, status, reason
+        )
+        assert json.loads(payload)["display"] == display
 
 
 def test_service_decodes_authoritative_inputs_and_emits_only_pit_channels(tmp_path):
@@ -88,7 +105,9 @@ def test_service_decodes_authoritative_inputs_and_emits_only_pit_channels(tmp_pa
         )
     )
 
-    policies = {channel_id: ChannelPolicy(name, kind, None) for channel_id, (name, kind) in channels.items()}
+    policies = {
+        channel_id: ChannelPolicy(name, kind, None) for channel_id, (name, kind) in channels.items()
+    }
     batcher = Batcher(7, policies, tick_ms=20)
     values = [0.001, 1, "GPS", event("lap_completed", 1_000.0, lap_time=92.5)]
     for channel_id, value in enumerate(values, start=1):

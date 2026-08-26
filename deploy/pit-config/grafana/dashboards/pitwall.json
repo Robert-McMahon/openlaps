@@ -217,7 +217,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "none",
           "color": {
             "mode": "palette-classic"
           },
@@ -238,7 +238,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/.*/",
           "values": false
         }
       },
@@ -266,7 +266,7 @@
           "options": {
             "include": {
               "names": [
-                "value"
+                "display"
               ]
             }
           }
@@ -274,7 +274,7 @@
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "description": "Authoritative vehicle elapsed beside the pit-side extrapolated clock, which keeps counting through a radio dropout and corrects at the next crossing.",
+      "description": "Authoritative vehicle elapsed beside the pit-side extrapolated clock, which keeps counting through a radio dropout and corrects at the next crossing. Running clocks read in tenths (m:ss.t); the value announced at a crossing is definitive and shows milliseconds. A gated pit clock shows \u2014 instead of holding a stale number.",
       "hideTimeOverride": true
     },
     {
@@ -293,7 +293,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "none",
           "color": {
             "mode": "palette-classic"
           },
@@ -314,7 +314,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/.*/",
           "values": false
         }
       },
@@ -334,7 +334,7 @@
           "options": {
             "include": {
               "names": [
-                "value"
+                "display"
               ]
             }
           }
@@ -342,7 +342,7 @@
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "description": "Pit-side extrapolated sector clock; visibly derived rather than vehicle telemetry.",
+      "description": "Pit-side extrapolated sector clock; visibly derived rather than vehicle telemetry. Tenths while running, milliseconds at the crossing, \u2014 when gated.",
       "hideTimeOverride": true
     },
     {
@@ -361,7 +361,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "none",
           "color": {
             "mode": "palette-classic"
           },
@@ -382,7 +382,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/.*/",
           "values": false
         }
       },
@@ -410,7 +410,7 @@
           "options": {
             "include": {
               "names": [
-                "value"
+                "display"
               ]
             }
           }
@@ -418,7 +418,8 @@
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "description": "Definitive completed times from the vehicle, shown to 0.001 s."
     },
     {
       "id": 5,
@@ -436,7 +437,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "none",
           "color": {
             "mode": "palette-classic"
           },
@@ -457,7 +458,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/.*/",
           "values": false
         }
       },
@@ -485,7 +486,7 @@
           "options": {
             "include": {
               "names": [
-                "value"
+                "display"
               ]
             }
           }
@@ -493,7 +494,8 @@
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "description": "Delta to best is signed tenths; the predicted lap is a running estimate and reads m:ss.t."
     },
     {
       "id": 6,
@@ -741,45 +743,71 @@
       ]
     },
     {
-      "type": "stat",
+      "id": 10,
+      "title": "Stint clock",
+      "type": "grafana-clock-panel",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "id": 10,
-      "title": "Stint clock",
       "gridPos": {
         "x": 20,
         "y": 15,
         "w": 4,
         "h": 4
+      },
+      "description": "Counts up in this browser from the current stint's first crossing; nothing streams or repaints behind it.",
+      "options": {
+        "mode": "countup",
+        "refresh": "sec",
+        "clockType": "24 hour",
+        "fontMono": true,
+        "bgColor": "",
+        "countupSettings": {
+          "source": "query",
+          "queryCalculation": "lastNotNull",
+          "queryField": "Stint started",
+          "beginCountupTime": "",
+          "beginText": "0:00:00",
+          "noValueText": "no stint yet",
+          "invalidValueText": "invalid timestamp",
+          "customFormat": "h:mm:ss"
+        },
+        "countdownSettings": {
+          "source": "input",
+          "endCountdownTime": "",
+          "queryCalculation": "lastNotNull",
+          "queryField": "",
+          "endText": "00:00:00",
+          "noValueText": "no value found",
+          "invalidValueText": "invalid value"
+        },
+        "descriptionSettings": {
+          "source": "none",
+          "descriptionText": "",
+          "queryField": "",
+          "noValueText": "",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        },
+        "dateSettings": {
+          "showDate": false,
+          "dateFormat": "YYYY-MM-DD",
+          "locale": "",
+          "fontSize": "20px",
+          "fontWeight": "normal"
+        },
+        "timeSettings": {
+          "fontSize": "44px",
+          "fontWeight": "bold"
+        },
+        "timezone": "",
+        "timezoneSettings": {
+          "showTimezone": false,
+          "zoneFormat": "offsetAbbv",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        }
       },
       "targets": [
         {
@@ -789,9 +817,171 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT now() AS time, extract(epoch FROM (now() - min(crossed_at))) AS \"Stint clock\" FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND stint_number = (SELECT max(stint_number) FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session')) AND $__timeFilter(crossed_at)"
+          "rawSql": "SELECT now() AS time, min(crossed_at) AS \"Stint started\" FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND stint_number = (SELECT max(stint_number) FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session')) AND $__timeFilter(crossed_at)"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Lap clock (browser)",
+      "type": "grafana-clock-panel",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 8,
+        "h": 4
+      },
+      "description": "Counts up in this browser from the last start/finish crossing recorded in the database \u2014 no live stream behind it, 1 s resolution. It is a dumb timer: it keeps counting on a stopped car until the crossing leaves the dashboard window, and it carries none of the extrapolated clock's clock-health gating.",
+      "options": {
+        "mode": "countup",
+        "refresh": "sec",
+        "clockType": "24 hour",
+        "fontMono": true,
+        "bgColor": "",
+        "countupSettings": {
+          "source": "query",
+          "queryCalculation": "lastNotNull",
+          "queryField": "Last lap crossing",
+          "beginCountupTime": "",
+          "beginText": "0:00",
+          "noValueText": "no crossing yet",
+          "invalidValueText": "invalid timestamp",
+          "customFormat": "m:ss"
+        },
+        "countdownSettings": {
+          "source": "input",
+          "endCountdownTime": "",
+          "queryCalculation": "lastNotNull",
+          "queryField": "",
+          "endText": "00:00:00",
+          "noValueText": "no value found",
+          "invalidValueText": "invalid value"
+        },
+        "descriptionSettings": {
+          "source": "none",
+          "descriptionText": "",
+          "queryField": "",
+          "noValueText": "",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        },
+        "dateSettings": {
+          "showDate": false,
+          "dateFormat": "YYYY-MM-DD",
+          "locale": "",
+          "fontSize": "20px",
+          "fontWeight": "normal"
+        },
+        "timeSettings": {
+          "fontSize": "44px",
+          "fontWeight": "bold"
+        },
+        "timezone": "",
+        "timezoneSettings": {
+          "showTimezone": false,
+          "zoneFormat": "offsetAbbv",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, max(crossed_at) AS \"Last lap crossing\" FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at)"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Sector clock (browser)",
+      "type": "grafana-clock-panel",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 15,
+        "w": 8,
+        "h": 4
+      },
+      "description": "Counts up in this browser from the last sector or lap crossing's own timestamp in the recorded lap.event \u2014 no live stream, 1 s resolution, and lags ingest by a flush. Same dumb-timer caveats as the lap clock.",
+      "options": {
+        "mode": "countup",
+        "refresh": "sec",
+        "clockType": "24 hour",
+        "fontMono": true,
+        "bgColor": "",
+        "countupSettings": {
+          "source": "query",
+          "queryCalculation": "lastNotNull",
+          "queryField": "Last sector crossing",
+          "beginCountupTime": "",
+          "beginText": "0:00",
+          "noValueText": "no crossing yet",
+          "invalidValueText": "invalid timestamp",
+          "customFormat": "m:ss"
+        },
+        "countdownSettings": {
+          "source": "input",
+          "endCountdownTime": "",
+          "queryCalculation": "lastNotNull",
+          "queryField": "",
+          "endText": "00:00:00",
+          "noValueText": "no value found",
+          "invalidValueText": "invalid value"
+        },
+        "descriptionSettings": {
+          "source": "none",
+          "descriptionText": "",
+          "queryField": "",
+          "noValueText": "",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        },
+        "dateSettings": {
+          "showDate": false,
+          "dateFormat": "YYYY-MM-DD",
+          "locale": "",
+          "fontSize": "20px",
+          "fontWeight": "normal"
+        },
+        "timeSettings": {
+          "fontSize": "44px",
+          "fontWeight": "bold"
+        },
+        "timezone": "",
+        "timezoneSettings": {
+          "showTimezone": false,
+          "zoneFormat": "offsetAbbv",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, to_timestamp(max((value_text::jsonb ->> 'time')::double precision)) AS \"Last sector crossing\" FROM v_samples_named WHERE vehicle_id = '$vehicle' AND channel = 'lap.event' AND value_text::jsonb ->> 'type' IN ('sector_completed', 'lap_completed') AND $__timeFilter(time)"
         }
       ]
     }

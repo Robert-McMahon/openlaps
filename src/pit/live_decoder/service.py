@@ -37,6 +37,7 @@ from pit.registry_cache import (
     REGISTRY_SOURCE_CLASS,
     RegistryCache,
 )
+from pit.timing_display import display_for
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,12 @@ _IDLE_WARN_REPEAT_S = 60.0
 def mqtt_message(vehicle: str, update: LiveUpdate) -> tuple[str, bytes]:
     """Format one non-retained QoS-0 MQTT publication."""
     topic = f"openlaps/{vehicle}/{update.channel}"
+    document: dict[str, object] = {"time": update.capture_unix_ms, "value": update.value}
+    display = display_for(update.channel, update.value)
+    if display is not None:
+        document["display"] = display
     payload = json.dumps(
-        {"time": update.capture_unix_ms, "value": update.value},
+        document,
         separators=(",", ":"),
         allow_nan=False,
     ).encode()

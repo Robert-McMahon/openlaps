@@ -41,6 +41,33 @@ install) and leave `version` alone.
   showing `car.coolant_temp` with no unit set reads ~370 and looks entirely
   plausible. Read `units` from the view; never assume.
 
+## Lap and sector times are race-formatted, not Grafana-formatted
+
+Grafana has no race-timing unit — its `s` unit renders 68.5 as
+"1.13 min" — and no way to build `1:08.5` from a numeric field. So the
+format travels with the data:
+
+- **Live MQTT panels** show the publishers' pre-formatted `display`
+  field (`src/pit/timing_display.py`): running clocks and predictions
+  in tenths (`1:08.5`), definitive completed times in milliseconds
+  (`1:08.500`), the delta as signed tenths (`+0.3`), and a gated pit
+  clock as `—`. The numeric `value` stays in the payload untouched;
+  a panel that computes (thresholds, alerts) keeps reading `value`.
+- **SQL panels** showing definitive times format in the query with
+  `to_char(make_interval(secs => ...), 'FMMI:SS.MS')`.
+
+## Browser-local count-up clocks
+
+The pit wall's lap, sector, and stint clocks of the "time since the
+last relevant crossing" kind are `grafana-clock-panel` count-ups: the
+query fetches only the crossing timestamp and the panel ticks locally
+every second, so nothing streams or repaints behind a running clock.
+They are dumb timers — no clock-health gating, 1 s resolution, and
+they keep counting on a stopped car until the crossing leaves the
+dashboard window. The tenths-resolution, gated clock remains the
+extrapolator's streamed `timing.*_pit` panels; the two are labelled
+accordingly and deliberately coexist.
+
 ## Copyable relational variable block
 
 `car.json` is the canonical source for the shared relational template

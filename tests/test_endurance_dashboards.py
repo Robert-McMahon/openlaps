@@ -80,6 +80,29 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation_and_fix_quality() 
     } <= topics
     assert any("extrapolat" in panel.get("description", "").lower() for panel in panels)
 
+    # Lap and sector times are race-formatted: the timing panels show the
+    # publishers' pre-formatted `display` field, not raw seconds.
+    timing_topics = {
+        "openlaps/$vehicle/timing.lap_elapsed_pit",
+        "openlaps/$vehicle/timing.sector_elapsed_pit",
+        "openlaps/$vehicle/lap.last_time",
+        "openlaps/$vehicle/timing.delta_best",
+    }
+    for panel in panels:
+        if {target.get("topic") for target in panel.get("targets", [])} & timing_topics:
+            include = panel["transformations"][0]["options"]["include"]["names"]
+            assert include == ["display"], f"panel {panel['id']} shows {include}"
+
+    # Browser-local count-up clocks (lap, sector, stint): they tick in the
+    # browser from a queried crossing timestamp, with no live stream or
+    # repainting value behind them.
+    clocks = [panel for panel in panels if panel["type"] == "grafana-clock-panel"]
+    assert len(clocks) == 3
+    for clock in clocks:
+        assert clock["options"]["mode"] == "countup"
+        assert clock["options"]["countupSettings"]["source"] == "query"
+        assert clock["options"]["countupSettings"]["queryField"]
+
 
 def test_fuel_dashboard_uses_fuel_views_and_has_refuel_legal_clock() -> None:
     dashboard = _dashboard("fuel.json")

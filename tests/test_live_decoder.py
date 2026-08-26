@@ -286,6 +286,29 @@ def test_topic_and_payload_are_compact_json():
     assert b" " not in payload
 
 
+def test_timing_channels_carry_a_race_format_display_string():
+    # Grafana has no m:ss.t unit, so the display travels in the payload.
+    # Running values read in tenths, definitive completed times in millis,
+    # the delta as signed tenths. The numeric value stays untouched.
+    cases = (
+        ("timing.lap_elapsed", 68.46, "1:08.5"),
+        ("timing.predicted_lap", 58.31, "0:58.3"),
+        ("lap.last_time", 68.4996, "1:08.500"),
+        ("lap.best_time", 59.9996, "1:00.000"),
+        ("timing.delta_best", -0.42, "-0.4"),
+        ("timing.delta_best", 0.35, "+0.3"),
+    )
+    for channel, value, display in cases:
+        _, payload = mqtt_message("car-1", LiveUpdate(channel, 1234.25, value))
+        document = json.loads(payload)
+        assert document["value"] == value
+        assert document["display"] == display
+
+    # Non-timing channels and non-numeric values stay exactly as before.
+    _, payload = mqtt_message("car-1", LiveUpdate("lap.event", 1234.25, "{}"))
+    assert "display" not in json.loads(payload)
+
+
 def test_non_finite_values_are_not_encoded_as_invalid_json():
     for value in (math.nan, math.inf, -math.inf):
         with pytest.raises(ValueError, match="JSON"):

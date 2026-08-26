@@ -217,7 +217,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "none",
           "color": {
             "mode": "palette-classic"
           },
@@ -233,7 +233,15 @@
         },
         "overrides": []
       },
-      "options": {},
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Best theoretical lap$/",
+          "values": false
+        }
+      },
       "targets": [
         {
           "refId": "A",
@@ -242,11 +250,12 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT max(crossed_at) AS time, sum(best_split_s) AS \"Best theoretical lap\" FROM (SELECT sector, min(split_time_s) AS best_split_s, max(crossed_at) AS crossed_at FROM v_lap_sectors WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND valid GROUP BY sector) best"
+          "rawSql": "SELECT max(crossed_at) AS time, to_char(make_interval(secs => sum(best_split_s)), 'FMMI:SS.MS') AS \"Best theoretical lap\" FROM (SELECT sector, min(split_time_s) AS best_split_s, max(crossed_at) AS crossed_at FROM v_lap_sectors WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND valid GROUP BY sector) best"
         }
-      ]
+      ],
+      "description": "Definitive sector bests summed; m:ss.mmm."
     },
     {
       "id": 3,
@@ -264,7 +273,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "none",
           "color": {
             "mode": "palette-classic"
           },
@@ -289,12 +298,12 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT a.crossed_at AS time, a.split_time_s AS \"Selected lap sector\", b.split_time_s AS \"Comparison lap sector\", a.split_time_s - b.split_time_s AS \"Sector delta\" FROM v_lap_sectors a JOIN v_lap_sectors b ON b.vehicle_id = a.vehicle_id AND b.sector = a.sector WHERE a.lap_id::text = '$lap' AND b.lap_id::text = '$lap_compare' AND a.vehicle_id = '$vehicle' ORDER BY a.sector"
+          "rawSql": "SELECT a.crossed_at AS time, to_char(make_interval(secs => a.split_time_s), 'FMMI:SS.MS') AS \"Selected lap sector\", to_char(make_interval(secs => b.split_time_s), 'FMMI:SS.MS') AS \"Comparison lap sector\", to_char(a.split_time_s - b.split_time_s, 'S990.000') AS \"Sector delta\" FROM v_lap_sectors a JOIN v_lap_sectors b ON b.vehicle_id = a.vehicle_id AND b.sector = a.sector WHERE a.lap_id::text = '$lap' AND b.lap_id::text = '$lap_compare' AND a.vehicle_id = '$vehicle' ORDER BY a.sector"
         }
       ],
-      "description": "Both pickers are keyed by lap_id, never by a possibly repeated lap number."
+      "description": "Both pickers are keyed by lap_id, never by a possibly repeated lap number. Sector times are definitive and show milliseconds; the delta is signed seconds."
     },
     {
       "id": 4,

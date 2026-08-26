@@ -312,7 +312,13 @@ services:
       # asynchronously and offers no supported way to decline them without
       # also declining this one. They are part of what the pinned image is,
       # not something this stack asked for.
-      GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.1.0},grafana-clock-panel@${GRAFANA_CLOCK_PLUGIN_VERSION:-3.2.4}
+      #
+      # innius-video-panel earns its slot because core Grafana cannot embed
+      # the car camera at all: the text panel strips iframes (HTML
+      # sanitization, a global switch this stack will not flip), and no core
+      # panel plays a live MSE/WebRTC stream. The `video` dashboard is its
+      # only consumer.
+      GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.1.0},grafana-clock-panel@${GRAFANA_CLOCK_PLUGIN_VERSION:-3.2.4},innius-video-panel@${GRAFANA_VIDEO_PLUGIN_VERSION:-1.0.7}
       # Read by the provisioning YAML, which Grafana interpolates at load.
       # No password among them but the read-only one.
       TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}

@@ -11,7 +11,7 @@ that.
 | NATS config | `nats/vehicle.conf` | `nats/pit.conf` |
 | JetStream domain | `veh` | `pit` |
 | Streams | `TELE`, `CMD` (created by the agent) | `TELE_VEHICLE` (created by `provision_pit_streams.py`) |
-| Services | agent | ingest-writer, live-decoder, timing-extrapolator, session-control, ntrip-client |
+| Services | agent, go2rtc (`--profile video`) | ingest-writer, live-decoder, timing-extrapolator, session-control, ntrip-client |
 | Read surface | — | Grafana on `:3000` |
 
 **The pit dials the vehicle**, never the reverse. The vehicle runs a
@@ -19,6 +19,10 @@ leafnode *listener* on `:7422`; the pit config carries the `remotes:` entry.
 That direction is load-bearing: `docs/ARCHITECTURE.md` requires that the car
 need no inbound reachability from the pit LAN, which is what lets it sit
 behind NAT or a WSL2 host.
+
+The leafnode is the only thing that crosses **for telemetry and control**.
+Video is the one deliberate exception — a second, independent crossing in
+the same pit-dials-vehicle direction; see "The car camera" below.
 
 ## `OPENLAPS_NATS_URL` means different things in the two stacks
 
@@ -209,12 +213,13 @@ runbook:
    `TELE_VEHICLE`.
 5. The five services start, and Grafana with them.
 
-**The first bring-up needs internet.** Grafana installs one plugin —
-`grafana-mqtt-datasource`, the live gauge feed, and the only plugin this
-stack asks for — before it finishes starting. It lands in the `grafana-data`
-volume and is not fetched again, so a pit that will be offline at the track
-only has to have been online once. A fresh volume on a disconnected pit is
-a Grafana that does not come up.
+**The first bring-up needs internet.** Grafana installs its pinned plugins
+— `grafana-mqtt-datasource` (the live gauge feed), `grafana-clock-panel`
+(the count-up clocks) and `innius-video-panel` (the car camera) — before it
+finishes starting. They land in the `grafana-data` volume and are not
+fetched again, so a pit that will be offline at the track only has to have
+been online once. A fresh volume on a disconnected pit is a Grafana that
+does not come up.
 
 ### 3. Verify each hop
 
@@ -362,6 +367,35 @@ fails to load.
 SQL panels read the **views** (`docs/PIT_SCHEMA.md`), which is not a
 convention here but a grant: Grafana's database role has `SELECT` on the
 views and no access at all to `samples` or `laps`.
+
+## The car camera
+
+Video is deliberately **not telemetry**. The vehicle runs
+[go2rtc](https://github.com/AlexxIT/go2rtc) beside the agent — USB camera,
+encoded to H.264 on the SBC's iGPU, cabin audio in Opus — and the pit
+operator's browser plays it *directly from the car*
+(`http://<vehicle-host>:1984/stream.html?src=car`), embedded in the `video`
+Grafana dashboard. No video byte touches NATS, JetStream or the database, so
+a dead camera costs telemetry nothing, and dropping video is the degradation
+plan's cheapest lever: close the browser tab.
+
+This is the one crossing beside the leafnode, in the same direction — the
+pit dials the vehicle on `:1984` (API/MSE), `:8554` (RTSP) and `:8555`
+(WebRTC, TCP and UDP). The stream definitions and encoder bitrates live in
+`go2rtc/go2rtc.yaml`; they are sized against `docs/LINK_BUDGET.md` §5's
+~1.4 Mbit/s video reservation, which the `openlaps_video_*` counters in
+`nft/bench-*.nft` exist to test. The service is opt-in because a host
+without `/dev/video0` cannot start the container:
+
+```bash
+docker compose -f deploy/vehicle-compose.yaml --profile video up -d
+```
+
+Verify from the pit before burying it in a dashboard: `curl -fsS
+http://<vehicle-host>:1984/api/streams` lists `car`, and the URL above plays
+in a browser. The dashboard's `camera` variable defaults to the bench
+vehicle's address and is overridable in the browser at the track — the
+committed JSON never needs an event-day edit.
 
 ## Tear-down
 

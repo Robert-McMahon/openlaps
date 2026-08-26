@@ -76,5 +76,45 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # The in-car camera (docs/LINK_BUDGET.md §5 reserves the headroom; the
+  # predecessor stack ran the same encoder). Opt-in by compose profile
+  # because a bench SBC without a camera plugged in cannot start a container
+  # that maps /dev/video0:
+  #
+  #     docker compose -f deploy/vehicle-compose.yaml --profile video up -d
+  #
+  # The pit consumes this directly -- the operator's browser opens
+  # http://<vehicle-host>:1984/stream.html?src=car (embedded in the `video`
+  # Grafana dashboard). That is a second pit->vehicle crossing beside the
+  # leafnode, in the same direction: the pit still dials the vehicle, and
+  # the car still needs no inbound reachability *initiated from beyond* the
+  # pit LAN. Video bytes never touch NATS; a dead camera cannot cost
+  # telemetry anything except the airtime it stops using.
+  go2rtc:
+    # Pinned like every other image here. The `-hardware` variant carries
+    # the Intel VAAPI drivers the encode pipeline in go2rtc/go2rtc.yaml
+    # names; the plain image would fall back to CPU encode on an SBC that
+    # is also running the agent.
+    image: alexxit/go2rtc:${GO2RTC_IMAGE_TAG:-1.9.14-hardware}
+    # Host networking for the same reason as the servers above -- and
+    # WebRTC negotiates ephemeral UDP, which port mapping handles badly.
+    network_mode: host
+    devices:
+      - ${OPENLAPS_VIDEO_DEVICE:-/dev/video0}:/dev/video0
+      # The iGPU, for VAAPI encode.
+      - /dev/dri:/dev/dri
+      # ALSA capture for cabin audio. Present on the bench SBC; if a build
+      # has no audio device, drop this line and the audio producer simply
+      # fails per-request while video keeps working.
+      - /dev/snd:/dev/snd
+    volumes:
+      # Read-only: the repository is the source of truth for the stream
+      # definitions, same discipline as the Grafana provisioning mounts.
+      # go2rtc only writes its config when edited through its web UI, which
+      # this mount deliberately makes impossible.
+      - ./go2rtc:/config:ro
+    profiles: ["video"]
+    restart: unless-stopped
+
 volumes:
   agent-state:

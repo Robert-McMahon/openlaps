@@ -27,6 +27,14 @@
 # rather than originating in the host's output hook. input/output are kept
 # anyway, for a pit running nats-server directly.
 
+# The video counters mirror the leaf pair for the same reason the leaf
+# pair is mirrored: the pit *dials* the vehicle's go2rtc (browser ->
+# 1984/8554/8555, the ports deploy/go2rtc/go2rtc.yaml pins), so here a
+# packet with dport 1984 is leaving for the car and a packet with sport
+# 1984 is video arriving from it. They exist for P4.5's optional
+# competing-stream test — docs/LINK_BUDGET.md §5's ~1.4 Mbit/s video
+# reservation is untested — and link_probe ignores them.
+
 table inet openlaps_bench {
 	counter openlaps_leaf_out {
 		comment "pit -> vehicle, leafnode TCP 7422, wire bytes"
@@ -36,21 +44,41 @@ table inet openlaps_bench {
 		comment "vehicle -> pit, leafnode TCP 7422, wire bytes"
 	}
 
+	counter openlaps_video_out {
+		comment "pit -> vehicle, go2rtc 1984/8554/8555, wire bytes"
+	}
+
+	counter openlaps_video_in {
+		comment "vehicle -> pit, go2rtc 1984/8554/8555, wire bytes"
+	}
+
 	chain input {
 		type filter hook input priority filter; policy accept;
 		tcp sport 7422 counter name "openlaps_leaf_in"
 		tcp dport 7422 counter name "openlaps_leaf_out"
+		tcp sport { 1984, 8554, 8555 } counter name "openlaps_video_in"
+		tcp dport { 1984, 8554, 8555 } counter name "openlaps_video_out"
+		udp sport 8555 counter name "openlaps_video_in"
+		udp dport 8555 counter name "openlaps_video_out"
 	}
 
 	chain output {
 		type filter hook output priority filter; policy accept;
 		tcp dport 7422 counter name "openlaps_leaf_out"
 		tcp sport 7422 counter name "openlaps_leaf_in"
+		tcp dport { 1984, 8554, 8555 } counter name "openlaps_video_out"
+		tcp sport { 1984, 8554, 8555 } counter name "openlaps_video_in"
+		udp dport 8555 counter name "openlaps_video_out"
+		udp sport 8555 counter name "openlaps_video_in"
 	}
 
 	chain forward {
 		type filter hook forward priority filter; policy accept;
 		tcp dport 7422 counter name "openlaps_leaf_out"
 		tcp sport 7422 counter name "openlaps_leaf_in"
+		tcp dport { 1984, 8554, 8555 } counter name "openlaps_video_out"
+		tcp sport { 1984, 8554, 8555 } counter name "openlaps_video_in"
+		udp dport 8555 counter name "openlaps_video_out"
+		udp sport 8555 counter name "openlaps_video_in"
 	}
 }

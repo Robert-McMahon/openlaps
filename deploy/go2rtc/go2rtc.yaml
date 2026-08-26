@@ -1,0 +1,41 @@
+# The in-car camera, encoded on the vehicle SBC and served by go2rtc.
+#
+# Ported from the predecessor stack's config (logger repo,
+# config/go2rtc/go2rtc.yaml) with the stream renamed `linux_usbcam` -> `car`.
+# The pipelines themselves are unchanged: they were tuned on this hardware
+# and the bitrates are what docs/LINK_BUDGET.md §5 budgets against — ~800k
+# video + 64k audio sits inside the ~1.4 Mbit/s the link budget reserves for
+# video at 2 MHz MCS4, with margin for the encoder overshooting `maxrate`.
+#
+# The listeners are stated explicitly rather than left to go2rtc's defaults
+# so that deploy/nft/bench-*.nft can count the same three ports this file
+# names. Change one, change both.
+api:
+    listen: ":1984" # HTTP API, stream.html player, MSE over websocket
+
+rtsp:
+    listen: ":8554" # inter-process handoff (the audio exec publishes here)
+
+webrtc:
+    listen: ":8555" # WebRTC media, TCP and UDP
+
+streams:
+    car:
+        # MJPEG off the USB camera, encoded to H.264 on the N100's iGPU via
+        # VAAPI. CPU encode is not an option on an SBC that is also running
+        # the agent; the raw args exist because go2rtc's vaapi template does
+        # not set bitrate caps.
+        - ffmpeg:device?video=/dev/video0&input_format=mjpeg&video_size=640x360#video=h264#hardware=vaapi#raw=-init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -b:v 800k -maxrate 1M -bufsize 2M
+        # Cabin audio: ALSA capture, denoised, Opus at 64k.
+        - exec:ffmpeg -f alsa -i plughw:0,0 -c:a libopus -ar:a 48000 -af afftdn=nr=20:nt=v:nf=-20 -ac:a 1 -rtsp_transport tcp -b:a 64k -f rtsp {output}
+
+    # H.265 variant — swap in for `car` once verified in the pit browser
+    # (don't run both at once; only one process can hold /dev/video0).
+    # Uses an explicit exec producer because go2rtc's h265/vaapi template
+    # omits the scale_vaapi NV12 conversion the encoder needs for 4:2:2
+    # MJPEG input. Resolutions: 640x360 (~500k), 1280x720 (~1-1.5M),
+    # 1920x1080 (~2-3M) — the upper two exceed the link budget's video
+    # reservation and are bench-LAN options only.
+    car_hevc:
+        - exec:ffmpeg -hide_banner -v error -init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -hwaccel vaapi -hwaccel_output_format vaapi -f v4l2 -input_format mjpeg -video_size 1920x1080 -i /dev/video0 -vf format=vaapi|nv12,hwupload,scale_vaapi=out_color_matrix=bt709:out_range=tv:format=nv12 -c:v hevc_vaapi -g 50 -bf 0 -profile:v main -b:v 1000k -maxrate 1400k -bufsize 2800k -an -rtsp_transport tcp -f rtsp {output}
+        - exec:ffmpeg -f alsa -i plughw:0,0 -c:a libopus -ar:a 48000 -af afftdn=nr=20:nt=v:nf=-20 -ac:a 1 -rtsp_transport tcp -b:a 64k -f rtsp {output}

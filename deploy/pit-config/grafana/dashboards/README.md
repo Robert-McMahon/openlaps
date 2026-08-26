@@ -68,6 +68,21 @@ dashboard window. The tenths-resolution, gated clock remains the
 extrapolator's streamed `timing.*_pit` panels; the two are labelled
 accordingly and deliberately coexist.
 
+## The video dashboard reads no data
+
+`video.json` is one `innius-video-panel` iframe onto the **vehicle's**
+go2rtc player — the browser connects to the car directly
+(`deploy/README.md` → "The car camera"); nothing is queried, streamed or
+stored at the pit. Two consequences worth knowing before editing it:
+
+- The panel still names the `timescale` datasource. That is the dashboard
+  contract (`tests/test_grafana_dashboards.py` requires an explicit
+  provisioned uid on every panel), not a data dependency — the same
+  formality the text panels follow.
+- The `camera` variable is a textbox holding the go2rtc base URL, default
+  the bench vehicle. Change it in the browser at the track; change the
+  *default* here in the JSON only when the bench itself moves.
+
 ## Copyable relational variable block
 
 `car.json` is the canonical source for the shared relational template

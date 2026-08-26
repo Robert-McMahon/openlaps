@@ -16,7 +16,7 @@
     ]
   },
   "description": "Live car and engine state, lap/link context, and historical traces from the openlaps stable read surface.",
-  "editable": false,
+  "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "links": [
@@ -33,6 +33,7 @@
       "url": "http://localhost:8080/"
     }
   ],
+  "liveNow": true,
   "panels": [
     {
       "collapsed": false,
@@ -57,28 +58,28 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
+          "max": 9000,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "orange",
-                "value": 7500
+                "value": 6500
               },
               {
                 "color": "red",
-                "value": 8200
+                "value": 7000
               }
             ]
           },
-          "unit": "rpm",
-          "decimals": 0,
-          "min": 0,
-          "max": 9000
+          "unit": "rotrpm"
         },
         "overrides": []
       },
@@ -88,7 +89,9 @@
         "x": 0,
         "y": 1
       },
+      "hideTimeOverride": true,
       "id": 2,
+      "maxDataPoints": 600,
       "options": {
         "minVizHeight": 75,
         "minVizWidth": 75,
@@ -115,6 +118,7 @@
           "topic": "openlaps/$vehicle/car.rpm"
         }
       ],
+      "timeFrom": "1m",
       "title": "Engine speed",
       "transformations": [
         {
@@ -128,10 +132,7 @@
           }
         }
       ],
-      "type": "gauge",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -143,13 +144,16 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
+          "max": 100,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "yellow",
@@ -157,10 +161,7 @@
               }
             ]
           },
-          "unit": "percent",
-          "decimals": 1,
-          "min": 0,
-          "max": 100
+          "unit": "percent"
         },
         "overrides": []
       },
@@ -170,7 +171,9 @@
         "x": 6,
         "y": 1
       },
+      "hideTimeOverride": true,
       "id": 3,
+      "maxDataPoints": 600,
       "options": {
         "minVizHeight": 75,
         "minVizWidth": 75,
@@ -197,6 +200,7 @@
           "topic": "openlaps/$vehicle/car.throttle_pos"
         }
       ],
+      "timeFrom": "1m",
       "title": "Throttle",
       "transformations": [
         {
@@ -210,10 +214,7 @@
           }
         }
       ],
-      "type": "gauge",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -225,6 +226,7 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [
             {
               "options": {
@@ -240,12 +242,14 @@
               "type": "value"
             }
           ],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -253,10 +257,7 @@
               }
             ]
           },
-          "unit": "none",
-          "decimals": 0,
-          "min": 0,
-          "max": 1
+          "unit": "none"
         },
         "overrides": []
       },
@@ -266,12 +267,15 @@
         "x": 12,
         "y": 1
       },
+      "hideTimeOverride": true,
       "id": 4,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -294,6 +298,7 @@
           "topic": "openlaps/$vehicle/car.brake_pedal_switch"
         }
       ],
+      "timeFrom": "1m",
       "title": "Brake",
       "transformations": [
         {
@@ -307,10 +312,7 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
@@ -322,20 +324,20 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
+          "max": 6,
+          "min": -1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
-          "unit": "none",
-          "decimals": 0,
-          "min": -1,
-          "max": 6
+          "unit": "none"
         },
         "overrides": []
       },
@@ -345,12 +347,15 @@
         "x": 18,
         "y": 1
       },
+      "hideTimeOverride": true,
       "id": 5,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -373,6 +378,7 @@
           "topic": "openlaps/$vehicle/car.gear"
         }
       ],
+      "timeFrom": "1m",
       "title": "Gear",
       "transformations": [
         {
@@ -386,10 +392,7 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
@@ -401,20 +404,20 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
+          "max": 300,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
-          "unit": "velocitykmh",
-          "decimals": 0,
-          "min": 0,
-          "max": 300
+          "unit": "velocitykmh"
         },
         "overrides": []
       },
@@ -424,12 +427,15 @@
         "x": 0,
         "y": 6
       },
+      "hideTimeOverride": true,
       "id": 6,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -452,6 +458,7 @@
           "topic": "openlaps/$vehicle/car.vehicle_speed"
         }
       ],
+      "timeFrom": "1m",
       "title": "Vehicle speed",
       "transformations": [
         {
@@ -465,10 +472,7 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
@@ -480,28 +484,28 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
+          "max": 125,
+          "min": 40,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "orange",
-                "value": 373.15
+                "value": 100
               },
               {
                 "color": "red",
-                "value": 383.15
+                "value": 105
               }
             ]
           },
-          "unit": "kelvin",
-          "decimals": 1,
-          "min": 273.15,
-          "max": 403.15
+          "unit": "celsius"
         },
         "overrides": []
       },
@@ -511,7 +515,9 @@
         "x": 6,
         "y": 6
       },
+      "hideTimeOverride": true,
       "id": 7,
+      "maxDataPoints": 600,
       "options": {
         "minVizHeight": 75,
         "minVizWidth": 75,
@@ -538,6 +544,7 @@
           "topic": "openlaps/$vehicle/car.coolant_temp"
         }
       ],
+      "timeFrom": "1m",
       "title": "Coolant temperature",
       "transformations": [
         {
@@ -549,12 +556,31 @@
               ]
             }
           }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "fixed": "273.1"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
         }
       ],
-      "type": "gauge",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -566,28 +592,28 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
+          "max": 150,
+          "min": 40,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "orange",
-                "value": 383.15
+                "value": 115
               },
               {
                 "color": "red",
-                "value": 398.15
+                "value": 125
               }
             ]
           },
-          "unit": "kelvin",
-          "decimals": 1,
-          "min": 273.15,
-          "max": 423.15
+          "unit": "celsius"
         },
         "overrides": []
       },
@@ -597,7 +623,9 @@
         "x": 12,
         "y": 6
       },
+      "hideTimeOverride": true,
       "id": 8,
+      "maxDataPoints": 600,
       "options": {
         "minVizHeight": 75,
         "minVizWidth": 75,
@@ -624,6 +652,7 @@
           "topic": "openlaps/$vehicle/car.oil_temp"
         }
       ],
+      "timeFrom": "1m",
       "title": "Oil temperature",
       "transformations": [
         {
@@ -635,12 +664,31 @@
               ]
             }
           }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "fixed": "273.1"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
         }
       ],
-      "type": "gauge",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -652,13 +700,16 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
+          "max": 1000,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "red",
-                "value": null
+                "value": 0
               },
               {
                 "color": "orange",
@@ -670,10 +721,7 @@
               }
             ]
           },
-          "unit": "pressurekpa",
-          "decimals": 0,
-          "min": 0,
-          "max": 1000
+          "unit": "pressurekpa"
         },
         "overrides": []
       },
@@ -683,7 +731,9 @@
         "x": 18,
         "y": 6
       },
+      "hideTimeOverride": true,
       "id": 9,
+      "maxDataPoints": 600,
       "options": {
         "minVizHeight": 75,
         "minVizWidth": 75,
@@ -710,6 +760,7 @@
           "topic": "openlaps/$vehicle/car.oil_pressure"
         }
       ],
+      "timeFrom": "1m",
       "title": "Oil pressure",
       "transformations": [
         {
@@ -723,10 +774,7 @@
           }
         }
       ],
-      "type": "gauge",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -738,13 +786,16 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
+          "max": 300,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "orange",
@@ -756,10 +807,7 @@
               }
             ]
           },
-          "unit": "pressurekpa",
-          "decimals": 0,
-          "min": 0,
-          "max": 300
+          "unit": "pressurekpa"
         },
         "overrides": []
       },
@@ -769,7 +817,9 @@
         "x": 0,
         "y": 11
       },
+      "hideTimeOverride": true,
       "id": 10,
+      "maxDataPoints": 600,
       "options": {
         "minVizHeight": 75,
         "minVizWidth": 75,
@@ -796,6 +846,7 @@
           "topic": "openlaps/$vehicle/car.map"
         }
       ],
+      "timeFrom": "1m",
       "title": "Manifold pressure",
       "transformations": [
         {
@@ -809,10 +860,7 @@
           }
         }
       ],
-      "type": "gauge",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -824,13 +872,16 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 2,
           "mappings": [],
+          "max": 1.4,
+          "min": 0.6,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "orange",
@@ -842,10 +893,7 @@
               }
             ]
           },
-          "unit": "none",
-          "decimals": 2,
-          "min": 0.6,
-          "max": 1.4
+          "unit": "none"
         },
         "overrides": []
       },
@@ -855,12 +903,15 @@
         "x": 6,
         "y": 11
       },
+      "hideTimeOverride": true,
       "id": 11,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -883,6 +934,7 @@
           "topic": "openlaps/$vehicle/car.lambda1"
         }
       ],
+      "timeFrom": "1m",
       "title": "Lambda",
       "transformations": [
         {
@@ -896,10 +948,7 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
@@ -911,13 +960,16 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 1,
           "mappings": [],
+          "max": 16,
+          "min": 8,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "red",
-                "value": null
+                "value": 0
               },
               {
                 "color": "orange",
@@ -929,10 +981,7 @@
               }
             ]
           },
-          "unit": "volt",
-          "decimals": 1,
-          "min": 8,
-          "max": 16
+          "unit": "volt"
         },
         "overrides": []
       },
@@ -942,7 +991,9 @@
         "x": 12,
         "y": 11
       },
+      "hideTimeOverride": true,
       "id": 12,
+      "maxDataPoints": 600,
       "options": {
         "minVizHeight": 75,
         "minVizWidth": 75,
@@ -969,6 +1020,7 @@
           "topic": "openlaps/$vehicle/car.battery_v"
         }
       ],
+      "timeFrom": "1m",
       "title": "Battery voltage",
       "transformations": [
         {
@@ -982,10 +1034,7 @@
           }
         }
       ],
-      "type": "gauge",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "gauge"
     },
     {
       "datasource": {
@@ -997,13 +1046,16 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
+          "max": 1000,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "red",
-                "value": null
+                "value": 0
               },
               {
                 "color": "orange",
@@ -1015,10 +1067,7 @@
               }
             ]
           },
-          "unit": "pressurekpa",
-          "decimals": 0,
-          "min": 0,
-          "max": 1000
+          "unit": "pressurekpa"
         },
         "overrides": []
       },
@@ -1028,7 +1077,9 @@
         "x": 18,
         "y": 11
       },
+      "hideTimeOverride": true,
       "id": 13,
+      "maxDataPoints": 600,
       "options": {
         "minVizHeight": 75,
         "minVizWidth": 75,
@@ -1055,6 +1106,7 @@
           "topic": "openlaps/$vehicle/car.fuel_pressure"
         }
       ],
+      "timeFrom": "1m",
       "title": "Fuel pressure",
       "transformations": [
         {
@@ -1068,10 +1120,7 @@
           }
         }
       ],
-      "type": "gauge",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "gauge"
     },
     {
       "collapsed": false,
@@ -1096,18 +1145,18 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
-          "unit": "none",
-          "decimals": 0
+          "unit": "none"
         },
         "overrides": []
       },
@@ -1117,12 +1166,15 @@
         "x": 0,
         "y": 17
       },
+      "hideTimeOverride": true,
       "id": 15,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1145,6 +1197,7 @@
           "topic": "openlaps/$vehicle/lap.number"
         }
       ],
+      "timeFrom": "1m",
       "title": "Lap",
       "transformations": [
         {
@@ -1158,10 +1211,7 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
@@ -1173,18 +1223,18 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 3,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
-          "unit": "s",
-          "decimals": 3
+          "unit": "s"
         },
         "overrides": []
       },
@@ -1194,12 +1244,15 @@
         "x": 4,
         "y": 17
       },
+      "hideTimeOverride": true,
       "id": 16,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1222,6 +1275,7 @@
           "topic": "openlaps/$vehicle/timing.lap_elapsed"
         }
       ],
+      "timeFrom": "1m",
       "title": "Current lap",
       "transformations": [
         {
@@ -1235,10 +1289,7 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
@@ -1250,18 +1301,18 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 3,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
-          "unit": "s",
-          "decimals": 3
+          "unit": "s"
         },
         "overrides": []
       },
@@ -1271,12 +1322,15 @@
         "x": 8,
         "y": 17
       },
+      "hideTimeOverride": true,
       "id": 17,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1299,6 +1353,7 @@
           "topic": "openlaps/$vehicle/lap.last_time"
         }
       ],
+      "timeFrom": "1m",
       "title": "Last lap",
       "transformations": [
         {
@@ -1312,10 +1367,7 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
@@ -1327,18 +1379,18 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 3,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
-          "unit": "s",
-          "decimals": 3
+          "unit": "s"
         },
         "overrides": []
       },
@@ -1348,12 +1400,15 @@
         "x": 12,
         "y": 17
       },
+      "hideTimeOverride": true,
       "id": 18,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1376,6 +1431,7 @@
           "topic": "openlaps/$vehicle/lap.best_time"
         }
       ],
+      "timeFrom": "1m",
       "title": "Best lap",
       "transformations": [
         {
@@ -1389,10 +1445,7 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
@@ -1404,18 +1457,18 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 3,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
-          "unit": "s",
-          "decimals": 3
+          "unit": "s"
         },
         "overrides": []
       },
@@ -1425,12 +1478,15 @@
         "x": 16,
         "y": 17
       },
+      "hideTimeOverride": true,
       "id": 19,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1453,6 +1509,7 @@
           "topic": "openlaps/$vehicle/timing.delta_best"
         }
       ],
+      "timeFrom": "1m",
       "title": "Delta to best",
       "transformations": [
         {
@@ -1466,28 +1523,27 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "grafana-mqtt-datasource",
         "uid": "mqtt-live"
       },
+      "description": "Vehicle-side age of the oldest unacknowledged publish; this value goes stale when the radio link drops.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "orange",
@@ -1499,8 +1555,7 @@
               }
             ]
           },
-          "unit": "ms",
-          "decimals": 0
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -1510,12 +1565,15 @@
         "x": 20,
         "y": 17
       },
+      "hideTimeOverride": true,
       "id": 20,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1538,6 +1596,7 @@
           "topic": "openlaps/$vehicle/sys.agent.publish_lag_ms"
         }
       ],
+      "timeFrom": "1m",
       "title": "Publish lag",
       "transformations": [
         {
@@ -1551,17 +1610,14 @@
           }
         }
       ],
-      "type": "stat",
-      "description": "Vehicle-side age of the oldest unacknowledged publish; this value goes stale when the radio link drops.",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "grafana-mqtt-datasource",
         "uid": "mqtt-live"
       },
+      "description": "Capture timestamp carried by the newest link-health MQTT message. A dead link leaves this visibly stale rather than zeroing it.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1573,7 +1629,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -1587,12 +1643,15 @@
         "x": 0,
         "y": 21
       },
+      "hideTimeOverride": true,
       "id": 21,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1615,6 +1674,7 @@
           "topic": "openlaps/$vehicle/sys.agent.publish_lag_ms"
         }
       ],
+      "timeFrom": "1m",
       "title": "Newest live update",
       "transformations": [
         {
@@ -1628,11 +1688,7 @@
           }
         }
       ],
-      "type": "stat",
-      "description": "Capture timestamp carried by the newest link-health MQTT message. A dead link leaves this visibly stale rather than zeroing it.",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
@@ -1644,13 +1700,14 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
@@ -1658,8 +1715,7 @@
               }
             ]
           },
-          "unit": "short",
-          "decimals": 0
+          "unit": "short"
         },
         "overrides": []
       },
@@ -1669,12 +1725,15 @@
         "x": 4,
         "y": 21
       },
+      "hideTimeOverride": true,
       "id": 22,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1697,6 +1756,7 @@
           "topic": "openlaps/$vehicle/sys.agent.publish_drops"
         }
       ],
+      "timeFrom": "1m",
       "title": "Publish drops",
       "transformations": [
         {
@@ -1710,10 +1770,7 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "datasource": {
@@ -1725,18 +1782,18 @@
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
-          "unit": "short",
-          "decimals": 0
+          "unit": "short"
         },
         "overrides": []
       },
@@ -1746,12 +1803,15 @@
         "x": 8,
         "y": 21
       },
+      "hideTimeOverride": true,
       "id": 23,
+      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1774,6 +1834,7 @@
           "topic": "openlaps/$vehicle/sys.agent.rbe_suppressed"
         }
       ],
+      "timeFrom": "1m",
       "title": "RBE suppressed",
       "transformations": [
         {
@@ -1787,10 +1848,7 @@
           }
         }
       ],
-      "type": "stat",
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "type": "stat"
     },
     {
       "collapsed": false,
@@ -1810,6 +1868,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1855,7 +1914,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -1944,14 +2003,14 @@
         }
       ],
       "title": "Engine speed",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1997,7 +2056,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -2140,14 +2199,14 @@
         }
       ],
       "title": "Throttle and brake",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2193,7 +2252,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -2282,14 +2341,14 @@
         }
       ],
       "title": "Vehicle speed",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2335,7 +2394,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               }
             ]
           },
@@ -2424,14 +2483,14 @@
         }
       ],
       "title": "Gear",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2476,8 +2535,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -2566,14 +2624,14 @@
         }
       ],
       "title": "Coolant temperature",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2618,8 +2676,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -2708,14 +2765,14 @@
         }
       ],
       "title": "Oil temperature",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2760,8 +2817,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -2904,14 +2960,14 @@
         }
       ],
       "title": "Oil and fuel pressure",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2956,8 +3012,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -3046,14 +3101,14 @@
         }
       ],
       "title": "Manifold pressure",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3098,8 +3153,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -3188,14 +3242,14 @@
         }
       ],
       "title": "Lambda",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3240,8 +3294,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -3330,14 +3383,14 @@
         }
       ],
       "title": "Battery voltage",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3382,8 +3435,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -3472,14 +3524,14 @@
         }
       ],
       "title": "Knock level",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3524,8 +3576,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -3614,14 +3665,12 @@
         }
       ],
       "title": "Fuel level",
-      "type": "timeseries",
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces."
+      "type": "timeseries"
     }
   ],
   "preload": false,
-  "refresh": "5s",
-  "livenow": true,
-  "schemaVersion": 41,
+  "refresh": "auto",
+  "schemaVersion": 42,
   "tags": [
     "openlaps",
     "car",
@@ -3646,6 +3695,7 @@
         "query": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
         "refresh": 1,
         "regex": "",
+        "regexApplyTo": "value",
         "sort": 1,
         "type": "query"
       },
@@ -3667,6 +3717,7 @@
         "query": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
         "refresh": 1,
         "regex": "",
+        "regexApplyTo": "value",
         "sort": 2,
         "type": "query"
       },
@@ -3688,6 +3739,7 @@
         "query": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
         "refresh": 1,
         "regex": "",
+        "regexApplyTo": "value",
         "sort": 3,
         "type": "query"
       },
@@ -3701,14 +3753,15 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
         "includeAll": true,
         "label": "Stint",
         "name": "stint",
         "options": [],
-        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
         "refresh": 1,
         "regex": "",
+        "regexApplyTo": "value",
         "sort": 4,
         "type": "query"
       },
@@ -3722,14 +3775,15 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "definition": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
         "includeAll": true,
         "label": "Lap",
         "name": "lap",
         "options": [],
-        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "query": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
         "refresh": 1,
         "regex": "",
+        "regexApplyTo": "value",
         "sort": 5,
         "type": "query"
       },
@@ -3754,7 +3808,8 @@
           }
         ],
         "query": "Session (1 s envelope) : v_samples_1s_named,Raw (lap) : v_samples_named",
-        "type": "custom"
+        "type": "custom",
+        "valuesFormat": "csv"
       }
     ]
   },
@@ -3766,6 +3821,6 @@
   "timezone": "browser",
   "title": "Car and engine",
   "uid": "car",
-  "version": 1,
+  "version": 4,
   "weekStart": "monday"
 }

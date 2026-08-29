@@ -1,4 +1,4 @@
-# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the five pit
+# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the six pit
 # services.
 #
 #     docker compose -f deploy/pit-compose.yaml up -d
@@ -266,6 +266,65 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8083/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+  pit-monitor:
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-pit-monitor"]
+    # The one pit service on the host network namespace, and the reason is
+    # its subject: this service reports on *the pit host*, not on the compose
+    # network. Two things need it.
+    #
+    #   chronyc has to reach the host's chronyd on 127.0.0.1:323. The vehicle
+    #   agent already does exactly this (deploy/Dockerfile) -- it is why
+    #   chrony is in the runtime image at all -- and a chronyd bound to
+    #   localhost is not reachable from a bridge network by any other means
+    #   short of mounting its socket.
+    #
+    #   psutil has to see the host's CPU, load, memory, interfaces and
+    #   temperatures. Most of /proc is not namespaced so a bridged container
+    #   would get these right by accident, but the network counters would be
+    #   the container's own and read as a permanently idle pit.
+    #
+    # It also puts the ntrip-client's :8083 and NATS's :8222 on 127.0.0.1 via
+    # the ports those services already publish, so nothing new is exposed.
+    network_mode: host
+    volumes:
+      # Read-only, and only so `disk_usage` measures the pit's real root
+      # filesystem: a container's own `/` is the image overlay, which is
+      # neither the disk Timescale is filling nor one anybody can act on.
+      # Narrow this to a specific mount point (and set the DISK_PATH below to
+      # match) if the pit host keeps its data somewhere other than `/`.
+      - /:/hostfs:ro
+    environment:
+      # Compose DNS does not exist on the host network, so the database is
+      # the address timescaledb publishes rather than the service name every
+      # other service here uses. A TIMESCALE_DSN set in .env would override
+      # this and name `timescaledb`, which resolves nowhere from here, so it
+      # is cleared for this service alone -- TIMESCALE_DB/USER/PASSWORD from
+      # .env still apply. A pit that needs the DSN escape hatch (TLS, a
+      # socket) sets this service's own value here instead of clearing it.
+      TIMESCALE_HOST: ${TIMESCALE_LOCAL_HOST:-127.0.0.1}
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_DSN: ""
+      OPENLAPS_PIT_MONITOR_HEALTH_PORT: "8085"
+      OPENLAPS_PIT_MONITOR_INTERVAL_S: ${OPENLAPS_PIT_MONITOR_INTERVAL_S:-5}
+      OPENLAPS_PIT_MONITOR_DISK_PATH: /hostfs
+      OPENLAPS_PIT_MONITOR_NTRIP_URL: ${OPENLAPS_PIT_MONITOR_NTRIP_URL:-http://127.0.0.1:8083/health}
+      OPENLAPS_PIT_MONITOR_NATS_URL: ${OPENLAPS_PIT_MONITOR_NATS_URL:-http://127.0.0.1:8222}
+    # No `ports:` -- host networking publishes :8085 directly. The ntrip and
+    # NATS probes are best-effort by design (a pit not running RTK stops the
+    # ntrip-client on purpose), so neither is a `depends_on`; only the schema
+    # this service writes into is.
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8085/health"]
       interval: 15s
       timeout: 5s
       retries: 4

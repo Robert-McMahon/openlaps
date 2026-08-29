@@ -1,10 +1,10 @@
 {
   "uid": "system-status",
   "title": "System status",
-  "description": "Bring-up and health surface for the two stacks: GNSS quality, the vehicle's clock discipline, the agent's publish path and what is actually landing at the pit. Live values come from MQTT; anything with history is a Timescale query.",
+  "description": "Bring-up and health surface for the two stacks: GNSS quality, the vehicle's clock discipline, the agent's publish path, what is actually landing at the pit, and the pit's own clock, corrections, NATS and host. Vehicle live values come from MQTT; everything with history — including all four pit rows — is a Timescale query.",
   "editable": false,
   "schemaVersion": 41,
-  "version": 2,
+  "version": 3,
   "refresh": "5s",
   "time": {
     "from": "now-15m",
@@ -42,7 +42,7 @@
   "panels": [
     {
       "id": 100,
-      "title": "GNSS \u2014 position and fix quality",
+      "title": "GNSS — position and fix quality",
       "type": "row",
       "gridPos": {
         "x": 0,
@@ -745,7 +745,7 @@
     },
     {
       "id": 109,
-      "title": "Vehicle clock \u2014 chrony and the GNSS timing head",
+      "title": "Vehicle clock — chrony and the GNSS timing head",
       "type": "row",
       "gridPos": {
         "x": 0,
@@ -895,7 +895,7 @@
             ]
           },
           "decimals": 0,
-          "noValue": "\u2014"
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -969,7 +969,7 @@
             ]
           },
           "decimals": 9,
-          "noValue": "\u2014"
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -1042,7 +1042,7 @@
             ]
           },
           "decimals": 9,
-          "noValue": "\u2014"
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -1262,7 +1262,7 @@
     },
     {
       "id": 116,
-      "title": "Vehicle agent \u2014 publish path health",
+      "title": "Vehicle agent — publish path health",
       "type": "row",
       "gridPos": {
         "x": 0,
@@ -1307,7 +1307,7 @@
             ]
           },
           "decimals": 0,
-          "noValue": "\u2014"
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -1385,7 +1385,7 @@
             ]
           },
           "decimals": 0,
-          "noValue": "\u2014"
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -1430,7 +1430,7 @@
     },
     {
       "id": 119,
-      "title": "Queue drops \u2014 serial0 (GNSS)",
+      "title": "Queue drops — serial0 (GNSS)",
       "type": "stat",
       "datasource": {
         "type": "grafana-mqtt-datasource",
@@ -1462,7 +1462,7 @@
             ]
           },
           "decimals": 0,
-          "noValue": "\u2014"
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -1507,7 +1507,7 @@
     },
     {
       "id": 120,
-      "title": "Queue drops \u2014 can0",
+      "title": "Queue drops — can0",
       "type": "stat",
       "datasource": {
         "type": "grafana-mqtt-datasource",
@@ -1539,7 +1539,7 @@
             ]
           },
           "decimals": 0,
-          "noValue": "\u2014"
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -1584,7 +1584,7 @@
     },
     {
       "id": 121,
-      "title": "Queue drops \u2014 host",
+      "title": "Queue drops — host",
       "type": "stat",
       "datasource": {
         "type": "grafana-mqtt-datasource",
@@ -1616,7 +1616,7 @@
             ]
           },
           "decimals": 0,
-          "noValue": "\u2014"
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -1689,7 +1689,7 @@
             ]
           },
           "decimals": 0,
-          "noValue": "\u2014"
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -1894,7 +1894,7 @@
     },
     {
       "id": 125,
-      "title": "Pit ingest \u2014 what is actually landing in Timescale",
+      "title": "Pit ingest — what is actually landing in Timescale",
       "type": "row",
       "gridPos": {
         "x": 0,
@@ -2302,7 +2302,7 @@
     },
     {
       "id": 500,
-      "title": "Vehicle host \u2014 SBC resources",
+      "title": "Vehicle host — SBC resources",
       "type": "row",
       "gridPos": {
         "x": 0,
@@ -3342,6 +3342,2647 @@
           "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"written\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.disk_write_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
         }
       ]
+    },
+    {
+      "id": 601,
+      "title": "Pit clock — chrony on the pit host",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 62,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 602,
+      "title": "Pit clock source",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 63,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "pit clock silent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "source",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value_text\n          FROM v_pit_metrics\n         WHERE source = 'chrony' AND metric = 'source'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"source\""
+        }
+      ],
+      "description": "chrony's selected reference at the pit, from `chronyc tracking`. 'pit clock silent' means the pit-monitor has published nothing for five minutes."
+    },
+    {
+      "id": 603,
+      "title": "Pit stratum",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 5,
+        "y": 63,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 4
+              },
+              {
+                "color": "red",
+                "value": 8
+              }
+            ]
+          },
+          "noValue": "pit clock silent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'chrony' AND metric = 'stratum'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"stratum\""
+        }
+      ],
+      "description": "Hops to a reference clock. Climbing means chrony has fallen back down its source list."
+    },
+    {
+      "id": 604,
+      "title": "Pit clock offset",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 63,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "pit clock silent",
+          "decimals": 9
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'chrony' AND metric = 'offset_s'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"offset\""
+        }
+      ],
+      "description": "System time minus reference. The pit and the vehicle must agree well enough that pit-stamped rows sort against vehicle-stamped ones."
+    },
+    {
+      "id": 605,
+      "title": "Pit root dispersion",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 14,
+        "y": 63,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "pit clock silent",
+          "decimals": 6
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'chrony' AND metric = 'root_dispersion_s'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"dispersion\""
+        }
+      ],
+      "description": "chrony's own error bound on that offset. This is the number to trust when judging whether the two clocks really agree."
+    },
+    {
+      "id": 606,
+      "title": "Pit-monitor age",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 19,
+        "y": 63,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 120
+              }
+            ]
+          },
+          "noValue": "never written",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       extract(epoch FROM (now() - max(time))) AS \"age\"\nFROM v_pit_metrics"
+        }
+      ],
+      "description": "Age of the newest row in pit_metrics — the pit-monitor's own pulse. Every other panel in these four rows goes flat when this climbs, and that means the collector stopped, not that the pit went quiet."
+    },
+    {
+      "id": 607,
+      "title": "Pit clock offset and root dispersion",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 67,
+        "w": 24,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 9
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('5 s', time) AS \"time\",\n       avg(value) AS \"offset\"\nFROM v_pit_metrics\nWHERE source = 'chrony' AND metric = 'offset_s' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('5 s', time) AS \"time\",\n       avg(value) AS \"root dispersion\"\nFROM v_pit_metrics\nWHERE source = 'chrony' AND metric = 'root_dispersion_s' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "The pit's half of the clock-agreement picture. Compare its shape against the vehicle's row above: a step in either is chrony losing and reacquiring a source."
+    },
+    {
+      "id": 608,
+      "title": "Pit ntrip-client — RTCM corrections from the caster",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 73,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 609,
+      "title": "Caster",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 74,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "ntrip-client silent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "caster",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value_text\n          FROM v_pit_metrics\n         WHERE source = 'ntrip' AND metric = 'caster_host'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"caster\""
+        }
+      ],
+      "description": "Which caster this client is dialling. A correction stream that is healthy against the wrong caster looks identical from every other number here."
+    },
+    {
+      "id": 610,
+      "title": "Mountpoint",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 74,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "ntrip-client silent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "mountpoint",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value_text\n          FROM v_pit_metrics\n         WHERE source = 'ntrip' AND metric = 'mountpoint'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"mountpoint\""
+        }
+      ],
+      "description": "The mountpoint being requested from that caster."
+    },
+    {
+      "id": 611,
+      "title": "Caster connected",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 10,
+        "y": 74,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "ntrip-client silent",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "disconnected",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "connected",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'ntrip' AND metric = 'connected'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"connected\""
+        }
+      ],
+      "description": "Whether the caster socket is up right now. 'ntrip-client silent' also covers the deliberate case: a pit not running RTK stops this service."
+    },
+    {
+      "id": 612,
+      "title": "RTCM bytes/s",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 14,
+        "y": 74,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "ntrip-client silent",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'ntrip' AND metric = 'bytes_per_s'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"bytes/s\""
+        }
+      ],
+      "description": "Correction throughput from the caster. Zero with the socket still 'connected' is the silent-death case this whole row exists to catch."
+    },
+    {
+      "id": 613,
+      "title": "Last byte age",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 74,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "noValue": "no bytes yet",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'ntrip' AND metric = 'last_byte_age_s'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"age\""
+        }
+      ],
+      "description": "Seconds since the last correction byte — the single number that says whether corrections are actually flowing."
+    },
+    {
+      "id": 614,
+      "title": "Reconnects",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 21,
+        "y": 74,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "noValue": "ntrip-client silent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'ntrip' AND metric = 'reconnects'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"reconnects\""
+        }
+      ],
+      "description": "Cumulative caster redials since the service started."
+    },
+    {
+      "id": 615,
+      "title": "RTCM throughput",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 78,
+        "w": 12,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"bytes/s\"\nFROM v_pit_metrics\nWHERE source = 'ntrip' AND metric = 'bytes_per_s' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "History behind the stat above, which is the whole reason these numbers are in Timescale rather than read live from /health."
+    },
+    {
+      "id": 616,
+      "title": "ntrip reconnects and auth errors",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 78,
+        "w": 12,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"reconnects\"\nFROM v_pit_metrics\nWHERE source = 'ntrip' AND metric = 'reconnects' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"auth errors\"\nFROM v_pit_metrics\nWHERE source = 'ntrip' AND metric = 'auth_errors' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Both counters are cumulative, so read the slope. Rising auth errors mean the credentials or the mountpoint are wrong, not that the link is bad."
+    },
+    {
+      "id": 617,
+      "title": "Pit NATS — leafnode, JetStream and slow consumers",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 84,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 618,
+      "title": "Slow consumers",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 85,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "nats unreachable"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'nats' AND metric = 'slow_consumers'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"slow consumers\""
+        }
+      ],
+      "description": "Cumulative. Any non-zero value means the server dropped a client that could not keep up, which is data lost with no other trace."
+    },
+    {
+      "id": 619,
+      "title": "Leafnode connections",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 85,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "nats unreachable",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "vehicle detached",
+                  "color": "red",
+                  "index": 0
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'nats' AND metric = 'leafz.count'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"leafs\""
+        }
+      ],
+      "description": "Leafnode connections into the pit server. This is the pit's own view of whether the car is attached."
+    },
+    {
+      "id": 620,
+      "title": "Leafnode RTT",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 85,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.15
+              },
+              {
+                "color": "red",
+                "value": 0.5
+              }
+            ]
+          },
+          "noValue": "no leafnode",
+          "decimals": 4
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'nats' AND metric LIKE 'leaf.%.rtt_s'\n           AND time > now() - interval '2 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"rtt\""
+        }
+      ],
+      "description": "Round-trip time to the vehicle's NATS across the radio, measured by the pit server itself. Matched by pattern because the metric carries the remote's server name."
+    },
+    {
+      "id": 621,
+      "title": "JetStream messages",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 85,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "nats unreachable",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'nats' AND metric = 'js.messages'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"messages\""
+        }
+      ],
+      "description": "Messages held across every stream on this server."
+    },
+    {
+      "id": 622,
+      "title": "Consumer pending",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 85,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 50000
+              }
+            ]
+          },
+          "noValue": "no consumers",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'nats' AND metric LIKE 'consumer.%.num_pending'\n           AND time > now() - interval '2 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"pending\""
+        }
+      ],
+      "description": "Messages a consumer has not yet been delivered — the ingest-writer's backlog. A steady climb means it is not keeping up; a large value that drains is a dropout being backfilled."
+    },
+    {
+      "id": 623,
+      "title": "Client connections",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 85,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "nats unreachable",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'nats' AND metric = 'connections'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"connections\""
+        }
+      ],
+      "description": "Clients attached to the pit server: the pit services, plus any nats CLI or decode.py currently running."
+    },
+    {
+      "id": 624,
+      "title": "Leafnode traffic",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 89,
+        "w": 12,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"from vehicle\"\nFROM v_pit_metrics\nWHERE source = 'nats' AND metric LIKE 'leaf.%.in_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"to vehicle\"\nFROM v_pit_metrics\nWHERE source = 'nats' AND metric LIKE 'leaf.%.out_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Cumulative bytes each way across the leafnode; read the slope. The outbound line is small by design — the pit sends corrections and session commands, the vehicle sends telemetry."
+    },
+    {
+      "id": 625,
+      "title": "JetStream depth and consumer lag",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 89,
+        "w": 12,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"stream messages\"\nFROM v_pit_metrics\nWHERE source = 'nats' AND metric LIKE 'stream.%.messages' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"consumer pending\"\nFROM v_pit_metrics\nWHERE source = 'nats' AND metric LIKE 'consumer.%.num_pending' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Stream depth against what the consumer has yet to receive. The two diverging is the writer falling behind; both climbing together is a link outage buffering."
+    },
+    {
+      "id": 626,
+      "title": "Pit host — pit machine resources",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 95,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 627,
+      "title": "Pit CPU",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 96,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 92
+              }
+            ]
+          },
+          "noValue": "pit-monitor silent",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'host' AND metric = 'cpu.percent'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"cpu.percent\""
+        }
+      ],
+      "description": ""
+    },
+    {
+      "id": 628,
+      "title": "Pit load (1 min)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 3,
+        "y": 96,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "pit-monitor silent",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'host' AND metric = 'load.avg_1m'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"load.avg_1m\""
+        }
+      ],
+      "description": ""
+    },
+    {
+      "id": 629,
+      "title": "Pit memory",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 96,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 92
+              }
+            ]
+          },
+          "noValue": "pit-monitor silent",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'host' AND metric = 'mem.percent'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"mem.percent\""
+        }
+      ],
+      "description": ""
+    },
+    {
+      "id": 630,
+      "title": "Pit disk",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 96,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 92
+              }
+            ]
+          },
+          "noValue": "pit-monitor silent",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'host' AND metric = 'disk.percent'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"disk.percent\""
+        }
+      ],
+      "description": ""
+    },
+    {
+      "id": 631,
+      "title": "Pit swap",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 96,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 92
+              }
+            ]
+          },
+          "noValue": "pit-monitor silent",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'host' AND metric = 'swap.percent'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"swap.percent\""
+        }
+      ],
+      "description": ""
+    },
+    {
+      "id": 632,
+      "title": "Pit CPU clock (MHz)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 15,
+        "y": 96,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "pit-monitor silent",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'host' AND metric = 'cpu.freq_mhz'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"cpu.freq_mhz\""
+        }
+      ],
+      "description": ""
+    },
+    {
+      "id": 633,
+      "title": "Probe failures",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 96,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "pit-monitor silent",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_pit_metrics\n         WHERE source = 'host' AND metric = 'probe_failures'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"failures\""
+        }
+      ],
+      "description": "Metric groups psutil or chronyc could not read. Non-zero with the collector still writing means one source is down — a stopped chronyd, an unreadable mount — not the collector. Its /health names which."
+    },
+    {
+      "id": 634,
+      "title": "Pit metrics written (1 min)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 21,
+        "y": 96,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "never written",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       count(*)::float AS \"rows\"\nFROM v_pit_metrics\nWHERE time > now() - interval '1 minute'"
+        }
+      ],
+      "description": "Rows the pit-monitor committed in the last minute, across all four probes. Zero means the collector stopped; a drop short of zero means a probe is failing."
+    },
+    {
+      "id": 635,
+      "title": "Pit CPU and load",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 100,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"cpu %\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric = 'cpu.percent' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"load 1m\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric = 'load.avg_1m' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Load above the core count with CPU short of 100% means the pit is blocked on I/O, most likely Timescale writes."
+    },
+    {
+      "id": 636,
+      "title": "Pit temperatures",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 100,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       metric AS \"sensor\",\n       avg(value) AS \"temp\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric LIKE 'temp.%' AND $__timeFilter(time)\nGROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "description": "Every thermal zone psutil finds, one series each. Unlike the vehicle's three named sensors these cannot be listed ahead of time — the pit is whatever machine the team brought."
+    },
+    {
+      "id": 637,
+      "title": "Pit memory",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 100,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"used\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric = 'mem.used_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"available\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric = 'mem.available_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Available, not free: the pit's page cache is doing useful work for Timescale and should not be read as memory pressure."
+    },
+    {
+      "id": 638,
+      "title": "Pit network errors and drops (cumulative)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 106,
+        "w": 12,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"err in\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric = 'net.err_in' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"err out\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric = 'net.err_out' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"drop in\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric = 'net.drop_in' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"drop out\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric = 'net.drop_out' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Host-wide counters, so they include the radio link to the car. Flat is the only healthy shape."
+    },
+    {
+      "id": 639,
+      "title": "Pit disk I/O (cumulative bytes)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 106,
+        "w": 12,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"read\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric = 'disk.read_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"written\"\nFROM v_pit_metrics\nWHERE source = 'host' AND metric = 'disk.write_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Read the slope. The write line is essentially Timescale; a sustained read climb during a session means queries are missing cache."
     }
   ]
 }

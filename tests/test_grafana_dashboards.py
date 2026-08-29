@@ -63,6 +63,28 @@ MQTT_TOPIC = re.compile(r"openlaps/\$vehicle/([a-z][a-z0-9_.]*)")
 SQL_ALIAS = re.compile(r'\bAS\s+"([^"]+)"', re.IGNORECASE)
 VEHICLE = "example-club-racer"
 
+# Pit health lives in `pit_metrics`, not in `samples`, so the seeding below
+# cannot come from the catalog the way vehicle channels do. Equality-predicate
+# metrics are derived from the SQL itself; these are the two things that
+# cannot be: the metrics the dashboard matches by pattern (a leafnode carries
+# the remote's server name, a stream and consumer their own, a thermal zone
+# whatever the pit machine calls it) and the handful that answer in text.
+PIT_PATTERN_METRICS = (
+    ("nats", "leaf.veh_nats.rtt_s"),
+    ("nats", "leaf.veh_nats.in_bytes"),
+    ("nats", "leaf.veh_nats.out_bytes"),
+    ("nats", "stream.tele_vehicle.messages"),
+    ("nats", "consumer.tele_vehicle.ingest_writer.num_pending"),
+    ("host", "temp.coretemp.package_id_0"),
+)
+PIT_TEXT_METRICS = {
+    ("chrony", "source"),
+    ("ntrip", "caster_host"),
+    ("ntrip", "mountpoint"),
+    ("nats", "server_name"),
+    ("nats", "version"),
+}
+
 
 def _dashboards() -> list[tuple[Path, dict[str, Any]]]:
     return [
@@ -180,6 +202,24 @@ def _query_channels(raw_sql: str) -> set[str]:
     for values in re.findall(r"channel\s+IN\s*\(([^)]+)\)", raw_sql, re.IGNORECASE):
         channels.update(re.findall(r"'([^']+)'", values))
     return channels
+
+
+def _query_pit_metrics(raw_sql: str) -> set[tuple[str, str]]:
+    """Return the literal ``(source, metric)`` pairs a pit panel names.
+
+    The pit rows are the only queries against `v_pit_metrics`, and every one
+    of them pins exactly one `source`, so pairing the source in a query with
+    the metrics in the same query is unambiguous. Pattern-matched metrics
+    (`metric LIKE ...`) are seeded from PIT_PATTERN_METRICS instead — there is
+    no literal to extract.
+    """
+    if "v_pit_metrics" not in raw_sql:
+        return set()
+    sources = set(re.findall(r"source\s*=\s*'([^']+)'", raw_sql))
+    metrics = set(re.findall(r"metric\s*=\s*'([^']+)'", raw_sql))
+    for values in re.findall(r"metric\s+IN\s*\(([^)]+)\)", raw_sql, re.IGNORECASE):
+        metrics.update(re.findall(r"'([^']+)'", values))
+    return {(source, metric) for source in sources for metric in metrics}
 
 
 def _render_sql(raw_sql: str, *, start: datetime, end: datetime) -> str:
@@ -378,6 +418,25 @@ def test_every_dashboard_query_executes_and_returns_configured_fields(timescale_
                     ),
                 ),
             )
+        pit_metrics = sorted(
+            {pair for _, _, target in targets for pair in _query_pit_metrics(target["rawSql"])}
+            | set(PIT_PATTERN_METRICS)
+        )
+        for index, (source, metric) in enumerate(pit_metrics, start=1):
+            text = f"{source}-{metric}" if (source, metric) in PIT_TEXT_METRICS else None
+            for offset in (timedelta(minutes=1), timedelta(0)):
+                conn.execute(
+                    "INSERT INTO pit_metrics (source, metric, time, value, value_text) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (
+                        source,
+                        metric,
+                        stamp - offset,
+                        None if text else float(index),
+                        text,
+                    ),
+                )
+
         conn.commit()
         conn.autocommit = True
         for aggregate in ("samples_1s", "samples_1m"):

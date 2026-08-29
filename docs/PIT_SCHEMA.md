@@ -2,9 +2,9 @@
 
 The pit runs one TimescaleDB instance (ADR 0003) and it holds everything the
 pit keeps: decoded samples, the registry bookkeeping that makes those samples
-resolvable to channel names, and the ordinary relational tables for drivers,
-sessions, stints and laps. This document is the reference for that schema;
-the normative definition is
+resolvable to channel names, the ordinary relational tables for drivers,
+sessions, stints and laps, and the pit's own health. This document is the
+reference for that schema; the normative definition is
 [`src/pit/db/migrations/`](../src/pit/db/migrations/), which this document
 describes rather than duplicates.
 
@@ -231,6 +231,43 @@ The unique constraint's index also serves newest-laps-first queries (Postgres
 scans it backwards for free); `laps(session_id, lap_number)` serves the
 session-scoped lookups `v_laps` exists for.
 
+### Pit health
+
+```
+pit_metrics(source TEXT, metric TEXT, time TIMESTAMPTZ, value DOUBLE PRECISION NULL, value_text TEXT NULL)
+```
+
+The pit's own chrony, host resources, ntrip-client and NATS server, written by
+the pit-monitor (`src/pit/pit_monitor/`). Same numeric/text rule as `samples`:
+exactly one of `value` and `value_text` is non-NULL.
+
+**This is deliberately not `samples` under a synthetic `vehicle_id`.** The
+whole sample side of the schema is vehicle-scoped — `v_samples_named` answers
+in `(vehicle_id, channel)` and every dashboard's Vehicle variable is
+`SELECT DISTINCT vehicle_id FROM v_samples_named`. A `'pit'` row there would
+appear in six dropdowns and select a car that does not exist. Pit health is
+also not telemetry in the sense the rest of this schema means: it never
+crosses the radio, has no wire registry behind it, and nothing renumbers it,
+so the `channel_key` indirection `samples` needs would buy nothing here.
+`(source, metric)` is the identity.
+
+`source` is the probe: `host` (psutil), `chrony` (`chronyc tracking`),
+`ntrip` (the ntrip-client's `/health`) and `nats` (the pit server's
+`/varz`, `/jsz` and `/leafz`). Metric names under `host` and `chrony` are the
+`collectors.host` names the vehicle already publishes, minus their `host:`
+prefix — the pit-monitor reuses that collector rather than reimplementing it.
+Under `nats`, names carrying a server, stream or consumer identity are
+composed (`leaf.<remote>.rtt_s`, `consumer.<stream>.<consumer>.num_pending`),
+so dashboard panels match them by pattern rather than by literal.
+
+**Chunks are 1 day**, not the hour `samples` uses: this table accrues a poll's
+worth of rows every few seconds, four orders of magnitude below the sample
+path, and hourly chunking would only produce a great many nearly-empty ones.
+Compression is `segmentby = source, metric` with a policy at 7 days. As with
+`samples`, there is no retention policy.
+
+The working index is `pit_metrics(source, metric, time DESC)`.
+
 ### Ingest bookkeeping
 
 `ingest_cursor(consumer, stream, stream_seq, updated)` is the ingest-writer's
@@ -257,6 +294,7 @@ to keep stable, and it is these views:
 | `v_pit_stops` | `vehicle_id, entry_at, exit_at, duration_s, is_open, stop_type, entry_line, exit_line` |
 | `v_lap_fuel` | The `v_laps` context, counter endpoints, `fuel_used_cc`, `fuel_used_l`, and `measurement_status` |
 | `v_stint_fuel_level` | Stint/session/driver context, accepted level sample count, start/end/used litres, and the level trend in L/hour |
+| `v_pit_metrics` | `time, source, metric, value, value_text` |
 
 **The views are the stable surface. The base tables are not.** Anything
 reading this database from outside the pit services — the companion repo,
@@ -295,9 +333,15 @@ readings paired with battery voltage below 12 V to avoid cranking transients,
 then exposes the independent stint-scale level trend used to cross-check the
 counter model. Fuel-temperature correction is not part of this first model.
 
+`v_pit_metrics` is the pit-health surface, and it is a plain projection of
+`pit_metrics` rather than a join: there is nothing to resolve. It exists so
+that the read-surface rule holds without exception — the `system-status`
+dashboard's four pit rows read it, and a later reshaping of the base table
+leaves them alone.
+
 Grafana's database role has `CONNECT` on this database, `USAGE` on the public
-schema, and `SELECT` on exactly these views. It has no privilege on `samples`
-or the other base tables. This makes the read-surface boundary enforceable in
+schema, and `SELECT` on exactly these views. It has no privilege on `samples`,
+`pit_metrics` or the other base tables. This makes the read-surface boundary enforceable in
 Postgres rather than relying on dashboard authors to remember it.
 
 ## Related documents

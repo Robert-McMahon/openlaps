@@ -1,10 +1,10 @@
-# One image, five entry points.
+# One image, six entry points.
 #
-# The pit runs four long-lived services plus a one-shot migrator, and they
+# The pit runs five long-lived services plus a one-shot migrator, and they
 # share every dependency they have. Four images would be four builds, four
 # pulls and four chances for one of them to drift a version behind; a single
 # image with `command:` selecting the entry point is simply less to keep in
-# step. `[project.scripts]` already declares all five, so nothing here needs
+# step. `[project.scripts]` already declares them all, so nothing here needs
 # a per-service wrapper.
 #
 # Build from the repository root, not from deploy/:
@@ -41,12 +41,13 @@ FROM python:3.13-slim AS runtime
 #
 # chrony is here for `chronyc` alone, never the daemon. The host collector
 # shells out to `chronyc tracking` to publish sys.host.clock_* (offset,
-# source, stratum, root dispersion). Without the binary those four channels
-# fail silently and the clock-health panels are permanently empty -- which
-# is what the containerised vehicle stack did until 2026-08-29, and why the
-# bench never saw it: the bench runs the agent on the host, where chronyc
-# already exists. The agent container shares the host network namespace, so
-# chronyc reaches the host's chronyd on 127.0.0.1:323 with no socket mount.
+# source, stratum, root dispersion) -- on the vehicle via the agent, and at
+# the pit via the pit-monitor, which reuses the same collector. Without the
+# binary those four channels fail silently and the clock-health panels are
+# permanently empty -- which is what the containerised vehicle stack did until
+# 2026-08-29, and why the bench never saw it: the bench runs the agent on the
+# host, where chronyc already exists. Both containers share the host network
+# namespace, so chronyc reaches chronyd on 127.0.0.1:323 with no socket mount.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl chrony \
     && rm -rf /var/lib/apt/lists/*
@@ -72,5 +73,5 @@ USER openlaps
 
 # No default command: every compose service names its own entry point.
 # openlaps-migrate | openlaps-ingest-writer | openlaps-live-decoder |
-# openlaps-session-control | openlaps-ntrip-client
+# openlaps-session-control | openlaps-ntrip-client | openlaps-pit-monitor
 CMD ["python", "-c", "import sys; sys.exit('name an openlaps-* entry point as the command')"]

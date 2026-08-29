@@ -122,6 +122,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
         assert [path.name for path in pending(conn)] == [
             "003_endurance_read_surface.sql",
             "004_minute_traces.sql",
+            "005_pit_metrics.sql",
         ]
 
     # A real upgrade runs later in a new process/connection, so deployment
@@ -130,6 +131,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
         assert apply_migrations(conn) == [
             "003_endurance_read_surface.sql",
             "004_minute_traces.sql",
+            "005_pit_metrics.sql",
         ]
         assert pending(conn) == []
 
@@ -197,11 +199,13 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "002_trace_read_surface.sql",
             "003_endurance_read_surface.sql",
             "004_minute_traces.sql",
+            "005_pit_metrics.sql",
         ]
         assert apply_migrations(conn) == [
             "002_trace_read_surface.sql",
             "003_endurance_read_surface.sql",
             "004_minute_traces.sql",
+            "005_pit_metrics.sql",
         ]
         assert pending(conn) == []
 
@@ -212,6 +216,44 @@ def test_samples_is_an_hourly_hypertable(migrated):
         "WHERE hypertable_name = 'samples'"
     ).fetchall()
     assert row == [("time", timedelta(hours=1))]
+
+
+def test_pit_metrics_is_a_daily_hypertable(migrated):
+    """Not the hourly chunking `samples` uses: this table accrues far slower."""
+    row = migrated.execute(
+        "SELECT column_name, time_interval FROM timescaledb_information.dimensions "
+        "WHERE hypertable_name = 'pit_metrics'"
+    ).fetchall()
+    assert row == [("time", timedelta(days=1))]
+
+
+def test_pit_metrics_round_trip_through_the_view_and_stay_out_of_the_vehicle_surface(migrated):
+    """Pit health is readable as itself and invisible to the vehicle views.
+
+    The second half is the point of the separate table: every dashboard's
+    Vehicle variable is `SELECT DISTINCT vehicle_id FROM v_samples_named`, so
+    a pit row leaking into that view would appear in six dropdowns.
+    """
+    stamp = datetime(2026, 7, 27, 4, 30, tzinfo=UTC)
+    migrated.execute(
+        "INSERT INTO pit_metrics (source, metric, time, value, value_text) "
+        "VALUES ('host', 'cpu.percent', %s, 17.5, NULL), "
+        "('chrony', 'source', %s, NULL, 'GPS'), "
+        "('nats', 'slow_consumers', %s, 0, NULL)",
+        (stamp, stamp, stamp),
+    )
+
+    rows = migrated.execute(
+        "SELECT source, metric, value, value_text FROM v_pit_metrics "
+        "WHERE time = %s ORDER BY source, metric",
+        (stamp,),
+    ).fetchall()
+    assert rows == [
+        ("chrony", "source", None, "GPS"),
+        ("host", "cpu.percent", 17.5, None),
+        ("nats", "slow_consumers", 0.0, None),
+    ]
+    assert migrated.execute("SELECT count(*) FROM v_samples_named").fetchone()[0] == 0
 
 
 def test_numeric_and_string_values_round_trip_through_the_named_view(migrated):
@@ -363,10 +405,18 @@ def test_grafana_role_reads_every_view_but_not_base_tables(migrated, timescale_d
             "v_pit_stops",
             "v_lap_fuel",
             "v_stint_fuel_level",
+            "v_pit_metrics",
         ):
             reader.execute(sql.SQL("SELECT * FROM {} LIMIT 0").format(sql.Identifier(view)))
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            reader.execute("SELECT * FROM samples LIMIT 0")
+        for base_table in ("samples", "pit_metrics"):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                reader.execute(
+                    sql.SQL("SELECT * FROM {} LIMIT 0").format(sql.Identifier(base_table))
+                )
+            # A denied read aborts the transaction; without this the second
+            # table's denial would surface as InFailedSqlTransaction and the
+            # assertion would pass for the wrong reason.
+            reader.rollback()
 
 
 def test_one_channel_key_survives_a_registry_rollover(migrated):

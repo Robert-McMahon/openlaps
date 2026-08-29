@@ -169,7 +169,19 @@
       ],
       "description": "UM980 RMC field 13. Differential (D) is NOT RTK: D is code-phase DGNSS at sub-metre, F is RTK float, R is RTK fixed at centimetres. Sitting at D with a live RTCM feed means corrections arrive but no carrier-phase fix is resolving.",
       "timeFrom": "1m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 102,
@@ -209,7 +221,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "value",
@@ -229,7 +241,19 @@
         }
       ],
       "timeFrom": "1m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 103,
@@ -269,7 +293,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "value",
@@ -289,7 +313,19 @@
         }
       ],
       "timeFrom": "1m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 104,
@@ -329,7 +365,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "value",
@@ -349,7 +385,19 @@
         }
       ],
       "timeFrom": "1m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 105,
@@ -389,7 +437,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "value",
@@ -409,7 +457,19 @@
         }
       ],
       "timeFrom": "1m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 106,
@@ -476,7 +536,7 @@
     {
       "id": 107,
       "title": "Fix quality over time",
-      "type": "timeseries",
+      "type": "state-timeline",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
@@ -491,21 +551,69 @@
         "defaults": {
           "unit": "none",
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "V": {
+                  "text": "Invalid (V)",
+                  "color": "dark-red",
+                  "index": 0
+                },
+                "N": {
+                  "text": "No fix (N)",
+                  "color": "dark-red",
+                  "index": 1
+                },
+                "E": {
+                  "text": "Dead reckoning (E)",
+                  "color": "red",
+                  "index": 2
+                },
+                "M": {
+                  "text": "Manual input (M)",
+                  "color": "purple",
+                  "index": 3
+                },
+                "S": {
+                  "text": "Simulator (S)",
+                  "color": "purple",
+                  "index": 4
+                },
+                "A": {
+                  "text": "Autonomous / SPP (A)",
+                  "color": "orange",
+                  "index": 5
+                },
+                "D": {
+                  "text": "Differential (D)",
+                  "color": "yellow",
+                  "index": 6
+                },
+                "F": {
+                  "text": "RTK Float (F)",
+                  "color": "semi-dark-green",
+                  "index": 7
+                },
+                "P": {
+                  "text": "High precision (P)",
+                  "color": "light-green",
+                  "index": 8
+                },
+                "R": {
+                  "text": "RTK Fixed (R)",
+                  "color": "green",
+                  "index": 9
+                }
+              }
+            }
+          ],
           "custom": {
-            "drawStyle": "line",
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "fillOpacity": 8,
-            "gradientMode": "opacity",
-            "showPoints": "never",
-            "spanNulls": true,
-            "axisPlacement": "auto",
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
+            "lineWidth": 0,
+            "fillOpacity": 85,
+            "insertNulls": false,
             "hideFrom": {
               "legend": false,
               "tooltip": false,
@@ -516,23 +624,28 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "text",
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "no fix reported"
         },
         "overrides": []
       },
       "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "alignValue": "center",
+        "rowHeight": 0.9,
+        "perPage": 20,
         "legend": {
           "displayMode": "list",
           "placement": "bottom",
-          "showLegend": true,
-          "calcs": []
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi",
+          "mode": "single",
           "sort": "none"
         }
       },
@@ -730,7 +843,19 @@
       ],
       "description": "chrony's currently selected reference. GPS means the RP2040 timing head's PPS refclock is selected; anything else means it fell back to network NTP.",
       "timeFrom": "5m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 111,
@@ -779,7 +904,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -800,7 +925,19 @@
       ],
       "description": "1 means locked to the local GNSS refclock.",
       "timeFrom": "5m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 112,
@@ -841,7 +978,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "value",
@@ -861,7 +998,19 @@
         }
       ],
       "timeFrom": "5m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 113,
@@ -902,7 +1051,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "value",
@@ -923,15 +1072,27 @@
       ],
       "description": "Chrony's own error bound. This is the honest uncertainty on every timestamp the car produces.",
       "timeFrom": "5m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 114,
       "title": "Agent status",
       "type": "stat",
       "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
       },
       "gridPos": {
         "x": 19,
@@ -954,7 +1115,29 @@
               }
             ]
           },
-          "noValue": "agent silent"
+          "noValue": "agent silent",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "running": {
+                  "text": "running",
+                  "color": "green",
+                  "index": 0
+                },
+                "degraded": {
+                  "text": "degraded",
+                  "color": "orange",
+                  "index": 1
+                },
+                "stopping": {
+                  "text": "stopping",
+                  "color": "red",
+                  "index": 2
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -963,7 +1146,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "value",
+          "fields": "state",
           "values": false
         },
         "colorMode": "background",
@@ -976,14 +1159,16 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
-          "topic": "openlaps/$vehicle/sys.agent.status"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value_text::jsonb ->> 'state'\n          FROM v_samples_named\n         WHERE vehicle_id = '$vehicle' AND channel = 'sys.agent.status'\n           AND time > now() - interval '5 minutes'\n         ORDER BY time DESC\n         LIMIT 1) AS \"state\""
         }
       ],
-      "timeFrom": "5m",
-      "hideTimeOverride": true
+      "description": "The agent's own state field, lifted out of the sys.agent.status JSON document. 'agent silent' means nothing has been published for five minutes."
     },
     {
       "id": 115,
@@ -1131,7 +1316,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -1152,7 +1337,19 @@
       ],
       "description": "Non-zero invalidates a measurement run.",
       "timeFrom": "5m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 118,
@@ -1197,7 +1394,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -1217,7 +1414,19 @@
         }
       ],
       "timeFrom": "5m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 119,
@@ -1262,7 +1471,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -1282,7 +1491,19 @@
         }
       ],
       "timeFrom": "5m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 120,
@@ -1327,7 +1548,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -1347,7 +1568,19 @@
         }
       ],
       "timeFrom": "5m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 121,
@@ -1392,7 +1625,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -1412,7 +1645,19 @@
         }
       ],
       "timeFrom": "5m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 122,
@@ -1453,7 +1698,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "value",
@@ -1474,7 +1719,19 @@
       ],
       "description": "Report-by-exception filtering working as intended; not an error.",
       "timeFrom": "5m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 123,
@@ -2102,7 +2359,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -2122,7 +2379,19 @@
         }
       ],
       "timeFrom": "10m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 502,
@@ -2162,7 +2431,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "value",
@@ -2183,7 +2452,19 @@
       ],
       "timeFrom": "10m",
       "hideTimeOverride": true,
-      "description": "Four cores on the X4, so 4.0 means saturated."
+      "description": "Four cores on the X4, so 4.0 means saturated.",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 503,
@@ -2231,7 +2512,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -2251,7 +2532,19 @@
         }
       ],
       "timeFrom": "10m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 504,
@@ -2299,7 +2592,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -2320,7 +2613,19 @@
       ],
       "timeFrom": "10m",
       "hideTimeOverride": true,
-      "description": "The JetStream store lives here; TELE is capped at OPENLAPS_TELE_MAX_BYTES (8 GiB)."
+      "description": "The JetStream store lives here; TELE is capped at OPENLAPS_TELE_MAX_BYTES (8 GiB).",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 505,
@@ -2368,7 +2673,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -2389,7 +2694,19 @@
       ],
       "timeFrom": "10m",
       "hideTimeOverride": true,
-      "description": "The N100 throttles near 100 degC. In a closed car in summer this is the one to watch."
+      "description": "The N100 throttles near 100 degC. In a closed car in summer this is the one to watch.",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 506,
@@ -2437,7 +2754,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "background",
@@ -2457,7 +2774,19 @@
         }
       ],
       "timeFrom": "10m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 507,
@@ -2497,7 +2826,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
         },
         "colorMode": "value",
@@ -2517,7 +2846,19 @@
         }
       ],
       "timeFrom": "10m",
-      "hideTimeOverride": true
+      "hideTimeOverride": true,
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ]
     },
     {
       "id": 508,

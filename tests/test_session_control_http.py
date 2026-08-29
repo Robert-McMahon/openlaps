@@ -239,6 +239,92 @@ def test_health_is_reachable_without_the_bearer_token(tmp_path: Path):
     asyncio.run(exercise())
 
 
+def test_grafana_alerts_is_reachable_without_the_bearer_token(tmp_path: Path):
+    """Grafana's provisioned contact point posts here with no credentials.
+
+    Authenticating it would put the operator API key into a committed
+    provisioning file, or hand it to the grafana container, which is given a
+    deliberately minimal environment. The endpoint changes no state -- it
+    logs a bounded summary and returns a count -- so it is left open like
+    /health, and this pins that.
+    """
+
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(StateFile(tmp_path / "session.json"), database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+            api_key="operator-secret",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            notification = {
+                "status": "firing",
+                "alerts": [
+                    {"status": "firing", "labels": {"alertname": "Oil pressure low"}},
+                    {"status": "resolved", "labels": {"alertname": "Coolant temperature high"}},
+                ],
+            }
+            code, body = await asyncio.to_thread(_request, f"{base}/grafana-alerts", notification)
+            assert code == 200
+            assert body["received"] == 2
+
+            # A payload that is not shaped like a notification is counted as
+            # nothing rather than raising.
+            code, body = await asyncio.to_thread(_request, f"{base}/grafana-alerts", {})
+            assert code == 200
+            assert body["received"] == 0
+
+            # The gate is still shut on the routes that actually do something.
+            code, _ = await asyncio.to_thread(_request, f"{base}/session/start", {})
+            assert code == 401
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
+def test_grafana_alerts_caps_what_one_notification_can_write(tmp_path: Path):
+    """An unauthenticated caller must not be able to flood the log."""
+
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(StateFile(tmp_path / "session.json"), database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+            api_key="operator-secret",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            flood = {
+                "alerts": [
+                    {"status": "firing", "labels": {"alertname": f"alert {index}"}}
+                    for index in range(200)
+                ]
+            }
+            code, body = await asyncio.to_thread(_request, f"{base}/grafana-alerts", flood)
+            assert code == 200
+            assert body["received"] == 20
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
 def test_http_requires_bearer_token_when_configured(tmp_path: Path):
     async def exercise() -> None:
         database = Database()

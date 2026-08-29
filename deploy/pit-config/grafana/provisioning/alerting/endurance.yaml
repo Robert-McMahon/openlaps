@@ -602,7 +602,15 @@ contactPoints:
   - uid: openlaps-local-webhook
     type: webhook
     settings:
-      url: http://127.0.0.1:8080/grafana-alerts
+      # session-control, by its compose service name. This ran as
+      # 127.0.0.1:8080 until 2026-08-29, which inside the grafana container
+      # is the grafana container -- nothing listens there, so every
+      # notification failed with "connection refused" once a minute for as
+      # long as a rule was firing. The receiver itself is unauthenticated by
+      # design; see POST /grafana-alerts in pit/session_control/service.py
+      # for why the operator API key deliberately does not appear in this
+      # committed file.
+      url: http://session-control:8080/grafana-alerts
       httpMethod: POST
     disableResolveMessage: false
 policies:

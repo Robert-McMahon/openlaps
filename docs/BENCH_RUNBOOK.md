@@ -634,9 +634,11 @@ previous session.
 Run this drill against a disposable bench database, never against the race
 archive.  Open Grafana's **Reliability watch** dashboard (`uid=reliability`)
 and Alerting page first.  The provisioned `openlaps-local` contact point posts
-only to the pit host (`127.0.0.1:8080/grafana-alerts`) and requires no external
-account.  A failed local delivery does not prevent Grafana showing the rule as
-Firing.
+only to session-control (`http://session-control:8080/grafana-alerts`, the
+compose service name) and requires no external account.  That receiver logs a
+one-line summary per alert, so `docker compose -f deploy/pit-compose.yaml logs
+session-control` is the read-back for what fired during a session.  A failed
+local delivery does not prevent Grafana showing the rule as Firing.
 
 Connect as the database owner and create this disposable helper.  It writes
 through the same registry/sample shape as ingest while keeping every alert

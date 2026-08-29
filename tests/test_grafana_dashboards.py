@@ -23,6 +23,7 @@ DASHBOARDS = ROOT / "deploy/pit-config/grafana/dashboards"
 DATASOURCES = ROOT / "deploy/pit-config/grafana/provisioning/datasources"
 ALERTING = ROOT / "deploy/pit-config/grafana/provisioning/alerting"
 CATALOG = ROOT / "profiles/example-club-racer/catalog.yaml"
+VEHICLE_YAML = ROOT / "profiles/example-club-racer/vehicle.yaml"
 PIT_COMPOSE = ROOT / "deploy/pit-compose.yaml"
 TIMING_EXTRAPOLATOR = ROOT / "deploy/pit-config/timing-extrapolator.yaml"
 
@@ -136,10 +137,26 @@ def _credential_findings(value: Any, path: str = "dashboard") -> Iterator[str]:
             yield path
 
 
+def _collector_names() -> list[str]:
+    """Collector names the agent will derive ``sys.agent.drops.*`` from.
+
+    These are per-collector and therefore profile-dependent, so passing an
+    empty list here would silently accept a dashboard naming a drops channel
+    that no collector produces -- which is exactly the class of typo this
+    test exists to catch.
+    """
+    vehicle = yaml.safe_load(VEHICLE_YAML.read_text(encoding="utf-8"))
+    names = [bus["name"] for bus in vehicle.get("buses") or []]
+    names += [port["name"] for port in vehicle.get("serial") or []]
+    if (vehicle.get("host") or {}).get("enabled"):
+        names.append("host")
+    return names
+
+
 def _known_channels() -> set[str]:
     catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
     channels = set(catalog["channels"])
-    channels.update(channel.name for channel in agent_derived_channels([]))
+    channels.update(channel.name for channel in agent_derived_channels(_collector_names()))
     channels.update(load_timing_config(TIMING_EXTRAPOLATOR).output_channels)
     return channels
 

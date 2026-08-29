@@ -502,8 +502,8 @@
       "title": "Track position and speed",
       "type": "geomap",
       "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
       },
       "gridPos": {
         "x": 0,
@@ -515,70 +515,143 @@
         "defaults": {
           "unit": "velocitykmh",
           "color": {
-            "mode": "palette-classic"
+            "mode": "continuous-GrYlRd"
           },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
           }
         },
         "overrides": []
       },
       "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
+        "view": {
+          "id": "fit",
+          "allLayers": true,
+          "padding": 15
+        },
+        "controls": {
+          "showZoom": true,
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showScale": false,
+          "showMeasure": false,
+          "showDebug": false
+        },
+        "basemap": {
+          "type": "default",
+          "name": "Basemap",
+          "config": {}
+        },
+        "tooltip": {
+          "mode": "details"
+        },
+        "legend": {
+          "show": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "layers": [
+          {
+            "name": "Trail",
+            "type": "route",
+            "filterData": {
+              "id": "byRefId",
+              "options": "A"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "field": "speed",
+                  "fixed": "dark-green"
+                },
+                "opacity": 0.9,
+                "lineWidth": 4,
+                "size": {
+                  "field": "speed",
+                  "fixed": 4,
+                  "max": 6,
+                  "min": 2
+                }
+              }
+            }
+          },
+          {
+            "name": "Car",
+            "type": "markers",
+            "filterData": {
+              "id": "byRefId",
+              "options": "B"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "fixed": "red"
+                },
+                "opacity": 1,
+                "size": {
+                  "fixed": 10,
+                  "max": 15,
+                  "min": 5
+                },
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                },
+                "symbolAlign": {
+                  "horizontal": "center",
+                  "vertical": "center"
+                },
+                "textConfig": {
+                  "fontSize": 12,
+                  "offsetX": 0,
+                  "offsetY": 0,
+                  "textAlign": "center",
+                  "textBaseline": "middle"
+                }
+              }
+            }
+          }
+        ]
       },
       "targets": [
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
-          "topic": "openlaps/$vehicle/position.lat"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('200 ms', time) AS \"time\",\n       max(value) FILTER (WHERE channel = 'position.lat')   AS \"latitude\",\n       max(value) FILTER (WHERE channel = 'position.lon')   AS \"longitude\",\n       max(value) FILTER (WHERE channel = 'position.speed') AS \"speed\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle'\n  AND channel IN ('position.lat', 'position.lon', 'position.speed')\n  AND $__timeFilter(time)\nGROUP BY 1\nHAVING max(value) FILTER (WHERE channel = 'position.lat') IS NOT NULL\n   AND max(value) FILTER (WHERE channel = 'position.lon') IS NOT NULL\nORDER BY 1"
         },
         {
           "refId": "B",
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
-          "topic": "openlaps/$vehicle/position.lon"
-        },
-        {
-          "refId": "C",
-          "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
-          },
-          "topic": "openlaps/$vehicle/position.speed"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "value"
-              ]
-            }
-          }
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('200 ms', time) AS \"time\",\n       max(value) FILTER (WHERE channel = 'position.lat')   AS \"latitude\",\n       max(value) FILTER (WHERE channel = 'position.lon')   AS \"longitude\",\n       max(value) FILTER (WHERE channel = 'position.speed') AS \"speed\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle'\n  AND channel IN ('position.lat', 'position.lon', 'position.speed')\n  AND $__timeFilter(time)\nGROUP BY 1\nHAVING max(value) FILTER (WHERE channel = 'position.lat') IS NOT NULL\n   AND max(value) FILTER (WHERE channel = 'position.lon') IS NOT NULL\nORDER BY 1 DESC\nLIMIT 1"
         }
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "description": "Trail uses latitude/longitude and speed; stale data remains visible rather than becoming zero.",
+      "description": "Trail and current position. Pivoted to one frame with real latitude/longitude fields -- the geomap locates by field name, which three separate single-value MQTT frames could never provide.",
       "hideTimeOverride": true
     },
     {
@@ -599,17 +672,75 @@
         "defaults": {
           "unit": "none",
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "V": {
+                  "text": "Invalid (V)",
+                  "color": "dark-red",
+                  "index": 0
+                },
+                "N": {
+                  "text": "No fix (N)",
+                  "color": "dark-red",
+                  "index": 1
+                },
+                "E": {
+                  "text": "Dead reckoning (E)",
+                  "color": "red",
+                  "index": 2
+                },
+                "M": {
+                  "text": "Manual input (M)",
+                  "color": "purple",
+                  "index": 3
+                },
+                "S": {
+                  "text": "Simulator (S)",
+                  "color": "purple",
+                  "index": 4
+                },
+                "A": {
+                  "text": "Autonomous / SPP (A)",
+                  "color": "orange",
+                  "index": 5
+                },
+                "D": {
+                  "text": "Differential (D)",
+                  "color": "yellow",
+                  "index": 6
+                },
+                "F": {
+                  "text": "RTK Float (F)",
+                  "color": "semi-dark-green",
+                  "index": 7
+                },
+                "P": {
+                  "text": "High precision (P)",
+                  "color": "light-green",
+                  "index": 8
+                },
+                "R": {
+                  "text": "RTK Fixed (R)",
+                  "color": "green",
+                  "index": 9
+                }
+              }
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "text",
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "no fix reported"
         },
         "overrides": []
       },
@@ -618,9 +749,16 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "value",
           "values": false
-        }
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
       },
       "targets": [
         {
@@ -646,7 +784,7 @@
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "description": "RTK fixed/float/autonomous quality determines how much confidence to place in the trail.",
+      "description": "UM980 RMC field 13 (mode indicator). Differential is NOT RTK: D is code-phase DGNSS (sub-metre), F is RTK float, R is RTK fixed (cm). Reads the string field explicitly -- the default numeric-only reducer cannot see it.",
       "hideTimeOverride": true
     },
     {

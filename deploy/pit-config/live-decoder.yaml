@@ -120,3 +120,12 @@ channels:
   # no-agent path saying so, not a broken glob.
   - match: "sys.agent.*"
     max_hz: 1
+
+  # Clock health (chrony's selected source, offset, stratum, root
+  # dispersion). The host collector polls chronyc once a second, so this cap
+  # never binds either -- it is here so the system-status dashboard can read
+  # the vehicle's clock live rather than waiting on an ingest flush. Like
+  # sys.agent.*, these exist only in an agent's registry, so the no-agent
+  # replay tools will list this rule under /health's `unmatched_rules`.
+  - match: "sys.host.*"
+    max_hz: 1

@@ -38,8 +38,17 @@ FROM python:3.13-slim AS runtime
 # libpq for psycopg's binary wheel is already vendored; nothing else is
 # needed at runtime. curl is here for the compose healthchecks, which hit
 # each service's /health over HTTP.
+#
+# chrony is here for `chronyc` alone, never the daemon. The host collector
+# shells out to `chronyc tracking` to publish sys.host.clock_* (offset,
+# source, stratum, root dispersion). Without the binary those four channels
+# fail silently and the clock-health panels are permanently empty -- which
+# is what the containerised vehicle stack did until 2026-08-29, and why the
+# bench never saw it: the bench runs the agent on the host, where chronyc
+# already exists. The agent container shares the host network namespace, so
+# chronyc reaches the host's chronyd on 127.0.0.1:323 with no socket mount.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl chrony \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 10001 openlaps

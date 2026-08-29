@@ -1,0 +1,3006 @@
+{
+  "uid": "system-status",
+  "title": "System status",
+  "description": "Bring-up and health surface for the two stacks: GNSS quality, the vehicle's clock discipline, the agent's publish path and what is actually landing at the pit. Live values come from MQTT; anything with history is a Timescale query.",
+  "editable": false,
+  "schemaVersion": 41,
+  "version": 2,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timezone": "",
+  "tags": [
+    "openlaps",
+    "system",
+    "health"
+  ],
+  "annotations": {
+    "list": []
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "vehicle",
+        "type": "query",
+        "label": "Vehicle",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "includeAll": false,
+        "multi": false,
+        "query": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
+        "current": {},
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "title": "GNSS \u2014 position and fix quality",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 101,
+      "title": "Fix quality",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 5,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "V": {
+                  "text": "Invalid (V)",
+                  "color": "dark-red",
+                  "index": 0
+                },
+                "N": {
+                  "text": "No fix (N)",
+                  "color": "dark-red",
+                  "index": 1
+                },
+                "E": {
+                  "text": "Dead reckoning (E)",
+                  "color": "red",
+                  "index": 2
+                },
+                "M": {
+                  "text": "Manual input (M)",
+                  "color": "purple",
+                  "index": 3
+                },
+                "S": {
+                  "text": "Simulator (S)",
+                  "color": "purple",
+                  "index": 4
+                },
+                "A": {
+                  "text": "Autonomous / SPP (A)",
+                  "color": "orange",
+                  "index": 5
+                },
+                "D": {
+                  "text": "Differential (D)",
+                  "color": "yellow",
+                  "index": 6
+                },
+                "F": {
+                  "text": "RTK Float (F)",
+                  "color": "semi-dark-green",
+                  "index": 7
+                },
+                "P": {
+                  "text": "High precision (P)",
+                  "color": "light-green",
+                  "index": 8
+                },
+                "R": {
+                  "text": "RTK Fixed (R)",
+                  "color": "green",
+                  "index": 9
+                }
+              }
+            }
+          ],
+          "noValue": "no fix reported"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "value",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/position.fix_quality"
+        }
+      ],
+      "description": "UM980 RMC field 13. Differential (D) is NOT RTK: D is code-phase DGNSS at sub-metre, F is RTK float, R is RTK fixed at centimetres. Sitting at D with a live RTCM feed means corrections arrive but no carrier-phase fix is resolving.",
+      "timeFrom": "1m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 102,
+      "title": "Latitude",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 5,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "degree",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 7
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/position.lat"
+        }
+      ],
+      "timeFrom": "1m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 103,
+      "title": "Longitude",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "degree",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 7
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/position.lon"
+        }
+      ],
+      "timeFrom": "1m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 104,
+      "title": "Speed",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 13,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "velocitykmh",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/position.speed"
+        }
+      ],
+      "timeFrom": "1m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 105,
+      "title": "Heading",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 17,
+        "y": 1,
+        "w": 3,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "degree",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/position.heading"
+        }
+      ],
+      "timeFrom": "1m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 106,
+      "title": "GNSS sample rate",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       count(*)::float / 10.0 AS \"samples/s\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'position.lat'\n  AND time > now() - interval '10 seconds'"
+        }
+      ],
+      "description": "position.lat rows landing in Timescale over the last 10 s. Source is 20 Hz at the receiver; live-decoder caps MQTT at 10 Hz but the database gets every sample."
+    },
+    {
+      "id": 107,
+      "title": "Fix quality over time",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('5 s', time) AS \"time\",\n       mode() WITHIN GROUP (ORDER BY value_text) AS \"fix\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'position.fix_quality'\n  AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Most common mode indicator per 5 s bucket. Watch for a climb A -> D -> F -> R as RTK converges, or a drop back under bridges and trees."
+    },
+    {
+      "id": 108,
+      "title": "Speed",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "velocitykmh",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('1 s', time) AS \"time\",\n       avg(value) AS \"speed\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'position.speed' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 109,
+      "title": "Vehicle clock \u2014 chrony and the GNSS timing head",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 110,
+      "title": "Clock source",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "GPS": {
+                  "text": "GPS / PPS",
+                  "color": "green",
+                  "index": 0
+                },
+                "PPS": {
+                  "text": "PPS",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            },
+            {
+              "type": "special",
+              "options": {
+                "match": "empty",
+                "result": {
+                  "text": "unknown",
+                  "color": "red",
+                  "index": 2
+                }
+              }
+            }
+          ],
+          "noValue": "no chronyc data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "value",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.clock_source"
+        }
+      ],
+      "description": "chrony's currently selected reference. GPS means the RP2040 timing head's PPS refclock is selected; anything else means it fell back to network NTP.",
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 111,
+      "title": "Stratum",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 5,
+        "y": 13,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 4
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "\u2014"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.clock_stratum"
+        }
+      ],
+      "description": "1 means locked to the local GNSS refclock.",
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 112,
+      "title": "Clock offset",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 13,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 9,
+          "noValue": "\u2014"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.clock_offset_s"
+        }
+      ],
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 113,
+      "title": "Root dispersion",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 14,
+        "y": 13,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 9,
+          "noValue": "\u2014"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.clock_root_dispersion_s"
+        }
+      ],
+      "description": "Chrony's own error bound. This is the honest uncertainty on every timestamp the car produces.",
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 114,
+      "title": "Agent status",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 19,
+        "y": 13,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "agent silent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "value",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.agent.status"
+        }
+      ],
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 115,
+      "title": "Clock offset and root dispersion",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 9
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('5 s', time) AS \"time\",\n       avg(value) AS \"offset\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.clock_offset_s' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('5 s', time) AS \"time\",\n       avg(value) AS \"root dispersion\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.clock_root_dispersion_s' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "A step here rather than a slew means chrony lost and reacquired its refclock. docs/ARCHITECTURE.md requires the transition be a slew in both directions."
+    },
+    {
+      "id": 116,
+      "title": "Vehicle agent \u2014 publish path health",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 117,
+      "title": "Publish drops",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "\u2014"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.agent.publish_drops"
+        }
+      ],
+      "description": "Non-zero invalidates a measurement run.",
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 118,
+      "title": "Encode failures",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "\u2014"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.agent.encode_failures"
+        }
+      ],
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 119,
+      "title": "Queue drops \u2014 serial0 (GNSS)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "\u2014"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.agent.drops.serial0"
+        }
+      ],
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 120,
+      "title": "Queue drops \u2014 can0",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "\u2014"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.agent.drops.can0"
+        }
+      ],
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 121,
+      "title": "Queue drops \u2014 host",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "\u2014"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.agent.drops.host"
+        }
+      ],
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 122,
+      "title": "RBE suppressed",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "noValue": "\u2014"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.agent.rbe_suppressed"
+        }
+      ],
+      "description": "Report-by-exception filtering working as intended; not an error.",
+      "timeFrom": "5m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 123,
+      "title": "Publish lag",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 3,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('5 s', time) AS \"time\",\n       avg(value) AS \"publish lag\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.agent.publish_lag_ms' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 124,
+      "title": "Unmapped source refs",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('5 s', time) AS \"time\",\n       avg(value) AS \"unmapped refs\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.agent.unmapped_refs' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Source signals the collectors decode but catalog.yaml does not map. A steady non-zero number is normal; a jump means a DBC or the catalog moved."
+    },
+    {
+      "id": 125,
+      "title": "Pit ingest \u2014 what is actually landing in Timescale",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 126,
+      "title": "Newest row age",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       extract(epoch FROM (now() - max(time))) AS \"age\"\nFROM v_samples_named WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "Age of the most recent row. Climbing steadily means the writer has stalled or the link is down."
+    },
+    {
+      "id": 127,
+      "title": "Active channels (1 min)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 5,
+        "y": 35,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       count(DISTINCT channel)::float AS \"channels\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND time > now() - interval '1 minute'"
+        }
+      ],
+      "description": "Distinct channels seen in the last minute. With no CAN bus attached expect only the GNSS and sys.* channels."
+    },
+    {
+      "id": 128,
+      "title": "Rows in last minute",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 10,
+        "y": 35,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\", count(*)::float AS \"rows\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND time > now() - interval '1 minute'"
+        }
+      ]
+    },
+    {
+      "id": 129,
+      "title": "Laps recorded",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 15,
+        "y": 35,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\", count(*)::float AS \"laps\"\nFROM v_laps WHERE vehicle_id = '$vehicle'"
+        }
+      ]
+    },
+    {
+      "id": 130,
+      "title": "Vehicle",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 19,
+        "y": 35,
+        "w": 5,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "value",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\", '$vehicle' AS \"vehicle\" "
+        }
+      ],
+      "description": "The vehicle id this dashboard is scoped to. It must match the car's vehicle.yaml id and the pit's OPENLAPS_VEHICLE_ID."
+    },
+    {
+      "id": 131,
+      "title": "Ingest rate by channel group",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 24,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('2 s', time) AS \"time\",\n       split_part(channel, '.', 1) AS \"group\",\n       count(*)::float / 2.0 AS \"rows/s\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND $__timeFilter(time)\nGROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "description": "Rows per second reaching the database, split by channel namespace (position, sys, lap, car)."
+    },
+    {
+      "id": 500,
+      "title": "Vehicle host \u2014 SBC resources",
+      "type": "row",
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 501,
+      "title": "CPU",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 47,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.cpu_percent"
+        }
+      ],
+      "timeFrom": "10m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 502,
+      "title": "Load (1 min)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 3,
+        "y": 47,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": null,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.load_1m"
+        }
+      ],
+      "timeFrom": "10m",
+      "hideTimeOverride": true,
+      "description": "Four cores on the X4, so 4.0 means saturated."
+    },
+    {
+      "id": 503,
+      "title": "Memory",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 47,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.mem_percent"
+        }
+      ],
+      "timeFrom": "10m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 504,
+      "title": "Disk",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 47,
+        "w": 3,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.disk_percent"
+        }
+      ],
+      "timeFrom": "10m",
+      "hideTimeOverride": true,
+      "description": "The JetStream store lives here; TELE is capped at OPENLAPS_TELE_MAX_BYTES (8 GiB)."
+    },
+    {
+      "id": 505,
+      "title": "CPU package temp",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 47,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 75
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.temp_cpu_package"
+        }
+      ],
+      "timeFrom": "10m",
+      "hideTimeOverride": true,
+      "description": "The N100 throttles near 100 degC. In a closed car in summer this is the one to watch."
+    },
+    {
+      "id": 506,
+      "title": "NVMe temp",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 47,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 65
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.temp_nvme"
+        }
+      ],
+      "timeFrom": "10m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 507,
+      "title": "Board temp",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 47,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/sys.host.temp_board"
+        }
+      ],
+      "timeFrom": "10m",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 508,
+      "title": "CPU and load",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "pointSize": 5,
+            "axisPlacement": "auto",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "C27",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"cpu %\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.cpu_percent' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "L86",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"load 1m\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.load_1m' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 509,
+      "title": "Temperatures",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 51,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "pointSize": 5,
+            "axisPlacement": "auto",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "C93",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"cpu package\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.temp_cpu_package' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "N69",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"nvme\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.temp_nvme' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "B4",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"board\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.temp_board' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 510,
+      "title": "Memory",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 51,
+        "w": 8,
+        "h": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "pointSize": 5,
+            "axisPlacement": "auto",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "U45",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"used\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.mem_used_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "A37",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"available\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.mem_available_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 511,
+      "title": "Network errors and drops (cumulative)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 57,
+        "w": 12,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "pointSize": 5,
+            "axisPlacement": "auto",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "E31",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"err in\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.net_err_in' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "E32",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"err out\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.net_err_out' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "D92",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"drop in\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.net_drop_in' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "D5",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"drop out\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.net_drop_out' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "description": "Counters, not rates. Any sustained climb points at the HaLow link rather than the SBC."
+    },
+    {
+      "id": 512,
+      "title": "Disk I/O (cumulative bytes)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 57,
+        "w": 12,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "pointSize": 5,
+            "axisPlacement": "auto",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "R36",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"read\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.disk_read_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        },
+        {
+          "refId": "W23",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('10 s', time) AS \"time\",\n       avg(value) AS \"written\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle' AND channel = 'sys.host.disk_write_bytes' AND $__timeFilter(time)\nGROUP BY 1 ORDER BY 1"
+        }
+      ]
+    }
+  ]
+}

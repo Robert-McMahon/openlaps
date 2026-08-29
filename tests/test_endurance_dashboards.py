@@ -50,12 +50,23 @@ def _all_topics(dashboard: dict[str, Any]) -> set[str]:
     }
 
 
+# Dashboards that are not part of the phase 6 endurance set but are
+# provisioned from the same directory: the live gauge panel (P5.3), the car
+# camera (video feed port) and the bring-up/health surface added alongside
+# the GNSS work.
+NON_ENDURANCE = {
+    "car.json": "car",
+    "video.json": "video",
+    "system.json": "system-status",
+}
+
+
 def test_phase_6_adds_exactly_five_endurance_dashboards() -> None:
     actual = {
         path.name: json.loads(path.read_text(encoding="utf-8"))["uid"]
         for path in DASHBOARDS.glob("*.json")
     }
-    assert actual == {"car.json": "car", **EXPECTED}
+    assert actual == {**NON_ENDURANCE, **EXPECTED}
 
 
 def test_pitwall_is_sparse_live_timing_with_pit_extrapolation_and_fix_quality() -> None:
@@ -73,12 +84,29 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation_and_fix_quality() 
         "openlaps/$vehicle/lap.best_time",
         "openlaps/$vehicle/timing.delta_best",
         "openlaps/$vehicle/timing.predicted_lap",
-        "openlaps/$vehicle/position.lat",
-        "openlaps/$vehicle/position.lon",
-        "openlaps/$vehicle/position.speed",
         "openlaps/$vehicle/position.fix_quality",
     } <= topics
     assert any("extrapolat" in panel.get("description", "").lower() for panel in panels)
+
+    # The track map is the one live panel that cannot be MQTT-fed. The live
+    # datasource returns one frame per topic, each carrying only `time` and
+    # `value`, so lat and lon never share a frame and the geomap has no
+    # location field to place a point from -- it drew nothing for as long as
+    # it was wired that way. It reads the same three channels out of
+    # Timescale instead, pivoted into one frame with real latitude/longitude
+    # columns; ingest lag is ~200 ms, which a track map cannot show.
+    geomaps = [panel for panel in panels if panel["type"] == "geomap"]
+    assert geomaps, "pitwall must still carry a track map"
+    for panel in geomaps:
+        assert panel["datasource"]["uid"] == "timescale"
+        assert panel["options"]["layers"], "a geomap without layers cannot draw"
+        sql = " ".join(target.get("rawSql", "") for target in panel["targets"])
+        for channel in ("position.lat", "position.lon", "position.speed"):
+            assert channel in sql, f"track map no longer reads {channel}"
+        assert "latitude" in sql and "longitude" in sql, (
+            "the pivot must expose latitude/longitude by name -- the geomap "
+            "locates by field name, not by column order"
+        )
 
     # Lap and sector times are race-formatted: the timing panels show the
     # publishers' pre-formatted `display` field, not raw seconds.

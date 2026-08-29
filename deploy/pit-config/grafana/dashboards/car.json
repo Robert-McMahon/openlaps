@@ -1865,6 +1865,195 @@
     },
     {
       "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "description": "Where the car is in its grip envelope right now, straight off the live MQTT feed at 10 Hz. One dot, no trail: this is the current reading, not a history. The scale is fixed at +/-1.5 g deliberately, so the dot moves against a stationary frame and the same position always means the same thing -- an auto-scaled axis would rescale under a single moving point and the dot would never appear to move. A car that can exceed 1.5 g wants that number raised, or its peaks will sit on the edge.\n\nThe two axes ride the same CAN frame and so carry one identical capture timestamp, which is what lets the panel join them into a single point; the join is on the payload's `time` field, not on Grafana's message-arrival `Time`.\n\nAxes follow the FDI DETA10A mounted nose-forward: car.accel_y is lateral (right positive), car.accel_x is longitudinal (acceleration positive, braking negative). Confirm against a real run -- a hard stop must fall below the origin -- and swap the two channels in the query if the unit is mounted turned.\n\nThe series mapping below is the matcher form, and `pluginVersion` must stay set alongside it: XY Chart migrates a bare field-name mapping only when it thinks the panel predates the current schema, and a pinned pluginVersion turns that migration off. Drop the version and this panel renders \"Err\".",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 90,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 0,
+            "pointShape": "circle",
+            "pointSize": {
+              "fixed": 14
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "show": "points"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "max": 1.5,
+          "min": -1.5,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "accG"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lateral g"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "Lateral g (right positive)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Longitudinal g"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "Longitudinal g (braking negative)"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 8,
+        "x": 0,
+        "y": 26
+      },
+      "hideTimeOverride": true,
+      "id": 40,
+      "maxDataPoints": 600,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "mapping": "manual",
+        "series": [
+          {
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            },
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "Lateral g"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Longitudinal g"
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.accel_y"
+        },
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "B",
+          "topic": "openlaps/$vehicle/car.accel_x"
+        }
+      ],
+      "timeFrom": "1m",
+      "title": "g-g now",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "time",
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "time",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "value 1": "Lateral g",
+              "value 2": "Longitudinal g"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": true,
+                "field": "time"
+              }
+            ]
+          }
+        },
+        {
+          "id": "limit",
+          "options": {
+            "limitField": 1
+          }
+        }
+      ],
+      "type": "xychart"
+    },
+    {
+      "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
@@ -1938,7 +2127,7 @@
       "gridPos": {
         "h": 12,
         "w": 8,
-        "x": 0,
+        "x": 8,
         "y": 26
       },
       "hideTimeOverride": true,
@@ -1994,7 +2183,7 @@
         }
       ],
       "timeFrom": "5m",
-      "title": "g-g envelope",
+      "title": "g-g envelope (last 5 min)",
       "type": "xychart"
     },
     {
@@ -2058,8 +2247,8 @@
       },
       "gridPos": {
         "h": 12,
-        "w": 16,
-        "x": 8,
+        "w": 8,
+        "x": 16,
         "y": 26
       },
       "hideTimeOverride": true,
@@ -4066,6 +4255,6 @@
   "timezone": "browser",
   "title": "Car and engine",
   "uid": "car",
-  "version": 5,
+  "version": 7,
   "weekStart": "monday"
 }

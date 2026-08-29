@@ -44,13 +44,14 @@ def _data_panels(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
     return [panel for panel in dashboard["panels"] if panel["type"] != "row"]
 
 
-def test_car_dashboard_has_three_rows_and_operator_link() -> None:
+def test_car_dashboard_has_four_rows_and_operator_link() -> None:
     dashboard = _dashboard()
 
     assert dashboard["uid"] == "car"
     assert [panel["title"] for panel in dashboard["panels"] if panel["type"] == "row"] == [
         "Live",
         "Context",
+        "Handling",
         "Traces",
     ]
     assert any(

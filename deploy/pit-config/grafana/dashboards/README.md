@@ -40,6 +40,13 @@ install) and leave `version` alone.
   **Kelvin**, the FDI IMU reports its board temperature in Celsius. A panel
   showing `car.coolant_temp` with no unit set reads ~370 and looks entirely
   plausible. Read `units` from the view; never assume.
+- **IMU axes carry an unrecorded assumption.** Nothing in `catalog.yaml` or
+  `fdi-imu.dbc` says which way the DETA10A is bolted in, so the car
+  dashboard's g-g panels take the conventional nose-forward mounting:
+  `car.accel_y` is lateral (right positive), `car.accel_x` is longitudinal
+  (braking negative). Confirm it once at the track -- a hard stop must plot
+  below the origin -- and swap the two channels in the queries if it does
+  not. Until then it is a convention, not a measurement.
 
 ## Lap and sector times are race-formatted, not Grafana-formatted
 

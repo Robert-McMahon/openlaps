@@ -1858,6 +1858,251 @@
         "x": 0,
         "y": 25
       },
+      "id": 37,
+      "panels": [],
+      "title": "Handling",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Grip envelope over the last five minutes, read straight off the IMU. Each point is one 100 ms window's highest-magnitude 100 Hz sample, so the cloud's edge is the real peak rather than an average of one. A full envelope is round-ish and reaches the same distance in every direction; a flat top means the driver is not trail-braking into the corner, and a notch on one side means the car is not being asked for the same grip in both directions.\n\nAxes follow the FDI DETA10A mounted nose-forward: car.accel_y is lateral (right positive), car.accel_x is longitudinal (acceleration positive, braking negative). Confirm against a real run -- a hard stop must fall below the origin -- and swap the two channels in the query if the unit is mounted turned.\n\nThis panel reads the database, not the live MQTT feed, so it trails the car by the ingest path rather than by the radio. It is the same trade the pit wall's track map already makes.\n\nCore Grafana scales the two axes independently and cannot lock the plot square, so read the envelope's reach off the numbers rather than off its shape on screen.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "semi-dark-blue"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 60,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 0,
+            "pointSize": {
+              "fixed": 4
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "show": "points"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "accG"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lateral g"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "Lateral g (right positive)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Longitudinal g"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "Longitudinal g (braking negative)"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 8,
+        "x": 0,
+        "y": 26
+      },
+      "hideTimeOverride": true,
+      "id": 38,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "mapping": "manual",
+        "series": [
+          {
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            },
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "Lateral g"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Longitudinal g"
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH pivot AS (\n    SELECT time_bucket('10 ms', time) AS time,\n           max(value) FILTER (WHERE channel = 'car.accel_y') AS g_lat,\n           max(value) FILTER (WHERE channel = 'car.accel_x') AS g_lon\n    FROM v_samples_named\n    WHERE vehicle_id = '$vehicle'\n      AND channel IN ('car.accel_x', 'car.accel_y')\n      AND $__timeFilter(time)\n    GROUP BY 1\n    HAVING max(value) FILTER (WHERE channel = 'car.accel_y') IS NOT NULL\n       AND max(value) FILTER (WHERE channel = 'car.accel_x') IS NOT NULL\n)\nSELECT DISTINCT ON (time_bucket('100 ms', time))\n       time_bucket('100 ms', time) AS \"time\",\n       g_lat AS \"Lateral g\",\n       g_lon AS \"Longitudinal g\"\nFROM pivot\nORDER BY time_bucket('100 ms', time),\n         g_lat * g_lat + g_lon * g_lon DESC",
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "5m",
+      "title": "g-g envelope",
+      "type": "xychart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "The same two axes against the clock, over the same five minutes, so a point on the envelope can be traced back to the corner that produced it.\n\nAxes follow the FDI DETA10A mounted nose-forward: car.accel_y is lateral (right positive), car.accel_x is longitudinal (acceleration positive, braking negative). Confirm against a real run -- a hard stop must fall below the origin -- and swap the two channels in the query if the unit is mounted turned.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "accG"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 16,
+        "x": 8,
+        "y": 26
+      },
+      "hideTimeOverride": true,
+      "id": 39,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time,\n       avg(value) FILTER (WHERE channel = 'car.accel_y') AS \"Lateral g\",\n       avg(value) FILTER (WHERE channel = 'car.accel_x') AS \"Longitudinal g\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle'\n  AND channel IN ('car.accel_x', 'car.accel_y')\n  AND $__timeFilter(time)\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "5m",
+      "title": "Lateral and longitudinal g",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
       "id": 24,
       "panels": [],
       "title": "Traces",
@@ -1959,7 +2204,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 39
       },
       "id": 25,
       "options": {
@@ -2133,7 +2378,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 39
       },
       "id": 26,
       "options": {
@@ -2297,7 +2542,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 34
+        "y": 47
       },
       "id": 27,
       "options": {
@@ -2439,7 +2684,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 34
+        "y": 47
       },
       "id": 28,
       "options": {
@@ -2580,7 +2825,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 42
+        "y": 55
       },
       "id": 29,
       "options": {
@@ -2721,7 +2966,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 42
+        "y": 55
       },
       "id": 30,
       "options": {
@@ -2894,7 +3139,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 50
+        "y": 63
       },
       "id": 31,
       "options": {
@@ -3057,7 +3302,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 50
+        "y": 63
       },
       "id": 32,
       "options": {
@@ -3198,7 +3443,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 58
+        "y": 71
       },
       "id": 33,
       "options": {
@@ -3339,7 +3584,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 58
+        "y": 71
       },
       "id": 34,
       "options": {
@@ -3480,7 +3725,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 66
+        "y": 79
       },
       "id": 35,
       "options": {
@@ -3621,7 +3866,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 66
+        "y": 79
       },
       "id": 36,
       "options": {
@@ -3753,12 +3998,12 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
         "includeAll": true,
         "label": "Stint",
         "name": "stint",
         "options": [],
-        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
         "refresh": 1,
         "regex": "",
         "regexApplyTo": "value",
@@ -3775,12 +4020,12 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "definition": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
         "includeAll": true,
         "label": "Lap",
         "name": "lap",
         "options": [],
-        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "query": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
         "refresh": 1,
         "regex": "",
         "regexApplyTo": "value",
@@ -3821,6 +4066,6 @@
   "timezone": "browser",
   "title": "Car and engine",
   "uid": "car",
-  "version": 4,
+  "version": 5,
   "weekStart": "monday"
 }

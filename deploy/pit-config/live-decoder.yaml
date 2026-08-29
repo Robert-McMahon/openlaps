@@ -94,13 +94,21 @@ channels:
   - match: "car.battery_v"
     max_hz: 2
 
-  # IMU accelerometers at ~100 Hz at source: a g-g plot is a scatter, and 5
-  # Hz per axis is enough to see the envelope fill. Deliberately spelled
+  # IMU accelerometers at ~100 Hz at source. The car dashboard's live g-g
+  # panel draws a single dot at the current reading, so this rate is what
+  # the dot's motion looks like: 10 Hz reads as continuous, 5 Hz reads as a
+  # dot that hops. The envelope itself is drawn from Timescale at the full
+  # 100 Hz, so nothing here needs to carry peaks. Deliberately spelled
   # [xyz] rather than `car.accel_*`, which also swept up
-  # car.accel_pedal_pos -- a ~43 Hz driver input published at 5 Hz by
+  # car.accel_pedal_pos -- a ~43 Hz driver input published slowly by
   # accident of the glob, which is worse than not publishing it.
+  #
+  # The two axes must stay on the same rate. They arrive in one CAN frame
+  # under one timestamp, and the g-g panel joins them on it; rating them
+  # differently would leave half the joined rows with only one axis and the
+  # dot would stall.
   - match: "car.accel_[xyz]"
-    max_hz: 5
+    max_hz: 10
 
   # ---- timing ----
   - match: "lap.*"

@@ -40,6 +40,13 @@ install) and leave `version` alone.
   **Kelvin**, the FDI IMU reports its board temperature in Celsius. A panel
   showing `car.coolant_temp` with no unit set reads ~370 and looks entirely
   plausible. Read `units` from the view; never assume.
+- **IMU axes carry an unrecorded assumption.** Nothing in `catalog.yaml` or
+  `fdi-imu.dbc` says which way the DETA10A is bolted in, so the car
+  dashboard's g-g panels take the conventional nose-forward mounting:
+  `car.accel_y` is lateral (right positive), `car.accel_x` is longitudinal
+  (braking negative). Confirm it once at the track -- a hard stop must plot
+  below the origin -- and swap the two channels in the queries if it does
+  not. Until then it is a convention, not a measurement.
 
 ## Lap and sector times are race-formatted, not Grafana-formatted
 
@@ -67,6 +74,32 @@ they keep counting on a stopped car until the crossing leaves the
 dashboard window. The tenths-resolution, gated clock remains the
 extrapolator's streamed `timing.*_pit` panels; the two are labelled
 accordingly and deliberately coexist.
+
+## Two XY Chart traps, both of which render "Err" and nothing else
+
+Both were found the hard way against a real Grafana 12.4.9 with the pinned
+MQTT plugin, and both are silent -- the panel shows `Err`, the query is
+fine, and the browser console says nothing.
+
+- **Series mapping and `pluginVersion` are one decision.** Manual mapping
+  accepts a bare field name (`"x": "Lateral g"`) *only* because the panel
+  migrates it, and the migration runs only when the panel looks older than
+  the current schema. A pinned `pluginVersion` turns the migration off, so
+  a bare name and a pinned version together render `Err`. Write the matcher
+  form -- `"x": {"matcher": {"id": "byName", "options": "Lateral g"}}` --
+  and keep `pluginVersion` set. Configuring the panel through the UI and
+  exporting it produces the correct pair.
+
+- **Two MQTT topics in one panel join on the payload, not on `Time`.** The
+  MQTT datasource gives every frame the same name (`mqtt`) and the same
+  field names (`Time` from message arrival, then `time` and `value` from
+  the JSON payload), so the two are told apart only by position: filter to
+  `time` and `value`, join by field `time`, and the result is `time`,
+  `value 1`, `value 2` in query order. Rename those two, and the panel's
+  query order becomes load-bearing -- reorder the targets and the axes
+  swap silently. Join on the payload's `time`, never on `Time`: the two
+  axes of an IMU reading share one capture timestamp but arrive as two
+  messages, microseconds apart.
 
 ## The video dashboard reads no data
 

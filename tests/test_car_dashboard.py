@@ -33,6 +33,10 @@ CONTEXT_CHANNELS = {
     "sys.agent.publish_drops",
     "sys.agent.rbe_suppressed",
 }
+HANDLING_CHANNELS = {
+    "car.accel_x",
+    "car.accel_y",
+}
 TRACE_CHANNELS = LIVE_CHANNELS | {"car.knock_level1", "car.fuel_level"}
 
 
@@ -44,13 +48,14 @@ def _data_panels(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
     return [panel for panel in dashboard["panels"] if panel["type"] != "row"]
 
 
-def test_car_dashboard_has_three_rows_and_operator_link() -> None:
+def test_car_dashboard_has_four_rows_and_operator_link() -> None:
     dashboard = _dashboard()
 
     assert dashboard["uid"] == "car"
     assert [panel["title"] for panel in dashboard["panels"] if panel["type"] == "row"] == [
         "Live",
         "Context",
+        "Handling",
         "Traces",
     ]
     assert any(
@@ -65,7 +70,8 @@ def test_live_and_context_panels_cover_the_required_mqtt_channels() -> None:
     assert all(panel["title"].strip() for panel in mqtt_panels)
     topics = {target["topic"] for panel in mqtt_panels for target in panel["targets"]}
     expected_topics = {
-        f"openlaps/$vehicle/{channel}" for channel in LIVE_CHANNELS | CONTEXT_CHANNELS
+        f"openlaps/$vehicle/{channel}"
+        for channel in LIVE_CHANNELS | CONTEXT_CHANNELS | HANDLING_CHANNELS
     }
     assert topics == expected_topics
 

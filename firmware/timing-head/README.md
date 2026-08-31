@@ -20,6 +20,26 @@ TH1 <uint32-sequence> <UTC-unix-second> <edge-us> <edge-to-transmit-us> <0|1>
 subtracts `edge-to-transmit-us`, and sends a full offset sample to chrony's
 SOCK refclock. It rejects malformed, invalid, late and stale-sequence input.
 
+## Restart the shim after every reflash
+
+Flashing resets the firmware's sequence counter to zero, and the shim holds
+the last sequence it saw for its whole lifetime. `_is_newer_sequence` compares
+them modulo 2^32 and treats a drop of more than 2^31 as *older*, so after a
+reflash **every line is rejected as stale** — silently, since a rejected
+sample is a counter, not a log line. chrony simply stops getting samples,
+`Reach` decays to 0, and the fault looks like dead hardware.
+
+It clears itself only when the firmware's counter climbs back past the old
+value: one per second, so an hour of uptime before the reflash means an hour
+of no timing after it. Observed 2026-08-31, where a shim up since 02:37 sat at
+sequence ~7800 while the freshly flashed firmware was emitting 182.
+
+```bash
+sudo systemctl restart timing-head-shim.service
+```
+
+Do this as part of flashing, not as a diagnosis afterwards.
+
 ## The data relay
 
 `GNSS_DATA_RELAY` (default `ON`) additionally carries the receiver's NMEA to

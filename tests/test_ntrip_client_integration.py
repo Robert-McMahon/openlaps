@@ -19,7 +19,7 @@ from nats.js.errors import NotFoundError
 
 from agent.publisher import JetStreamPublisher
 from collectors.serial.transport import SerialCollector
-from core.config import DriverConfig, DriverSettings, SerialConfig
+from core.config import DriverConfig, SerialConfig, Um980Settings
 from pit.ntrip_client.service import NtripService, NtripSettings
 
 VEHICLE = "example-club-racer"
@@ -155,7 +155,7 @@ def test_end_to_end_reaches_serial_write_back(nats_url):
     """Fake caster -> ntrip-client -> rtcm.<vehicle> -> real publisher -> real
     UM980 driver write-back, the exact path `docs/adr/0006` describes."""
     fake_serial = _FakeSerial()
-    driver_settings = DriverSettings(rate_hz=1, sentences=["RMC"], configure_on_start=False)
+    driver_settings = Um980Settings(rate_hz=1, sentences=["RMC"], configure_on_start=False)
     serial_config = SerialConfig(
         name="serial0",
         port="/dev/fake",

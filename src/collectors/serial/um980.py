@@ -5,9 +5,9 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
-from typing import Protocol
 
-from core.config import DriverSettings
+from collectors.serial.driver import DriverConfigurationError, SerialPort
+from core.config import Um980Settings
 
 SUPPORTED_RATES_HZ = {
     1: "1",
@@ -30,18 +30,12 @@ SENTENCE_COMMANDS = {
 COMMAND_FORMAT = "CONFIG CMDFORMAT 1"
 
 
-class SerialPort(Protocol):
-    """Subset of pyserial used by the driver and its test fakes."""
+class UM980ConfigurationError(DriverConfigurationError):
+    """The receiver rejected or failed to acknowledge startup configuration.
 
-    def reset_input_buffer(self) -> None: ...
-
-    def write(self, data: bytes, /) -> int | None: ...
-
-    def readline(self, size: int = -1, /) -> bytes: ...
-
-
-class UM980ConfigurationError(RuntimeError):
-    """The receiver rejected or failed to acknowledge startup configuration."""
+    Subclasses the generic error so the transport's retry loop catches it
+    without knowing which receiver is attached.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +53,7 @@ class UM980Driver:
     def __init__(
         self,
         port: SerialPort,
-        settings: DriverSettings,
+        settings: Um980Settings,
         *,
         ack_timeout_s: float = 2.0,
     ) -> None:
@@ -187,7 +181,7 @@ def _xor_checksum(body: str) -> int:
     return checksum
 
 
-def _startup_commands(settings: DriverSettings) -> tuple[str, ...]:
+def _startup_commands(settings: Um980Settings) -> tuple[str, ...]:
     try:
         interval = SUPPORTED_RATES_HZ[settings.rate_hz]
     except KeyError:

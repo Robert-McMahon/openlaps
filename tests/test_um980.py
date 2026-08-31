@@ -9,7 +9,7 @@ from collectors.serial.um980 import (
     _startup_commands,
     parse_command_response,
 )
-from core.config import DriverSettings
+from core.config import Um980Settings
 
 
 class FakeSerial:
@@ -44,10 +44,10 @@ class ScriptedSerial(FakeSerial):
         return len(data)
 
 
-def _settings(**overrides) -> DriverSettings:
+def _settings(**overrides) -> Um980Settings:
     values = {"rate_hz": 50, "sentences": ["RMC"], "configure_on_start": True}
     values.update(overrides)
-    return DriverSettings(**values)
+    return Um980Settings(**values)
 
 
 def test_configure_switches_to_checksummed_commands():

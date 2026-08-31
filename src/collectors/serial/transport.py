@@ -7,13 +7,13 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
 
 import serial
 
 from collectors.clock import Emit, MonotonicWallClock, WallClock
+from collectors.serial.driver import DriverConfigurationError, SerialDriver, SerialPort
+from collectors.serial.drivers import build_driver, is_supported
 from collectors.serial.nmea import NmeaDecoder
-from collectors.serial.um980 import UM980ConfigurationError, UM980Driver
 from core.config import SerialConfig
 from core.samples import Sample
 
@@ -22,18 +22,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_BACKOFF_START_S = 0.5
 DEFAULT_BACKOFF_MAX_S = 30.0
 MAX_SENTENCE_BYTES = 1024
-
-
-class SerialPort(Protocol):
-    """Subset of pyserial used by the transport."""
-
-    def reset_input_buffer(self) -> None: ...
-
-    def write(self, data: bytes, /) -> int | None: ...
-
-    def readline(self, size: int = -1, /) -> bytes: ...
-
-    def close(self) -> None: ...
 
 
 SerialFactory = Callable[[SerialConfig], SerialPort]
@@ -69,7 +57,7 @@ class SerialCollector:
         device = config.driver.name if config.driver is not None else config.decoder
         if config.decoder != "nmea":
             raise ValueError(f"unsupported serial decoder {config.decoder!r}")
-        if config.driver is not None and config.driver.name != "um980":
+        if config.driver is not None and not is_supported(config.driver.name):
             raise ValueError(f"unsupported serial driver {config.driver.name!r}")
 
         self.config = config
@@ -81,7 +69,7 @@ class SerialCollector:
         self._backoff_start_s = backoff_start_s
         self._backoff_max_s = backoff_max_s
         self._active_lock = threading.Lock()
-        self._active_driver: UM980Driver | None = None
+        self._active_driver: SerialDriver | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -137,7 +125,7 @@ class SerialCollector:
                 if driver is not None:
                     try:
                         driver.configure()
-                    except UM980ConfigurationError as exc:
+                    except DriverConfigurationError as exc:
                         self.stats.configuration_failures += 1
                         logger.error("serial %s: receiver configuration failed: %s", self.name, exc)
                         configuration_ok = False
@@ -194,10 +182,10 @@ class SerialCollector:
             logger.warning("serial %s: cannot open %s: %s", self.name, self.config.port, exc)
             return None
 
-    def _build_driver(self, port: SerialPort) -> UM980Driver | None:
+    def _build_driver(self, port: SerialPort) -> SerialDriver | None:
         if self.config.driver is None:
             return None
-        return UM980Driver(port, self.config.driver.config)
+        return build_driver(self.config.driver, port)
 
     def _read_until_error(self, port: SerialPort, stop: threading.Event) -> bool:
         received = False
@@ -219,12 +207,19 @@ class SerialCollector:
 
 
 def _open_serial(config: SerialConfig) -> SerialPort:
+    # No rtscts/dsrdtr. A GNSS receiver is wired TX/RX/GND and nothing else:
+    # measured on the bench 2026-08-31, CTS, DSR and DCD all read False on the
+    # deployed link. Declaring hardware flow control that no wire implements
+    # gates the *transmit* side on a CTS that never asserts, and clearing
+    # CLOCAL (which `dsrdtr` does) makes the port respect a carrier that is
+    # never raised. Reads happened to survive both, so this cost nothing
+    # visible until the write path mattered -- and the write path is
+    # `UM980Driver.configure`, which is exactly what failed for 30 minutes
+    # after a USB re-enumeration on 2026-08-29.
     return serial.Serial(
         port=config.port,
         baudrate=config.baud,
         timeout=0.2,
-        rtscts=True,
-        dsrdtr=True,
     )
 
 

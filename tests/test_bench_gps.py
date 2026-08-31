@@ -23,7 +23,7 @@ import bench_gps  # noqa: E402
 
 from collectors.serial.nmea import NmeaDecoder  # noqa: E402
 from collectors.serial.transport import SerialCollector  # noqa: E402
-from core.config import DriverConfig, DriverSettings, SerialConfig  # noqa: E402
+from core.config import DriverConfig, SerialConfig, Um980Settings  # noqa: E402
 
 TRACE = Path(__file__).parent / "fixtures" / "gps" / "wanneroo-trace.csv"
 
@@ -255,7 +255,7 @@ def test_the_real_serial_collector_reads_the_feeder_at_the_configured_rate(
             decoder="nmea",
             driver=DriverConfig(
                 name="um980",
-                config=DriverSettings(rate_hz=50, sentences=["RMC"], configure_on_start=False),
+                config=Um980Settings(rate_hz=50, sentences=["RMC"], configure_on_start=False),
             ),
         ),
         samples.append,

@@ -2,10 +2,12 @@
 
 import threading
 
+import pytest
 import serial
+from pydantic import ValidationError
 
 from collectors.serial.transport import MAX_SENTENCE_BYTES, SerialCollector
-from core.config import DriverConfig, DriverSettings, SerialConfig
+from core.config import DriverConfig, SerialConfig, Um980Settings
 from core.samples import Sample
 
 RMC = b"$GNRMC,061912.00,A,3145.8100,S,11548.7500,E,0.05,0.0,130626,,,D,V*1B\r\n"
@@ -44,7 +46,7 @@ def _config(*, configure_on_start: bool = True) -> SerialConfig:
         decoder="nmea",
         driver=DriverConfig(
             name="um980",
-            config=DriverSettings(
+            config=Um980Settings(
                 rate_hz=50,
                 sentences=["RMC"],
                 configure_on_start=configure_on_start,
@@ -218,3 +220,91 @@ def test_stop_keeps_live_thread_registered_after_join_timeout():
     release.set()
     collector.stop(timeout=1)
     assert not collector.is_running()
+
+
+# --------------------------------------------------- the driver seam (P6)
+
+
+def test_the_registry_builds_the_driver_a_profile_names():
+    from collectors.serial.drivers import DRIVERS, build_driver, is_supported
+    from collectors.serial.um980 import UM980Driver
+
+    assert is_supported("um980")
+    assert not is_supported("f9p")
+    assert set(DRIVERS) == {"um980"}
+
+    driver = build_driver(_config().driver, FakeSerial([]))
+    assert isinstance(driver, UM980Driver)
+
+
+def test_an_unregistered_driver_name_is_refused_by_name():
+    from collectors.serial.drivers import build_driver
+
+    class Named:
+        name = "f9p"
+        config = None
+
+    with pytest.raises(ValueError, match="unsupported serial driver 'f9p'.*um980"):
+        build_driver(Named(), FakeSerial([]))
+
+
+def test_an_unknown_driver_name_fails_at_profile_load_not_at_first_open():
+    """The Literal on DriverConfig.name is what moves this error forward.
+
+    A free-string name would be accepted here and only rejected inside a
+    collector thread, which would then retry it with backoff forever.
+    """
+    with pytest.raises(ValidationError):
+        SerialConfig(
+            name="serial0",
+            port="/dev/ttyUSB9",
+            baud=115_200,
+            decoder="nmea",
+            driver={"name": "f9p", "config": {}},
+        )
+
+
+def test_the_retry_loop_handles_any_drivers_configuration_error():
+    """The transport must not know which receiver refused it.
+
+    Registering a non-UM980 driver that raises the generic error proves the
+    reconnect path is keyed on `DriverConfigurationError`, not on
+    `UM980ConfigurationError` -- which is what lets a second receiver reuse
+    every line of this transport.
+    """
+    from collectors.serial import drivers
+    from collectors.serial.driver import DriverConfigurationError
+
+    attempts: list[int] = []
+
+    class RefusingDriver:
+        def __init__(self, port, settings) -> None:
+            pass
+
+        def configure(self) -> None:
+            attempts.append(1)
+            raise DriverConfigurationError("receiver said no")
+
+        def write_rtcm(self, payload: bytes) -> int:
+            return 0
+
+    stop = threading.Event()
+    collector = SerialCollector(
+        _config(),
+        lambda sample: None,
+        serial_factory=lambda config: FakeSerial([]),
+        backoff_start_s=0.0,
+        backoff_max_s=0.0,
+    )
+
+    original = dict(drivers.DRIVERS)
+    drivers.DRIVERS["um980"] = RefusingDriver
+    try:
+        threading.Timer(0.2, stop.set).start()
+        collector.run(stop)
+    finally:
+        drivers.DRIVERS.clear()
+        drivers.DRIVERS.update(original)
+
+    assert attempts, "the driver was never asked to configure"
+    assert collector.stats.configuration_failures == len(attempts)

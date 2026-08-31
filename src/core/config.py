@@ -131,8 +131,14 @@ class TimingOutputConfig(StrictModel):
     baud: Literal[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600] = 115200
 
 
-class DriverSettings(StrictModel):
-    """Supported UM980 startup settings."""
+class Um980Settings(StrictModel):
+    """Startup settings for the Unicore UM980, and only for it.
+
+    `pps` and `timing_output` are this receiver's command surface, not a
+    general one: they exist because `CONFIG PPS` and a spare `COMn` are how a
+    UM980 is told to produce a timing signal. A different receiver brings a
+    different model rather than growing optional fields on a shared one.
+    """
 
     rate_hz: Annotated[int, Field(gt=0)]
     sentences: list[_NON_EMPTY] = Field(min_length=1)
@@ -141,11 +147,25 @@ class DriverSettings(StrictModel):
     timing_output: TimingOutputConfig | None = None
 
 
-class DriverConfig(StrictModel):
-    """Optional device-specific serial driver."""
+class Um980DriverConfig(StrictModel):
+    """The `um980` driver and the settings it accepts."""
 
-    name: _NON_EMPTY
-    config: DriverSettings
+    name: Literal["um980"]
+    config: Um980Settings
+
+
+# One receiver is supported today, so this is an alias rather than a union.
+# A second one adds its settings model and config class beside UM980's and
+# makes this a discriminated union:
+#
+#     DriverConfig = Annotated[
+#         Um980DriverConfig | F9pDriverConfig, Field(discriminator="name")
+#     ]
+#
+# `name` is a Literal rather than a free string so an unknown driver fails at
+# profile load, naming the field, instead of at the first port open inside a
+# collector thread that then has to retry it forever.
+DriverConfig = Um980DriverConfig
 
 
 class SerialConfig(StrictModel):

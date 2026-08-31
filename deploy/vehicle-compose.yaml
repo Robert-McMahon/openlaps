@@ -50,8 +50,12 @@ services:
     command: ["openlaps-agent"]
     network_mode: host
     devices:
-      # The GPS receiver. Adjust to the real node; a udev rule giving it a
-      # stable name is worth the five minutes on a car that gets rewired.
+      # The GPS receiver, as /dev/ttyACM0 -- the RP2040 relay (ADR 0009),
+      # not an external USB-serial adapter. The container path stays
+      # ttyUSB0 so the profile does not encode the host's wiring. An
+      # external adapter (the pre-0009 arrangement, and still the
+      # fallback) enumerates as ttyUSB0 and can be named unstably when it
+      # re-enumerates, which is worth a udev rule if you go back to it.
       - ${OPENLAPS_SERIAL_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
     group_add:
       # Serial devices are group-owned by `dialout` on Debian-family hosts;

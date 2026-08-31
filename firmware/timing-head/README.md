@@ -5,12 +5,17 @@ it, carries the firmware-known edge-to-transmit delay to the host, and emits
 one line per valid UTC second. `GGA` fix quality gates output: no current fix,
 no timing sample.
 
-The committed `openlaps-timing-head-usb.uf2` is the USB CDC build (SHA-256
-`19d311dedbaa34215d04cebce9f438df73e07ed7df5c21e0b8f07652a44e117a`).
-Rebuilding with `TIMING_TRANSPORT=UART` selects the direct RP2040-to-N100
-UART instead. Neither transport is preferred until the one-hour
-characterisation in `docs/BENCH_RUNBOOK.md` has been run. Both builds use the
-same line protocol:
+Two builds are committed. **`openlaps-timing-head-uart-relay.uf2` is the
+deployed one** (SHA-256
+`ba1ebd7ffbf83688060c6bdddd49e4a1453ea9dc7c291496148afb2891b9a2d5`): timing
+on the RP2040-to-N100 UART plus the data relay of ADR 0009. It was verified
+against hardware on 2026-08-31 and the build reproduces that hash byte for
+byte from this source tree.
+
+`openlaps-timing-head-usb.uf2` is the older timing-only USB CDC build (SHA-256
+`19d311dedbaa34215d04cebce9f438df73e07ed7df5c21e0b8f07652a44e117a`), kept as
+the BOOTSEL recovery artefact and for the transport characterisation in
+`docs/BENCH_RUNBOOK.md`. Both use the same line protocol:
 
 ```
 TH1 <uint32-sequence> <UTC-unix-second> <edge-us> <edge-to-transmit-us> <0|1>
@@ -75,10 +80,10 @@ Note that with the relay in place the host's commands arrive **on COM2**, so
 `GPRMC 0.02` and friends configure that port without needing an explicit port
 argument — the driver's existing command set is unchanged.
 
-No relay `.uf2` is committed yet. The committed USB build predates the relay
-and remains the BOOTSEL recovery artefact; build the relay variant yourself
-until it has been verified against hardware, at which point commit it with its
-SHA-256 the way the USB build records one.
+Verified on hardware 2026-08-31: the receiver answered a `VERSION` command
+sent host-to-receiver through the relay, position flowed at 50 Hz with a valid
+fix, and chrony held Stratum 1 on the GPS refclock throughout. Measured
+receiver draw was 0.15-0.19 A at 5 V on a partial sky view.
 
 ## Default pins
 
@@ -106,8 +111,10 @@ the second connector is **7** PPS, **8** VCC (5 V), **9** `RX2`, **10**
 There is **no external host-UART wire**. On the UART firmware build, the
 RP2040 sends on its internally connected UART0 TX/GPIO0 to the N100, where it
 appears as `/dev/ttyS4`. GPIO0 and GPIO1 are reserved for that onboard link.
-The USB build instead appears as `/dev/ttyACM0`. Check the X4 revision before
-using the physical header-pin numbers; the RP2040 GPIO numbers are unchanged.
+`/dev/ttyACM0` is the RP2040's internal USB CDC: on the deployed relay build
+that carries GNSS *data*, and on the older timing-only USB build it carried
+`TH1` instead. Check the X4 revision before using the physical header-pin
+numbers; the RP2040 GPIO numbers are unchanged.
 
 The receiver startup driver applies the manual's PPS form (Reference Commands
 Manual V2 EN R1.14, printed page 56):
@@ -122,6 +129,28 @@ GPGGA COM2 1
 `ENABLE`, rather than `ENABLE2` or `ENABLE3`, prevents PPS before the receiver
 has converged. GGA provides immediate explicit fix-loss gating during the
 receiver's documented PPS holdover.
+
+That configuration lives in RAM, so a receiver which power-cycles while the
+agent is down comes up silent on COM2 — and with no ZDA/GGA the timing head
+emits nothing, so chrony loses its refclock as well. It has therefore been
+persisted once, by hand:
+
+```
+$UNLOG COM3*<cs>     # clear stale logs to ports nothing is connected to
+$SAVECONFIG*55
+```
+
+**Re-run `SAVECONFIG` after changing the profile's driver settings**, or the
+power-on default silently drifts from what the profile asks for. It is
+deliberately not part of `configure_on_start`: that writes the receiver's NVM,
+and an agent in a crash loop would wear the flash out. Check what is actually
+persisted with `LOGLIST`; the wanted set is exactly
+
+```
+GPRMC COM2 0.02
+GPZDA COM2 1
+GPGGA COM2 1
+```
 
 ## Build
 
@@ -150,10 +179,14 @@ Flashing replaces the Radxa X4's stock RP2040 GPIO firmware.
 1. Stop services using the RP2040 device.
 2. Put the RP2040 into BOOTSEL mode per the Radxa X4 procedure so its mass
    storage device appears.
-3. Copy `openlaps-timing-head-usb.uf2` onto that volume and wait for it to
-   unmount/reboot.
-4. Install the vehicle chrony configuration, its systemd socket-permission
+3. Copy `openlaps-timing-head-uart-relay.uf2` onto that volume and wait for
+   it to unmount/reboot. The copy triggers the reboot, so the subsequent
+   `umount` failing is the success signal, not an error.
+4. **Restart the shim** — `sudo systemctl restart timing-head-shim.service`.
+   See "Restart the shim after every reflash" above; skipping this looks
+   exactly like dead hardware.
+5. Install the vehicle chrony configuration, its systemd socket-permission
    drop-in, and the shim service exactly as documented in `deploy/README.md`,
    then start chrony and the shim.
-5. Verify `chronyc sources -v` selects `GPS` and pull/restore PPS to exercise
+6. Verify `chronyc sources -v` selects `GPS` and pull/restore PPS to exercise
    fallback without using `chronyc makestep`.

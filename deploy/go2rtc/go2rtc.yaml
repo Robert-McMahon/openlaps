@@ -39,15 +39,29 @@ streams:
     #     `car_h264` below.
     # Do not consume both streams at once — one process holds /dev/video0,
     # and the loser's viewer sits on "loading" forever with no error.
+    #
+    # **Video and audio are one ffmpeg process, not two producers**, and that
+    # is a hardware constraint rather than a preference. The camera only
+    # delivers audio while its video stream is running: captured on its own
+    # the mic gives `Input/output error`, or — worse — opens and then blocks
+    # forever with no samples. A blocked ffmpeg never exits, so go2rtc cannot
+    # restart it, and it holds the ALSA device until someone kills it by
+    # hand; every player then waits on an audio track that never arrives and
+    # retries, which looks like a browser tab hanging and flashing. Two
+    # independent producers left the ordering to chance. One process with
+    # `-i /dev/video0 -i plughw:0,0` cannot start audio before video, because
+    # ffmpeg opens inputs in order and the v4l2 demuxer streams from
+    # `read_header`.
     car:
-        - exec:ffmpeg -hide_banner -v error -init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -hwaccel vaapi -hwaccel_output_format vaapi -f v4l2 -input_format mjpeg -video_size 640x360 -i /dev/video0 -vf format=vaapi|nv12,hwupload,scale_vaapi=out_color_matrix=bt709:out_range=tv:format=nv12 -c:v hevc_vaapi -g 50 -bf 0 -profile:v main -b:v 500k -maxrate 700k -bufsize 1400k -an -rtsp_transport tcp -f rtsp {output}
-        # Cabin audio: ALSA capture, denoised, Opus at 64k.
-        - exec:ffmpeg -f alsa -i plughw:0,0 -c:a libopus -ar:a 48000 -af afftdn=nr=20:nt=v:nf=-20 -ac:a 1 -rtsp_transport tcp -b:a 64k -f rtsp {output}
+        - exec:ffmpeg -hide_banner -v error -init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -hwaccel vaapi -hwaccel_output_format vaapi -f v4l2 -input_format mjpeg -video_size 640x360 -i /dev/video0 -f alsa -i plughw:0,0 -map 0:v -map 1:a -filter:v format=vaapi|nv12,hwupload,scale_vaapi=out_color_matrix=bt709:out_range=tv:format=nv12 -c:v hevc_vaapi -g 50 -bf 0 -profile:v main -b:v 500k -maxrate 700k -bufsize 1400k -filter:a afftdn=nr=20:nt=v:nf=-20 -c:a libopus -ar:a 48000 -ac:a 1 -b:a 64k -rtsp_transport tcp -f rtsp {output}
 
-    # H.264 fallback for a viewer without hardware HEVC decode. The
-    # predecessor stack's proven pipeline, unchanged. Higher rate for the
+    # H.264 fallback for a viewer without hardware HEVC decode — which now
+    # includes the pit itself: Chromium on Linux has no platform HEVC
+    # decoder, so the dashboard defaults to this stream. Higher rate for the
     # same quality — this is what `car` replaced, not a second feed to run
-    # alongside it.
+    # alongside it. Spelled out as an exec rather than go2rtc's
+    # `ffmpeg:device` template because a template carries one input and this
+    # needs two; the encoder settings are the template's, with the same
+    # scale_vaapi conversion `car` uses for the camera's 4:2:2 MJPEG.
     car_h264:
-        - ffmpeg:device?video=/dev/video0&input_format=mjpeg&video_size=640x360#video=h264#hardware=vaapi#raw=-init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -b:v 800k -maxrate 1M -bufsize 2M
-        - exec:ffmpeg -f alsa -i plughw:0,0 -c:a libopus -ar:a 48000 -af afftdn=nr=20:nt=v:nf=-20 -ac:a 1 -rtsp_transport tcp -b:a 64k -f rtsp {output}
+        - exec:ffmpeg -hide_banner -v error -init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -hwaccel vaapi -hwaccel_output_format vaapi -f v4l2 -input_format mjpeg -video_size 640x360 -i /dev/video0 -f alsa -i plughw:0,0 -map 0:v -map 1:a -filter:v format=vaapi|nv12,hwupload,scale_vaapi=out_color_matrix=bt709:out_range=tv:format=nv12 -c:v h264_vaapi -g 50 -bf 0 -profile:v high -b:v 800k -maxrate 1M -bufsize 2M -filter:a afftdn=nr=20:nt=v:nf=-20 -c:a libopus -ar:a 48000 -ac:a 1 -b:a 64k -rtsp_transport tcp -f rtsp {output}

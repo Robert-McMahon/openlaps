@@ -15,25 +15,31 @@ Description=openlaps vehicle telemetry agent
 Documentation=https://github.com/Robert-McMahon/openlaps
 # nats-server has to be listening before the agent can provision TELE/CMD.
 # The agent retries a refused connection with backoff, so this is ordering,
-# not a hard requirement.
-After=network-online.target nats-server.service
-Wants=network-online.target
+# not a hard requirement -- and the same is true of `openlaps-can.service`,
+# which brings the profile's buses up as root because the agent cannot.
+After=network-online.target nats-server.service openlaps-can.service
+Wants=network-online.target openlaps-can.service
 
 [Service]
 Type=exec
 User=openlaps
 Group=openlaps
 # Serial devices are group-owned by dialout; can0 needs nothing beyond the
-# interface being up (see ExecStartPre).
+# interface being up, which openlaps-can.service has done by now.
 SupplementaryGroups=dialout
 
 WorkingDirectory=/opt/openlaps
+# Carries OPENLAPS_PROFILE, and OPENLAPS_HARDWARE when this box is one of
+# the boards in deploy/targets/ -- the profile describes the car, the
+# overlay describes the SBC it is bolted to (ADR 0010).
 EnvironmentFile=/etc/openlaps/agent.env
 
-# The CAN interface is host state, not the agent's: it configures no
-# bitrate and brings no link up. `-` means a failure here (already up, or
-# no can0 on this box) does not block the unit.
-ExecStartPre=-/sbin/ip link set can0 up type can bitrate 1000000
+# The CAN interface is host state, not the agent's: it configures no bitrate
+# and brings no link up. `openlaps-can.service` does that, as root and from
+# the same profile, and is ordered before this unit above. There is no
+# ExecStartPre here on purpose: one would run as `User=openlaps`, be refused
+# CAP_NET_ADMIN every single time, and have that refusal hidden by the `-`
+# prefix it needs in order not to block startup.
 ExecStart=/opt/openlaps/.venv/bin/openlaps-agent
 
 # The agent handles SIGTERM: it drains its queues and closes the publisher

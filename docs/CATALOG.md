@@ -54,6 +54,41 @@ host:
   interval: <duration>         # polling interval, e.g. "5s"
 ```
 
+### `interface` and `port` belong to the board, not the car
+
+Two fields above describe the SBC rather than the vehicle: `interface` is a
+socketCAN device name and `port` is a path under `/dev`. Move the same car to
+a different SBC and every DBC, channel and policy is unchanged while those
+two strings are not.
+
+They are still written here, because a profile has to be complete on its own.
+But they can be overlaid per board without touching this file, by a
+`hardware.yaml` under `deploy/targets/` selected with `OPENLAPS_HARDWARE`
+(ADR 0010):
+
+```yaml
+target: luckfox-omni3576
+buses:
+  can0: { interface: can0, bitrate: 1000000 }
+serial:
+  serial0: { port: /dev/ttyS4, baud: 115200 }
+```
+
+The overlay addresses transports by the `name` above -- the same identifier
+catalog `from:` refs resolve against -- and fails at load if it names a
+transport this file does not define. Besides `interface`, `bitrate`, `port`
+and `baud` it may set two things that are about the host rather than the car:
+
+- `buses.<name>.link` (`fd`, `dbitrate`) -- arguments `tools/can_up.py` hands
+  to `ip link`, for a controller that will not come up without them.
+- `serial.<name>.driver.configure_on_start` -- "is a real receiver on the
+  other end of this port?". `tools/bench-hardware.yaml` sets it false because
+  the bench rig's `serial0` is a pty. Nothing else in a driver block is
+  overridable: `rate_hz`, `sentences`, `pps` and `timing_output` describe the
+  receiver the car carries and belong here.
+
+`deploy/targets/README.md` is the operator document.
+
 Buses and serial sources are generic transports: they decode to
 *source-native* signals (`MESSAGE.SIGNAL` for CAN, `SENTENCE.field` for
 serial) and carry no domain meaning. A GPS receiver moving from serial to

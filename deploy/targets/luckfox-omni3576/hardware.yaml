@@ -1,0 +1,52 @@
+# Host wiring for a Luckfox Omni3576 (Rockchip RK3576).
+# See deploy/targets/README.md and the README beside this file.
+
+target: luckfox-omni3576
+
+buses:
+  # On-SoC controller, `rk3576_canfd` at 2ac00000 — not a USB adapter, so it
+  # is present from boot and cannot re-enumerate under a different name. The
+  # profile's arbitration bitrate is carried through unchanged; the car's bus
+  # is still ordinary 1 Mbit/s classic CAN.
+  can0:
+    interface: can0
+    bitrate: 1000000
+    # **This controller cannot be brought up in classic mode.** Measured on
+    # the board, with the bitrate accepted and the link refused:
+    #
+    #   ip link set can0 up type can bitrate 1000000
+    #     rk3576_canfd 2ac00000.can can0: incorrect/missing data bit-timing
+    #     RTNETLINK answers: Invalid argument
+    #   ip link set can0 up type can bitrate 1000000 dbitrate 2000000
+    #     RTNETLINK answers: Operation not supported
+    #
+    # It needs both, together. That costs nothing on a classic bus: an
+    # FD-mode controller receives classic frames unchanged, the data bitrate
+    # applies only to BRS frames a classic bus never sends, and this stack
+    # transmits nothing. The value below is therefore a formality — it has to
+    # be legal, and it is never used.
+    link:
+      fd: true
+      dbitrate: 2000000
+
+serial:
+  serial0:
+    # uart2 on 40-pin header pins 8/10, which **requires the device-tree
+    # change in openlaps.dtsi** -- the stock image enables no usable UART.
+    # /dev/ttyS4 is the only tty it ships, and that one is the Bluetooth HCI
+    # link:
+    #
+    #   /sys/class/bluetooth/hci0 -> .../2ad70000.serial/tty/ttyS4/hci0
+    #   hciattach -s 1500000 /dev/ttyS4 any 1500000 flow nosleep
+    #
+    # After flashing, `ls -l /sys/class/tty/ttyS2/device` should point at
+    # `2ad50000.serial`. Wire the receiver's COM1 here, not COM2 -- README.md
+    # in this directory has the reason.
+    #
+    # On a board that has *not* been flashed, put the receiver on a
+    # USB-serial adapter and change this to /dev/ttyUSB0. A USB device can
+    # re-enumerate under a different number, which is what ADR 0009 moved the
+    # X4 away from, so pair that with a udev rule keyed on the adapter's
+    # serial number and name the symlink here instead.
+    port: /dev/ttyS2
+    baud: 115200

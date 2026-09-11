@@ -9,3 +9,4 @@
 7. [0007 — Private companion repo for proprietary-format exports and live vehicle profile](0007-private-companion-repo-for-proprietary-exports.md)
 8. [0008 — GNSS time reference via an RP2040 timing head](0008-gnss-time-reference-rp2040-timing-head.md)
 9. [0009 — GNSS data through the RP2040, sharing one receiver port](0009-gnss-data-through-the-rp2040.md)
+10. [0010 — Vehicle targets, and a host-hardware overlay on the profile](0010-vehicle-targets-and-host-hardware-overlay.md)

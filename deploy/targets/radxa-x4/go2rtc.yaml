@@ -1,4 +1,8 @@
-# The in-car camera, encoded on the vehicle SBC and served by go2rtc.
+# The in-car camera on a Radxa X4 (Intel N100), served by go2rtc.
+#
+# One of several per-board pipelines; see deploy/targets/README.md for why
+# this file cannot be shared between targets, and the README beside it for
+# what this board is wired to.
 #
 # Ported from the predecessor stack's config (logger repo,
 # config/go2rtc/go2rtc.yaml) with the stream renamed `linux_usbcam` -> `car`.

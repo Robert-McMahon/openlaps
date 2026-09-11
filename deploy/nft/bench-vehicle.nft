@@ -38,7 +38,7 @@
 #
 # The video counters exist for P4.5's optional competing-stream test:
 # docs/LINK_BUDGET.md §5 reserves ~1.4 Mbit/s for video and calls the
-# reservation untested. They count the three ports deploy/go2rtc/go2rtc.yaml
+# reservation untested. They count the three ports deploy/targets/*/go2rtc.yaml
 # pins (1984 API/MSE, 8554 RTSP, 8555 WebRTC over TCP or UDP) — change the
 # ports there, change them here. On the vehicle the video server *listens*,
 # same as the leafnode, so the dport/sport resolution is identical.

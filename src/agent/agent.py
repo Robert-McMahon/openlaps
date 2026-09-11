@@ -55,6 +55,7 @@ class AgentSettings:
     """Deploy-time knobs (``example.env``); the profile describes the car."""
 
     profile_dir: Path
+    hardware_path: Path | None = None
     nats_url: str = "nats://127.0.0.1:4222"
     nats_creds: str | None = None
     vehicle_id: str | None = None
@@ -70,7 +71,10 @@ class AgentSettings:
 
     @classmethod
     def from_env(
-        cls, environ: dict[str, str] | None = None, profile_dir: str | Path | None = None
+        cls,
+        environ: dict[str, str] | None = None,
+        profile_dir: str | Path | None = None,
+        hardware_path: str | Path | None = None,
     ) -> AgentSettings:
         """Build settings from the ``OPENLAPS_*`` environment set.
 
@@ -84,6 +88,12 @@ class AgentSettings:
         if not profile:
             raise ValueError("no profile: pass a profile directory or set OPENLAPS_PROFILE")
         kwargs: dict[str, object] = {"profile_dir": Path(profile)}
+        # The host-wiring overlay is optional: without one the profile's own
+        # `interface`/`port` are used, which is the pre-target behaviour and
+        # remains correct for a board the profile was written against.
+        hardware = hardware_path if hardware_path is not None else env.get("OPENLAPS_HARDWARE")
+        if hardware:
+            kwargs["hardware_path"] = Path(hardware)
 
         def take(env_key: str, field: str, parse) -> None:
             value = env.get(env_key)
@@ -168,8 +178,14 @@ class VehicleAgent:
         -> Failure modes).
         """
         self.settings = settings
-        self.profile: ProfileConfig = load_profile(settings.profile_dir)
+        self.profile: ProfileConfig = load_profile(settings.profile_dir, settings.hardware_path)
         self.vehicle_id = settings.vehicle_id or self.profile.vehicle.vehicle.id
+        if self.profile.hardware_target is not None:
+            logger.info(
+                "hardware target %s applied from %s",
+                self.profile.hardware_target,
+                settings.hardware_path,
+            )
 
         collector_names = [bus.name for bus in self.profile.vehicle.buses]
         collector_names += [source.name for source in self.profile.vehicle.serial]

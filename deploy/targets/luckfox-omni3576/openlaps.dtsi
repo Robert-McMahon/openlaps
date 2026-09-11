@@ -1,0 +1,83 @@
+// Device-tree additions for an Omni3576 running openlaps.
+//
+// **This is not applied by anything in this repository.** The board's DTB
+// lives inside a FIT image in the 64 MB `boot` partition (`/dev/mmcblk2p3`,
+// magic d0 0d fe ed at offset 0), the kernel has no `CONFIG_OF_OVERLAY`, and
+// there is no /boot/dtb to drop a file into -- so applying this means an SDK
+// build and rewriting the `boot` partition. See README.md in this directory
+// before you do that; the short version is that it never touches U-Boot, so
+// loader mode (`reboot loader`, over ssh) recovers it and maskrom is not on
+// the critical path.
+//
+// Copy this file into the SDK's device-tree directory and #include it from
+// the *end* of the board .dts -- README.md step 2 has the exact commands:
+//
+//   cp openlaps.dtsi kernel-6.1/arch/arm64/boot/dts/rockchip/
+//   printf '\n#include "openlaps.dtsi"\n' >> .../luckfox-omni3576.dts
+//
+// The end, not the top: `&uart2`, `RK_PA2` and `GPIO_ACTIVE_HIGH` all need
+// rk3576.dtsi and the dt-bindings headers to have been included first.
+//
+// Two independent changes; take either.
+
+// ---------------------------------------------------------------------------
+// 1. A real UART for the GNSS receiver, on 40-pin header pins 8 and 10.
+//
+// This is the change that removes USB from the data path, and it is
+// **device-tree only**: `CONFIG_SERIAL_8250_DW=y` is already in the shipped
+// kernel (which is why /dev/ttyS4 exists), so no kernel rebuild is needed for
+// this half -- only a new DTB.
+//
+// `uart2m1` is the mux to use. Seven of the SoC's UART mux options put both
+// pins on the header, but this one is the Raspberry-Pi-conventional position
+// (pin 8 = TXD, pin 10 = RXD) and is the one Luckfox's own wiki documents, so
+// their instructions and anything you plug in later both expect it there.
+// The others, for reference, are uart3m0 (pins 32/33 -- the smallest possible
+// edit, since m0 is uart3's default and `status` alone would do it),
+// uart8m1 (7/29), uart8m2 (3/5), uart7m0 (27/28), uart5m1 (38/40) and
+// uart4m2 (15/16 -- but uart4 is the Bluetooth link, so that one costs you
+// Bluetooth).
+//
+// Becomes /dev/ttyS2, from the `serial2` alias. Set `serial0.port` in
+// hardware.yaml and OPENLAPS_SERIAL_DEVICE in target.env to match --
+// tests/test_hardware.py fails the pair if they disagree.
+&uart2 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart2m1_xfer>;
+};
+
+// ---------------------------------------------------------------------------
+// 2. Kernel PPS on header pin 11, instead of tools/pps_gpio_shim.py.
+//
+// This half **also needs a kernel config change** -- `CONFIG_PPS_CLIENT_GPIO`
+// is not set in the shipped kernel and there is no module tree to load one
+// into, so a DT node on its own binds to nothing.
+//
+// Add it as a **config fragment**, not through `build.sh kernelconfig` and not
+// by editing kernel-6.1/.config: mk-kernel.sh regenerates .config from the
+// board defconfig on every build, so a hand-edited one is discarded. The SDK
+// consumes RK_KERNEL_CFG_FRAGMENTS for exactly this, so append
+//
+//     CONFIG_PPS_CLIENT_GPIO=y
+//
+// to whichever fragment your build already passes there.
+//
+// GPIO3_A2 is header pin 11: free, unmuxed by every enabled node, and
+// interrupt-capable. `assert-falling-edge` is deliberately absent -- the
+// UM980's PPS is configured active-high in
+// profiles/example-club-racer/vehicle.yaml (`polarity: POSITIVE`), so the
+// rising edge is the one on the second.
+//
+// Gives /dev/pps0 and the textbook `refclock PPS /dev/pps0` in chrony.conf,
+// replacing openlaps-pps-gpio.service. Weigh it honestly: both this and the
+// shim take their timestamp in the same hard-IRQ handler, so the accuracy
+// difference is small, and neither solves second-numbering without a second
+// refclock. The shim exists because it needs none of this.
+/ {
+	openlaps_pps: pps {
+		compatible = "pps-gpio";
+		gpios = <&gpio3 RK_PA2 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
+};

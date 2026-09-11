@@ -163,3 +163,11 @@ Everything comes from the profile (`vehicle.yaml`, `catalog.yaml`) plus a
 small env set (documented in `example.env`): NATS URL + creds path, vehicle
 id override, tick length, queue/window sizes. No signal names, rates, or
 policies in env — the profile is the single place a car is described.
+
+One optional file sits between the two: `OPENLAPS_HARDWARE` names a host
+wiring overlay (ADR 0010) that substitutes socketCAN interface names and
+serial device paths into the loaded profile. It is deliberately not part of
+the env set — a device path is structured configuration with a schema, and
+it fails at load with a precise error like every other config error here.
+The profile remains the single place the *car* is described; the overlay
+describes the board it is bolted to.

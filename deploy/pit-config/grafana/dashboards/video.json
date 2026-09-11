@@ -1,7 +1,7 @@
 {
   "uid": "video",
   "title": "Car camera",
-  "description": "Live in-car video — the operator's browser connects straight to the vehicle's go2rtc (deploy/go2rtc/go2rtc.yaml); no video bytes cross NATS or land in the database. The panel's nominal timescale datasource satisfies the dashboard contract; it queries nothing.",
+  "description": "Live in-car video — the operator's browser connects straight to the vehicle's go2rtc (deploy/targets/<target>/go2rtc.yaml); no video bytes cross NATS or land in the database. The panel's nominal timescale datasource satisfies the dashboard contract; it queries nothing.",
   "editable": false,
   "schemaVersion": 41,
   "version": 1,

@@ -1,0 +1,48 @@
+# Bring the profile's CAN interfaces up, at the profile's own bitrates.
+#
+#     sudo cp deploy/systemd/openlaps-can.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now openlaps-can
+#
+# This exists because the bitrate is a property of the car's bus, written in
+# `vehicle.yaml`, and every hand-copied duplicate of it is a chance to run a
+# bus at the wrong rate. `tools/can_up.py` resolves the same configuration
+# the agent resolves -- profile plus the target's host-wiring overlay -- and
+# issues one `ip link` per bus. Add a bus to the profile and this unit brings
+# it up on the next boot with nothing edited here.
+#
+# It is a separate unit rather than an ExecStartPre on the agent because
+# configuring a network interface needs root and the agent must not have it.
+# An ExecStartPre inherits `User=openlaps` and fails with EPERM every time,
+# which the `-` prefix then hides.
+
+[Unit]
+Description=openlaps CAN interfaces
+Documentation=https://github.com/Robert-McMahon/openlaps
+# Interfaces exist as soon as their driver has probed; nothing here waits on
+# the network being *configured*, which for socketCAN is what this unit is.
+After=systemd-udev-settle.service
+Before=openlaps-agent.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Root: `ip link set ... up type can bitrate ...` is CAP_NET_ADMIN, and the
+# capability is the whole reason this is not part of the agent unit.
+User=root
+EnvironmentFile=/etc/openlaps/agent.env
+WorkingDirectory=/opt/openlaps
+ExecStart=/opt/openlaps/.venv/bin/python /opt/openlaps/tools/can_up.py
+
+# A car with no transceiver attached, or a bench with no CAN at all, must not
+# block the agent from starting: the collector retries a missing interface
+# with backoff and reports it as `sys.agent.*` telemetry, which is a better
+# failure than a stack that will not come up.
+SuccessExitStatus=0 1
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openlaps-can
+
+[Install]
+WantedBy=multi-user.target

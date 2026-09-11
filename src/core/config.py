@@ -310,12 +310,19 @@ class CatalogConfig(StrictModel):
 
 
 class ProfileConfig(StrictModel):
-    """The two validated files that define one vehicle profile."""
+    """The two validated files that define one vehicle profile.
+
+    `hardware_target` names the host-wiring overlay that was applied on top
+    of them, or is None when the profile was loaded as written. It is the
+    overlay's name rather than its parsed contents so this module stays free
+    of an import back from `core.hardware`, which builds on these models.
+    """
 
     path: Path
     vehicle: VehicleConfig
     catalog: CatalogConfig
     catalog_hash: str
+    hardware_target: str | None = None
 
 
 def parse_duration_ns(value: str) -> int:
@@ -331,12 +338,26 @@ def parse_duration_ns(value: str) -> int:
     return round(duration)
 
 
-def load_profile(profile_dir: str | Path) -> ProfileConfig:
-    """Load and cross-validate ``vehicle.yaml`` and ``catalog.yaml``."""
+def load_profile(profile_dir: str | Path, hardware: str | Path | None = None) -> ProfileConfig:
+    """Load and cross-validate ``vehicle.yaml`` and ``catalog.yaml``.
+
+    `hardware`, when given, is a target's host-wiring overlay
+    (``core.hardware``): it substitutes socketCAN interface names and serial
+    device paths into the loaded profile before anything else looks at them,
+    so one profile serves every board the car has ever been bolted to.
+    """
     root = Path(profile_dir).resolve()
     vehicle_path = root / "vehicle.yaml"
     catalog_path = root / "catalog.yaml"
-    vehicle = _load_model(vehicle_path, VehicleConfig)
+    vehicle = load_yaml_model(vehicle_path, VehicleConfig)
+    overlay = None
+    if hardware is not None:
+        # Imported here rather than at module scope: `core.hardware` builds on
+        # this module's models, so a top-level import would be circular.
+        from core.hardware import apply_hardware, load_hardware
+
+        overlay = load_hardware(hardware)
+        vehicle = apply_hardware(vehicle, overlay, path=hardware)
     catalog_bytes = _read_bytes(catalog_path)
     try:
         catalog_text = catalog_bytes.decode("utf-8")
@@ -350,10 +371,12 @@ def load_profile(profile_dir: str | Path) -> ProfileConfig:
         vehicle=vehicle,
         catalog=catalog,
         catalog_hash=hashlib.sha256(catalog_bytes).hexdigest(),
+        hardware_target=overlay.target if overlay is not None else None,
     )
 
 
-def _load_model(path: Path, model: type[ModelT]) -> ModelT:  # noqa: UP047
+def load_yaml_model(path: Path, model: type[ModelT]) -> ModelT:  # noqa: UP047
+    """Read one YAML file into `model`, reporting failures against `path`."""
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
@@ -361,6 +384,13 @@ def _load_model(path: Path, model: type[ModelT]) -> ModelT:  # noqa: UP047
     except OSError as exc:
         raise ConfigError(f"{path}: unable to read file: {exc.strerror or exc}") from exc
     return _load_model_text(path, model, text)
+
+
+def format_validation_error(exc: ValidationError) -> str:
+    """Render the first error as ``<dotted key>: <message>``."""
+    error = exc.errors(include_url=False)[0]
+    key = ".".join(str(part) for part in error["loc"]) or "<root>"
+    return f"{key}: {error['msg']}"
 
 
 def _read_bytes(path: Path) -> bytes:
@@ -379,9 +409,7 @@ def _load_model_text(path: Path, model: type[ModelT], text: str) -> ModelT:  # n
     try:
         return model.model_validate(data)
     except ValidationError as exc:
-        error = exc.errors(include_url=False)[0]
-        key = ".".join(str(part) for part in error["loc"]) or "<root>"
-        raise ConfigError(f"{path}: {key}: {error['msg']}") from exc
+        raise ConfigError(f"{path}: {format_validation_error(exc)}") from exc
 
 
 def _validate_dbc_paths(vehicle: VehicleConfig, root: Path, path: Path) -> None:

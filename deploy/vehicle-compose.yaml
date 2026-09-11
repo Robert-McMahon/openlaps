@@ -11,10 +11,14 @@
 # the container has to share the host's network namespace to see it. Bring
 # the interface up on the host first -- the agent does not configure it:
 #
-#     sudo ip link set can0 up type can bitrate 1000000
+#     sudo tools/can_up.py --profile profiles/<yours> --hardware <target>/hardware.yaml
 #
 # Host networking also means the ports below are the host's ports directly;
 # there is no port mapping to get wrong.
+#
+# Which SBC this runs on is one variable, OPENLAPS_TARGET, resolved against
+# deploy/targets/ -- see the README there. A board needing device nodes this
+# file does not map adds a compose overlay beside its target.env.
 
 name: openlaps-vehicle
 
@@ -50,13 +54,13 @@ services:
     command: ["openlaps-agent"]
     network_mode: host
     devices:
-      # The GPS receiver, as /dev/ttyACM0 -- the RP2040 relay (ADR 0009),
-      # not an external USB-serial adapter. The container path stays
-      # ttyUSB0 so the profile does not encode the host's wiring. An
-      # external adapter (the pre-0009 arrangement, and still the
-      # fallback) enumerates as ttyUSB0 and can be named unstably when it
-      # re-enumerates, which is worth a udev rule if you go back to it.
-      - ${OPENLAPS_SERIAL_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
+      # The GNSS receiver, mapped at the same path inside the container as
+      # it has on the host. It used to be normalised to /dev/ttyUSB0 so the
+      # profile did not have to encode the host's wiring; the target's
+      # hardware.yaml (ADR 0010) does that job properly now, and it can only
+      # do it if the container and the host agree on the path. This must
+      # match `serial0.port` in deploy/targets/${OPENLAPS_TARGET}/.
+      - ${OPENLAPS_SERIAL_DEVICE:-/dev/ttyACM0}:${OPENLAPS_SERIAL_DEVICE:-/dev/ttyACM0}
     group_add:
       # Serial devices are group-owned by `dialout` on Debian-family hosts;
       # without this the agent opens the port and gets EACCES.
@@ -68,12 +72,18 @@ services:
       # networking that is genuinely loopback.
       OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://127.0.0.1:4222}
       OPENLAPS_PROFILE: /app/profiles/${OPENLAPS_PROFILE_NAME:-example-club-racer}
+      # Which board this profile is plugged into (deploy/targets/README.md).
+      # The profile describes the car; this describes the SBC, and the two
+      # are separate files so moving a car between boards edits neither the
+      # DBCs nor the catalog.
+      OPENLAPS_HARDWARE: /app/targets/${OPENLAPS_TARGET:-radxa-x4}/hardware.yaml
       # Registry and session state are written here rather than beside the
       # profile, because the profile is mounted read-only and this has to
       # survive the container.
       OPENLAPS_STATE_DIR: /var/lib/openlaps/agent
     volumes:
       - ../profiles:/app/profiles:ro
+      - ./targets:/app/targets:ro
       - agent-state:/var/lib/openlaps/agent
     depends_on:
       nats:
@@ -95,28 +105,41 @@ services:
   # pit LAN. Video bytes never touch NATS; a dead camera cannot cost
   # telemetry anything except the airtime it stops using.
   go2rtc:
-    # Pinned like every other image here. The `-hardware` variant carries
-    # the Intel VAAPI drivers the encode pipeline in go2rtc/go2rtc.yaml
-    # names; the plain image would fall back to CPU encode on an SBC that
-    # is also running the agent.
+    # Pinned like every other image here, and the variant is a property of
+    # the *board*: `-hardware` carries the Intel VAAPI drivers the X4's
+    # pipeline names, `-rockchip` carries Rockchip MPP and is built
+    # `--disable-vaapi`. The plain image would fall back to CPU encode on an
+    # SBC that is also running the agent. Each target's target.env sets this
+    # together with the config below; the default is the X4's.
     image: alexxit/go2rtc:${GO2RTC_IMAGE_TAG:-1.9.14-hardware}
     # Host networking for the same reason as the servers above -- and
     # WebRTC negotiates ephemeral UDP, which port mapping handles badly.
     network_mode: host
     devices:
       - ${OPENLAPS_VIDEO_DEVICE:-/dev/video0}:/dev/video0
-      # The iGPU, for VAAPI encode.
+      # The render nodes. Every hardware encoder in play wants them: VAAPI
+      # encodes through renderD128 directly, and Rockchip MPP allocates its
+      # DRM buffers there while doing the encode itself through
+      # /dev/mpp_service (mapped by that target's compose overlay).
       - /dev/dri:/dev/dri
       # ALSA capture for cabin audio. Present on the bench SBC; if a build
       # has no audio device, drop this line and the audio producer simply
-      # fails per-request while video keeps working.
+      # fails per-request while video keeps working. A target whose ffmpeg
+      # has no ALSA input at all captures another way -- luckfox-omni3576
+      # mounts a PulseAudio socket in its overlay -- and leaves this mapped
+      # but unused.
       - /dev/snd:/dev/snd
     volumes:
       # Read-only: the repository is the source of truth for the stream
       # definitions, same discipline as the Grafana provisioning mounts.
       # go2rtc only writes its config when edited through its web UI, which
       # this mount deliberately makes impossible.
-      - ./go2rtc:/config:ro
+      #
+      # One file rather than the directory, because the encoder pipeline is
+      # the part of this stack that cannot be shared between boards --
+      # `hevc_vaapi` does not exist on a Rockchip and `h264_rkmpp` does not
+      # exist on an Intel -- so each target carries its own.
+      - ./targets/${OPENLAPS_TARGET:-radxa-x4}/go2rtc.yaml:/config/go2rtc.yaml:ro
     profiles: ["video"]
     restart: unless-stopped
 

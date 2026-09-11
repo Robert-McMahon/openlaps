@@ -80,9 +80,9 @@ class LiveDecoderSettings:
     health_port: int = 8082
     config_poll_s: float = 5.0
     mqtt_queue_size: int = 1_000
-    # The pit-wide vehicle id, if the deployment sets one. Not the source of
-    # truth -- the YAML's `vehicle:` key is, because it survives a reload --
-    # but a cross-check against it, see `_check_vehicle_agreement`.
+    # The pit-wide vehicle id. This is the source of truth and is
+    # normally the *only* one set -- the YAML's `vehicle:` key is an optional
+    # override, see `_resolve_vehicle`.
     vehicle_id: str | None = None
 
     @classmethod
@@ -127,8 +127,12 @@ class LiveDecoderSettings:
         )
 
 
-def _check_vehicle_agreement(settings: LiveDecoderSettings, config: LiveConfig) -> None:
-    """Refuse to start subscribed to a vehicle that nothing publishes.
+def _resolve_vehicle(settings: LiveDecoderSettings, config: LiveConfig) -> str:
+    """The car this service decodes, and refuse to start if it is ambiguous.
+
+    Normally the YAML names no vehicle and this returns OPENLAPS_VEHICLE_ID,
+    the one place the pit names its car. The rest of this docstring is about
+    the case where the YAML does name one, which is an override.
 
     The vehicle id reaches this service twice: through the pit-wide
     ``OPENLAPS_VEHICLE_ID`` that every other pit service reads directly, and
@@ -142,8 +146,16 @@ def _check_vehicle_agreement(settings: LiveDecoderSettings, config: LiveConfig) 
     values are side by side.
     """
     expected = settings.vehicle_id
+    if config.vehicle is None:
+        if expected is None:
+            raise ValueError(
+                "no vehicle id: set OPENLAPS_VEHICLE_ID, or name one in "
+                f"{settings.config_path}. Without it this service has no "
+                "subject to subscribe to."
+            )
+        return expected
     if expected is None or expected == config.vehicle:
-        return
+        return config.vehicle
     raise ValueError(
         f"{settings.config_path}: vehicle {config.vehicle!r} disagrees with "
         f"OPENLAPS_VEHICLE_ID={expected!r}; this service would subscribe to "
@@ -272,14 +284,16 @@ class LiveDecoder:
         self.settings = settings
         self.reloader = ConfigReloader(settings.config_path, settings.config_poll_s)
         self.config: LiveConfig = self.reloader.config
-        _check_vehicle_agreement(settings, self.config)
+        # Resolved once: the subject filter and the MQTT topic prefix are both
+        # built from it, and a reload must not be able to move either.
+        self.vehicle: str = _resolve_vehicle(settings, self.config)
         self.cache = RegistryCache()
         self.limiter = ConflatingLimiter(self.config)
         self.health = HealthState()
         self.health.config_mtime_ns = self.reloader.mtime_ns
         self.health.stream = settings.stream
         self.health.subject_filter = self.subject_filter
-        self.sink = MqttSink(settings, self.config.vehicle, self.health)
+        self.sink = MqttSink(settings, self.vehicle, self.health)
         self.ready = asyncio.Event()
         self.messages_seen = 0
         self._last_registry: pb.ChannelRegistry | None = None
@@ -287,7 +301,7 @@ class LiveDecoder:
     @property
     def subject_filter(self) -> str:
         """The stream subject this service decodes. The vehicle cannot change."""
-        return f"tele.{self.config.vehicle}.>"
+        return f"tele.{self.vehicle}.>"
 
     async def run(self, stop: asyncio.Event) -> None:
         health_server = serve_health(self.health, self.settings.health_port)
@@ -385,7 +399,7 @@ class LiveDecoder:
             raise
 
     async def _scan_registries(self, js: JetStreamContext) -> None:
-        subject = f"tele.{self.config.vehicle}.{REGISTRY_SOURCE_CLASS}"
+        subject = f"tele.{self.vehicle}.{REGISTRY_SOURCE_CLASS}"
         subscription = await self._subscribe(js, subject, api.DeliverPolicy.ALL)
         try:
             while True:
@@ -464,10 +478,10 @@ class LiveDecoder:
         loaded = self.reloader.poll(now)
         if loaded is None:
             return
-        if loaded.vehicle != self.config.vehicle:
+        if loaded.vehicle is not None and loaded.vehicle != self.vehicle:
             logger.error(
                 "live-decoder: vehicle cannot change on reload (%s -> %s); restart required",
-                self.config.vehicle,
+                self.vehicle,
                 loaded.vehicle,
             )
             self.reloader.config = self.config

@@ -37,7 +37,10 @@ def event(kind: str, at: float, **values: object) -> str:
 def test_shipped_config_is_strict_and_names_only_pit_owned_outputs(tmp_path):
     config = load_config(REPO / "deploy" / "pit-config" / "timing-extrapolator.yaml")
 
-    assert config.vehicle == "example-club-racer"
+    # No car is named here: OPENLAPS_VEHICLE_ID does that once for the pit,
+    # and this file ships in a public repository. See the live-decoder's
+    # `test_the_shipped_config_names_no_vehicle_at_all` for the history.
+    assert config.vehicle is None
     assert config.publish_hz == 10
     assert config.output_channels == (
         "timing.lap_elapsed_pit",

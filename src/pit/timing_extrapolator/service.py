@@ -116,11 +116,23 @@ class TimingService:
     def __init__(self, settings: TimingServiceSettings) -> None:
         self.settings = settings
         self.config: TimingConfig = load_config(settings.config_path)
-        if settings.vehicle_id is not None and settings.vehicle_id != self.config.vehicle:
+        # Normally the YAML names no vehicle and the pit-wide
+        # OPENLAPS_VEHICLE_ID is the one place the car is named; the key is an
+        # override, and when both are set they have to agree or this service
+        # subscribes to a subject nothing publishes and reports zeroes.
+        if self.config.vehicle is None:
+            if settings.vehicle_id is None:
+                raise ValueError(
+                    f"no vehicle id: set OPENLAPS_VEHICLE_ID, or name one in {settings.config_path}"
+                )
+            self.vehicle = settings.vehicle_id
+        elif settings.vehicle_id is not None and settings.vehicle_id != self.config.vehicle:
             raise ValueError(
                 f"{settings.config_path}: vehicle {self.config.vehicle!r} disagrees with "
                 f"OPENLAPS_VEHICLE_ID={settings.vehicle_id!r}"
             )
+        else:
+            self.vehicle = self.config.vehicle
         self.engine = TimingExtrapolator(
             ClockPolicy(
                 fallback_max_lap_s=self.config.fallback_max_lap_s,
@@ -140,7 +152,7 @@ class TimingService:
 
     @property
     def subject_filter(self) -> str:
-        return f"tele.{self.config.vehicle}.>"
+        return f"tele.{self.vehicle}.>"
 
     def _queue_publish(self, item: tuple[str, ClockValue, float]) -> None:
         channel = item[0]
@@ -241,7 +253,7 @@ class TimingService:
 
     async def _scan_registries(self, js: object) -> None:
         subscription = await js.subscribe(
-            f"tele.{self.config.vehicle}.{REGISTRY_SOURCE_CLASS}",
+            f"tele.{self.vehicle}.{REGISTRY_SOURCE_CLASS}",
             stream=self.settings.stream,
             ordered_consumer=True,
             deliver_policy=api.DeliverPolicy.ALL,
@@ -283,7 +295,7 @@ class TimingService:
                         except TimeoutError:
                             continue
                         topic, payload = mqtt_message(
-                            self.config.vehicle,
+                            self.vehicle,
                             channel,
                             at,
                             value.value,

@@ -75,9 +75,19 @@ class ChannelRule(StrictModel):
 
 
 class LiveConfig(StrictModel):
-    """Complete pit-side live view configuration."""
+    """Complete pit-side live view configuration.
 
-    vehicle: _NON_EMPTY
+    `vehicle` is optional and normally absent. The deployment's car is named
+    once, by `OPENLAPS_VEHICLE_ID`, which every other pit service already
+    reads -- a committed config that named a car would be a third copy of it,
+    and this file ships in a public repository that carries one example
+    profile and no real vehicle (ADR 0007). Set it here only to pin *this*
+    service to a different car than the rest of the pit; when both are set
+    they must agree, and `live_decoder.service` refuses to start if they do
+    not.
+    """
+
+    vehicle: _NON_EMPTY | None = None
     defaults: LiveDefaults = LiveDefaults()
     channels: list[ChannelRule] = Field(min_length=1)
 

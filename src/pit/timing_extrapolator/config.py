@@ -21,7 +21,9 @@ class ConfigError(ValueError):
 class TimingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    vehicle: _NON_EMPTY
+    # Optional, and normally absent: OPENLAPS_VEHICLE_ID names the car once
+    # for the whole pit. See src/pit/live_decoder/config.py for the reasoning.
+    vehicle: _NON_EMPTY | None = None
     publish_hz: _POSITIVE = 10
     max_clock_offset_s: _POSITIVE = 0.1
     max_clock_stratum: int = Field(default=4, ge=1)

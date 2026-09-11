@@ -3,9 +3,9 @@
 The operator document for P4.3 (steady state), P4.4 (dropout ladder) and
 P4.5 (range and degradation). P4.0 built the instrument
 (`tools/link_probe.py`), P4.1 built the sources
-(`profiles/example-club-racer-bench/`, `tools/bench_gps.py`,
-`tools/bench_check.py`); this turns them into something a person can run
-twice and get comparable numbers from.
+(`tools/bench-hardware.yaml`, `tools/bench_gps.py`, `tools/bench_check.py`);
+this turns them into something a person can run twice and get comparable
+numbers from.
 
 **This document does not restate `deploy/README.md`.** Bring-up order, the
 `OPENLAPS_NATS_URL` distinction, the subject-less sourced stream, the
@@ -175,6 +175,9 @@ id -u openlaps >/dev/null 2>&1 || \
 sudo install -m 0644 deploy/chrony/vehicle.conf /etc/chrony/chrony.conf
 sudo install -D -o root -g root -m 0755 tools/timing_head_shim.py \
   /usr/local/libexec/openlaps/timing_head_shim.py
+# chrony's SOCK wire format lives beside it, shared with the GPIO PPS shim.
+sudo install -D -o root -g root -m 0644 tools/chrony_sock.py \
+  /usr/local/libexec/openlaps/chrony_sock.py
 sudo install -m 0644 deploy/systemd/timing-head-shim.service /etc/systemd/system/
 sudo install -d /etc/systemd/system/chrony.service.d
 sudo install -m 0644 deploy/systemd/chrony-openlaps-sock.conf \
@@ -287,18 +290,32 @@ not a run — but there is no reason to do it.
 
 The bench reproduces the modelled signal mix without a car, injected *below*
 the agent at the socketCAN and serial boundaries (locked decision 4).
-`profiles/example-club-racer-bench/README.md` has the full reasoning; this
-is the choice.
 
-| Mode | CAN interface | Profile | Gives up | Use when |
+**The car and the bench are one profile.** `profiles/example-club-racer/` is
+the car; `tools/bench-hardware.yaml` is a host-wiring overlay on top of it
+(ADR 0010) that moves two transports and says the receiver is absent, and
+nothing else. That is what makes a bench bandwidth figure a figure *about the
+car*: the catalog, the DBCs and the wire encodings are not a copy that has to
+be kept in step, they are the same files read twice. The overlay's own
+comments carry the reasoning for each of its three lines.
+
+| Mode | CAN interface | How | Gives up | Use when |
 | --- | --- | --- | --- | --- |
-| **Physical** | `can0`, IMU powered | example profile, or a local copy of the bench profile with `interface: can0` | nothing | the IMU is on the bench |
-| **Virtual** | `vcan0` | `profiles/example-club-racer-bench` | real arbitration, the USB adapter | the IMU is not |
+| **Physical** | `can0`, IMU powered | a copy of the overlay with its `buses:` block deleted | nothing | the IMU is on the bench |
+| **Virtual** | `vcan0` | `OPENLAPS_HARDWARE=tools/bench-hardware.yaml` | real arbitration, the USB adapter | the IMU is not |
+
+Physical mode still needs an overlay, because **GPS is synthetic in both
+modes** (below) and the serial half of the overlay is what makes it so.
+Deleting the `buses:` block is the whole edit: an overlay overrides only what
+it names, so `can0` falls back to the profile's own `interface: can0`.
 
 **The trap in physical mode:** classic CAN needs at least one other node to
 assert the ACK slot. With nothing else on the bus the adapter goes
 error-passive and then bus-off, which presents as a driver or permissions
 fault and is neither. Power the IMU.
+
+`can-utils` is installed on the SBC and `canplayer` replays the checked-in
+captures into either interface.
 
 GPS is synthetic in **both** modes. Indoors the UM980 reports a void fix and
 the NMEA decoder drops any RMC whose status is not `A`, so a bench with a
@@ -310,6 +327,13 @@ result. Run `tools/bench_gps.py`.
 Record the mode, the profile path and its registry content hash in the
 manifest (`--signal-source`, `--profile`). Two runs in different modes are
 not comparable and the manifest is what stops them being compared.
+
+Manifests from runs before 2026-09-09 name a profile that no longer exists:
+an `example-club-racer-bench` directory that was a byte-for-byte copy of the
+example profile carrying the three lines the overlay carries now. Those
+manifests are left as written, because they record what actually ran. Compare
+against their registry content hash rather than their path — the hash is
+unchanged, since the catalog never differed in the first place.
 
 ---
 
@@ -349,7 +373,8 @@ not comparable and the manifest is what stops them being compared.
    `PrivateTmp` issue in §2:
 
    ```bash
-   OPENLAPS_PROFILE=profiles/example-club-racer-bench \
+   OPENLAPS_PROFILE=profiles/example-club-racer \
+   OPENLAPS_HARDWARE=tools/bench-hardware.yaml \
    OPENLAPS_TICK_MS=20 \
    OPENLAPS_NATS_URL=nats://127.0.0.1:4222 \
    uv run openlaps-agent
@@ -381,13 +406,17 @@ that has silently lost GPS or the IMU still produces a perfectly plausible
 bandwidth figure, of the wrong signal set:
 
 ```bash
-uv run tools/bench_check.py --profile profiles/example-club-racer-bench
+uv run tools/bench_check.py
 ```
+
+Its defaults *are* the bench rig — the example profile plus
+`tools/bench-hardware.yaml` — so a bare run checks the mode this runbook
+ships with. `--profile` and `--hardware` override either half.
 
 It also prints the bench's predicted mix against `LINK_BUDGET.md` §2's
 modelled 4,262 samples/s, and **the two do not agree** — the bench offers
 ~3,000/s, about 71%. That gap is a modelling gap, not a wiring fault; the
-bench profile's README has the per-class breakdown and the reasons.
+tool's own `--predict` output has the per-class breakdown.
 Reconciling it is P4.3's signal-mix ground truth. Until then, read a bench
 bandwidth figure as measuring ~71% of the load §3 predicts, and **say so in
 the write-up** rather than letting a reader infer otherwise.
@@ -502,7 +531,7 @@ uv run tools/link_probe.py --role vehicle \
   --nft-command "sudo -n nft -j list counters" \
   --radio-adapter auto --radio-host halow-vehicle --radio-iface wlan0 \
   --radio-config "2 MHz, MCS4, ch 9" \
-  --tick-ms 20 --profile profiles/example-club-racer-bench \
+  --tick-ms 20 --profile profiles/example-club-racer \
   --signal-source "canplayer x2 on vcan0 + bench_gps 50 Hz" \
   --clock-method "chrony, both hosts to 192.168.12.1" \
   --clock-offset-ms 0.42 --clock-source system \

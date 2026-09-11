@@ -87,7 +87,12 @@ from core.config import ProfileConfig, load_profile  # noqa: E402
 from core.pb import telemetry_pb2 as pb  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PROFILE = REPO_ROOT / "profiles" / "example-club-racer-bench"
+DEFAULT_PROFILE = REPO_ROOT / "profiles" / "example-club-racer"
+# The bench rig's host wiring (vcan0, the bench_gps pty), applied over the
+# example profile. It used to be a whole copied profile; ADR 0010 made it an
+# overlay, and the defaults here mean `bench_check.py` with no arguments
+# still predicts the bench mix rather than the car's.
+DEFAULT_HARDWARE = REPO_ROOT / "tools" / "bench-hardware.yaml"
 DEFAULT_CANDUMPS = (
     REPO_ROOT / "tests" / "fixtures" / "candump" / "candump-sample.log",
     REPO_ROOT / "tests" / "fixtures" / "candump" / "candump-imu-sample.log",
@@ -474,6 +479,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--profile", default=str(DEFAULT_PROFILE), help="profile directory (default: %(default)s)"
     )
     parser.add_argument(
+        "--hardware",
+        default=str(DEFAULT_HARDWARE),
+        help="host-wiring overlay applied over the profile (default: %(default)s)",
+    )
+    parser.add_argument(
         "--seconds",
         type=float,
         default=DEFAULT_SECONDS,
@@ -569,7 +579,7 @@ def main(argv: list[str] | None = None, out=sys.stdout) -> int:
 
 def _prepare(args, logs: list[Path], state_dir: Path):
     """Load the profile, build the agent's own catalog, and predict the mix."""
-    profile = load_profile(args.profile)
+    profile = load_profile(args.profile, args.hardware)
     collector_names = [bus.name for bus in profile.vehicle.buses]
     collector_names += [source.name for source in profile.vehicle.serial]
     if profile.vehicle.host.enabled:

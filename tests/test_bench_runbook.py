@@ -47,7 +47,7 @@ NFT = {
     "vehicle": REPO / "deploy" / "nft" / "bench-vehicle.nft",
     "pit": REPO / "deploy" / "nft" / "bench-pit.nft",
 }
-BENCH_PROFILE = REPO / "profiles" / "example-club-racer-bench"
+BENCH_HARDWARE = REPO / "tools" / "bench-hardware.yaml"
 AGENT_UNIT = REPO / "deploy" / "systemd" / "openlaps-agent.service"
 MIGRATION = REPO / "src" / "pit" / "db" / "migrations" / "001_init.sql"
 
@@ -204,10 +204,12 @@ def test_both_ends_use_one_table_the_runbook_can_tear_down():
 # --- the facts two warnings rest on ------------------------------------------
 
 
-@pytest.mark.parametrize("profile", [EXAMPLE_PROFILE, BENCH_PROFILE])
-def test_clock_health_is_mapped_on_both_profiles(profile: Path, tmp_path: Path):
+@pytest.mark.parametrize("hardware", [None, BENCH_HARDWARE], ids=["car", "bench-rig"])
+def test_clock_health_is_mapped_on_the_car_and_on_the_bench(hardware: Path | None, tmp_path: Path):
     """P4.8 makes chrony the sole authority and its state ordinary telemetry."""
-    catalog = build_runtime_catalog(load_profile(profile), state_path=tmp_path / "registry.json")
+    catalog = build_runtime_catalog(
+        load_profile(EXAMPLE_PROFILE, hardware), state_path=tmp_path / "registry.json"
+    )
     assert {
         "sys.host.clock_offset_s",
         "sys.host.clock_source",
@@ -227,7 +229,7 @@ def test_the_systemd_unit_still_hides_the_bench_gps_symlink():
     """
     assert "PrivateTmp=true" in AGENT_UNIT.read_text()
     assert bench_gps.DEFAULT_LINK.startswith("/tmp/")
-    serial = load_profile(BENCH_PROFILE).vehicle.serial
+    serial = load_profile(EXAMPLE_PROFILE, BENCH_HARDWARE).vehicle.serial
     assert [source.port for source in serial] == [bench_gps.DEFAULT_LINK]
 
 

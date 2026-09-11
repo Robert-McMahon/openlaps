@@ -1,0 +1,72 @@
+# The bench rig: the example car, driven from synthetic sources.
+#
+#     OPENLAPS_PROFILE=profiles/example-club-racer \
+#     OPENLAPS_HARDWARE=tools/bench-hardware.yaml \
+#     openlaps-agent
+#
+# Phase 4 measures whether full-rate telemetry fits over a HaLow link
+# (docs/LINK_BUDGET.md). Doing that needs the real vehicle agent reading real
+# interfaces, and a bench has neither a running engine nor a sky view. So the
+# load is injected *below* the agent, at the socketCAN and serial boundaries
+# (docs/plan/PHASE4.md, locked decision 4), and this file is the three-line
+# difference between the car and the rig.
+#
+# It lives here rather than under deploy/targets/ because it is not a board.
+# A target describes an SBC -- its camera, its encoder, its device nodes; this
+# describes a *test fixture*, and the tools that stand that fixture up
+# (bench_gps.py, bench_check.py) are in this directory.
+#
+# **It was a whole copied profile until 2026-09-09** --
+# `profiles/example-club-racer-bench/`, with `catalog.yaml`, `dbcs/` and
+# `tracks/` duplicated byte-for-byte and a test whose only job was to police
+# the duplication. Bench manifests recorded before that date name that path
+# (docs/bench/2026-08-21-steady-state/*.json); they are the provenance of runs
+# that really happened and are left as they are. ADR 0010 is why this is now
+# an overlay instead.
+#
+# The vehicle id is deliberately untouched. The bench measures the deployed
+# configuration; changing the id would change every subject and every pit-side
+# setting along with it.
+
+target: bench-rig
+
+buses:
+  # `name` is what every catalog `from: "can0:..."` reference resolves against
+  # and `interface` is the socketCAN device actually opened -- independent
+  # fields (src/core/config.py), so pointing the bench at vcan0 leaves all 123
+  # catalog entries untouched, with no catalog edit at all.
+  #
+  # vcan0 is the shipped choice: no hardware, no ACK requirement, and
+  # `canplayer` replays the checked-in captures into it. Physical `can0` is
+  # higher fidelity -- real arbitration against the live FDI IMU, the real
+  # driver and USB path -- and needs no overlay at all, because that is what
+  # the profile already says. docs/BENCH_RUNBOOK.md has the trap that
+  # otherwise costs an afternoon: classic CAN needs a second node to assert
+  # the ACK slot, and a lone adapter goes error-passive then bus-off, which
+  # presents as a driver or permissions fault and is neither.
+  can0:
+    interface: vcan0
+
+serial:
+  serial0:
+    # The pty tools/bench_gps.py publishes at a stable symlink.
+    port: /tmp/openlaps-bench-gps
+    driver:
+      # There is no receiver behind that pty, so do not try to configure one:
+      # UM980Driver.configure returns immediately and the profile's real
+      # rate_hz/sentences/pps values stay readable without ever being sent.
+      #
+      # The driver block itself stays *attached* -- this overlay changes one
+      # setting inside it and never detaches it -- for two reasons:
+      #   1. Serial source references resolve `<serial>:<driver>` when a
+      #      driver is attached and `<serial>:<decoder>` when one is not
+      #      (src/core/config.py, _validate_source_refs). Detaching it would
+      #      turn every `from: "serial0:um980.RMC.*"` entry into a validation
+      #      error and force a catalog edit -- the one thing that must not
+      #      happen here.
+      #   2. An attached driver is what makes SerialCollector accept RTCM
+      #      write-back from the pit's ntrip-client. Dropping it would delete
+      #      pit->vehicle correction traffic from the measured reverse
+      #      channel, which is the direction LINK_BUDGET.md §8 has never
+      #      measured and P4.3 exists to measure.
+      configure_on_start: false

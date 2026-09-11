@@ -1,0 +1,17 @@
+# Let the PPS shim read GPIO edge events without being root.
+#
+#     sudo install -m 0644 deploy/udev/99-openlaps-gpio.rules /etc/udev/rules.d/
+#     sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=gpio
+#
+# /dev/gpiochip* is root-only as shipped on the Luckfox Omni3576 image, and
+# `tools/pps_gpio_shim.py` needs an fd on one to request a line. Giving the
+# `openlaps` group read/write on the chips is the smallest thing that works:
+# the shim then runs as the same unprivileged user the agent and the RP2040
+# shim already run as, rather than as root with a real-time signal path.
+#
+# This grants that group *every* line on those chips, not just the PPS one --
+# the character device has no finer granularity. On a car that carries only
+# openlaps this is uninteresting; on a shared machine it is worth knowing
+# before installing, because a line requested by this group can also be
+# driven as an output by it.
+SUBSYSTEM=="gpio", KERNEL=="gpiochip[0-9]*", GROUP="openlaps", MODE="0660"

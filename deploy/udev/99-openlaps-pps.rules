@@ -1,0 +1,18 @@
+# Let chronyd read the kernel PPS device.
+#
+#     sudo install -m 0644 deploy/udev/99-openlaps-pps.rules /etc/udev/rules.d/
+#     sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=pps
+#
+# `pps-gpio` creates /dev/pps0 as `crw------- root root`, and Debian's chronyd
+# drops privileges to the `_chrony` user before it opens its refclocks -- so
+# without this the refclock stays at `Reach 0` and `chronyc sources` shows
+# `#?` forever, with nothing in the journal to say why. The pulses are
+# arriving the whole time; `ppstest /dev/pps0` as root proves it, which is
+# what makes this failure so quiet.
+#
+# This is the kernel-PPS counterpart to 99-openlaps-gpio.rules. That one hands
+# the *gpiochip* to the `openlaps` group for tools/pps_gpio_shim.py, on a board
+# whose kernel has no PPS client. Install whichever matches the route in use;
+# they are mutually exclusive, because `pps-gpio` holds the GPIO line the shim
+# would otherwise request.
+KERNEL=="pps[0-9]*", GROUP="_chrony", MODE="0660"

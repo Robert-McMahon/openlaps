@@ -48,16 +48,12 @@ class TimingExtrapolator:
                 self._sector_started_at = crossed_at
                 if int(event.get("sector", 0)) == 1 and self._lap_started_at is None:
                     self._lap_started_at = crossed_at - split
-                return {
-                    "timing.sector_elapsed_pit": ClockValue(split, "authoritative")
-                }
+                return {"timing.sector_elapsed_pit": ClockValue(split, "authoritative")}
             if event_type == "lap_completed":
                 self._lap_started_at = crossed_at
                 self._sector_started_at = crossed_at
                 return {
-                    "timing.lap_elapsed_pit": ClockValue(
-                        float(event["lap_time"]), "authoritative"
-                    )
+                    "timing.lap_elapsed_pit": ClockValue(float(event["lap_time"]), "authoritative")
                 }
         return {}
 

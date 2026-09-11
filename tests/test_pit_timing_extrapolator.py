@@ -104,9 +104,7 @@ def test_lap_completion_publishes_vehicle_time_then_resets_both_running_clocks()
     healthy(engine)
     engine.observe("lap.event", event("sector_completed", 1_070.0, sector=2, split_time=35.0))
 
-    completed = engine.observe(
-        "lap.event", event("lap_completed", 1_100.0, lap_time=100.0)
-    )
+    completed = engine.observe("lap.event", event("lap_completed", 1_100.0, lap_time=100.0))
     running = engine.tick(1_103.0)
 
     assert completed["timing.lap_elapsed_pit"].value == pytest.approx(100.0)

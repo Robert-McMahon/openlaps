@@ -67,6 +67,11 @@ RestrictSUIDSGID=true
 # OPENLAPS_STATE_DIR at it in agent.env.
 StateDirectory=openlaps
 ReadWritePaths=/var/lib/openlaps
+# Raw serial capture (profile serial `raw_log: true` + OPENLAPS_RAW_CAPTURE_DIR
+# in agent.env — docs/RAW_CAPTURE.md): the sandbox must also allow the
+# capture root, and it must exist. Uncomment both when enabling it.
+#ExecStartPre=+/usr/bin/install -d -o openlaps -g openlaps /mnt/data/captures
+#ReadWritePaths=/mnt/data/captures
 
 StandardOutput=journal
 StandardError=journal

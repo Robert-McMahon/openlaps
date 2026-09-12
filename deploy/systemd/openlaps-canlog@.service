@@ -1,0 +1,71 @@
+# Raw CAN capture for future development: one instance per bus, e.g.
+#
+#     sudo cp deploy/systemd/openlaps-canlog@.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now openlaps-canlog@can0
+#
+# The instance name (%i) is the CAN interface. Capture lands under
+# OPENLAPS_RAW_CAPTURE_DIR (from agent.env) in candump log format — the
+# same text tools/replay.py replays — in fsync-bounded 10-minute segments,
+# so an abrupt power cut costs seconds of tail, never the race. Storage
+# math and the full capture story: docs/RAW_CAPTURE.md.
+#
+# socketCAN is broadcast: this reader never affects the agent's collector.
+# It assumes the repository is checked out at /opt/openlaps with `uv sync`
+# run there, like openlaps-agent.service.
+
+[Unit]
+Description=openlaps raw CAN capture on %i
+Documentation=https://github.com/Robert-McMahon/openlaps
+After=network.target
+
+[Service]
+Type=exec
+User=openlaps
+Group=openlaps
+
+WorkingDirectory=/opt/openlaps
+EnvironmentFile=/etc/openlaps/agent.env
+
+# The interface is host state (same stance as openlaps-agent.service): try
+# to bring it up, but a failure here must not block the unit — if the bus
+# is not there yet, candump exits and the canlog process retries with
+# backoff until it is.
+ExecStartPre=-/sbin/ip link set %i up type can bitrate 1000000
+# `+` runs privileged: create the capture root (ReadWritePaths below needs
+# it to exist) owned by the capture user. Keep in step with
+# OPENLAPS_RAW_CAPTURE_DIR.
+ExecStartPre=+/usr/bin/install -d -o openlaps -g openlaps /mnt/data/captures
+ExecStart=/opt/openlaps/.venv/bin/openlaps-canlog %i
+
+# SIGTERM terminates candump and closes+fsyncs the current segment.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# A capture-write failure (disk full, permissions) exits nonzero on
+# purpose: the restart lands in a fresh, clearly bounded run directory.
+Restart=always
+RestartSec=5s
+
+# Capture is nice-to-have; the agent (OOMScoreAdjust=-500) is not. Shed
+# this process first under memory pressure.
+OOMScoreAdjust=200
+
+# Hardening. This process reads a CAN socket and writes capture files —
+# nothing else. ReadWritePaths must contain OPENLAPS_RAW_CAPTURE_DIR;
+# adjust if you point that somewhere other than /mnt/data/captures.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/mnt/data/captures
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openlaps-canlog
+
+[Install]
+WantedBy=multi-user.target

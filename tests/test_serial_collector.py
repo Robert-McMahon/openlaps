@@ -1,5 +1,6 @@
 """Serial transport capture, configuration, and reconnect tests."""
 
+import json
 import threading
 
 import pytest

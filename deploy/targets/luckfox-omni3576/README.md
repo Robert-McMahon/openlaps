@@ -195,6 +195,38 @@ docker run -d --name openlaps-vehicle-nats --network host \
 The agent can then run natively (`deploy/systemd/openlaps-agent.service`),
 which also avoids building the image for aarch64.
 
+go2rtc the same way. This is `vehicle-compose.yaml`'s `go2rtc` service plus
+this directory's `compose.yaml` overlay, flattened -- every device and mount
+below corresponds to a line in one of those two files, and the camera is the
+`/dev/v4l/by-id/` path rather than a `/dev/videoN` that changes with
+enumeration order (the MIPI pipeline holds `video0`-`video44`; a USB camera
+lands at `video45` or later):
+
+```bash
+CAM=/dev/v4l/by-id/usb-Amba_Insta360_X3-video-index0   # v4l2-ctl --list-devices
+docker run -d --name openlaps-vehicle-go2rtc --network host --restart unless-stopped \
+  --device $CAM:/dev/video0 --device /dev/dri:/dev/dri --device /dev/snd:/dev/snd \
+  --device /dev/mpp_service:/dev/mpp_service --device /dev/rga:/dev/rga \
+  -v /opt/openlaps/deploy/targets/luckfox-omni3576/go2rtc.yaml:/config/go2rtc.yaml:ro \
+  -v /run/user/1000/pulse/native:/run/pulse/native -e PULSE_SERVER=unix:/run/pulse/native \
+  alexxit/go2rtc:1.9.14-rockchip
+```
+
+Prove it from the board before involving the pit: pull the stream for ten
+seconds, then ask go2rtc what the producer negotiated.
+
+```bash
+curl -s -m 10 "http://127.0.0.1:1984/api/stream.mp4?src=car_h264" -o /tmp/probe.mp4
+curl -s "http://127.0.0.1:1984/api/streams?src=car_h264"
+```
+
+A working producer lists `H264` and `OPUS/48000/2` medias with byte counts
+climbing on both. A producer with **no medias and no ffmpeg process** is the
+pipeline having hung and been reaped without a word (`-v error` says nothing
+about a blocked input) -- run the `exec:` line by hand with `docker exec`,
+`-v info` and `-t 5 -f null -`, one input at a time. That is how the audio
+source note in `go2rtc.yaml` was found.
+
 ### Storage
 
 The eMMC is 58 GB and the M.2 slot takes an NVMe. Put both stores on it:
@@ -519,3 +551,10 @@ goes through PipeWire's Pulse socket — `compose.yaml` mounts
 That path contains the session user's uid; `OPENLAPS_PULSE_SOCKET` overrides
 it. The session must exist for the socket to, so if the stack starts before
 anyone logs in, `loginctl enable-linger <user>`.
+
+The pipeline names the ES8388's source rather than `default`. A USB camera
+with a microphone (the Insta360 X3 does) becomes WirePlumber's default source
+the moment it is plugged in, and that mic delivered nothing through Pulse
+here: audio-only ffmpeg received no packets until killed, and the full
+pipeline hung at input probing. `ffmpeg -sources pulse` inside the container
+lists the names; `wpctl status` on the host shows which one is default.

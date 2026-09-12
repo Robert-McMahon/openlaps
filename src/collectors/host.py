@@ -20,6 +20,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 import psutil
 
@@ -30,6 +31,18 @@ from core.samples import Sample, SampleValue
 logger = logging.getLogger(__name__)
 
 DEFAULT_DISK_PATH = "/"
+DEFAULT_SYSFS_ROOT = Path("/sys")
+
+# Cooling devices grouped into the board-neutral classes the catalog maps.
+# `type` strings seen so far: `cpufreq-cpu0` / `cpufreq-cpu4` (Rockchip
+# clusters), `Processor` and `intel_powerclamp` (ACPI x86), `devfreq-dmc`
+# (Rockchip DDR controller), `devfreq-27800000.gpu`, `devfreq-27700000.npu`.
+_THROTTLE_CLASSES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("cpu", ("cpufreq", "processor", "powerclamp")),
+    ("gpu", ("gpu",)),
+    ("memory", ("dmc", "ddr", "mem")),
+    ("npu", ("npu",)),
+)
 
 Reading = tuple[str, SampleValue]
 Probe = Callable[[], Iterator[Reading]]
@@ -90,6 +103,15 @@ def _sanitize(name: str) -> str:
     return cleaned.strip("_")
 
 
+def _throttle_class(cooling_type: str) -> str | None:
+    """The board-neutral class a cooling device's ``type`` belongs to, if any."""
+    lowered = cooling_type.lower()
+    for klass, needles in _THROTTLE_CLASSES:
+        if any(needle in lowered for needle in needles):
+            return klass
+    return None
+
+
 class HostMetricsReader:
     """Reads one snapshot of host metrics from psutil.
 
@@ -105,15 +127,19 @@ class HostMetricsReader:
         disk_path: str = DEFAULT_DISK_PATH,
         chrony_runner: ChronyRunner | None = None,
         temperatures: Mapping[str, str] | None = None,
+        sysfs_root: Path = DEFAULT_SYSFS_ROOT,
     ) -> None:
         """Build a reader over ``psutil_module`` (injectable for tests).
 
         ``temperatures`` is the profile's ``host.temperatures`` mapping:
         ``<alias>: <chip>.<label>``, each emitted as ``host:temp.<alias>``.
+        ``sysfs_root`` is where the per-policy clocks and the thermal cooling
+        devices are read from; tests point it at a synthetic tree.
         """
         self._psutil = psutil if psutil_module is None else psutil_module
         self._disk_path = disk_path
         self._temperatures = dict(temperatures or {})
+        self._sysfs_root = sysfs_root
         self._chrony_runner = _run_chronyc_tracking if chrony_runner is None else chrony_runner
         self.stats = HostStats()
         self._reported_failures: set[str] = set()
@@ -137,6 +163,7 @@ class HostMetricsReader:
             ("cpu", self._read_cpu),
             ("load", self._read_load),
             ("temp", self._read_temperatures),
+            ("throttle", self._read_throttle),
             ("mem", self._read_memory),
             ("disk", self._read_disk),
             ("net", self._read_network),
@@ -159,6 +186,34 @@ class HostMetricsReader:
         freq = self._psutil.cpu_freq()
         if freq is not None:
             yield "host:cpu.freq_mhz", float(freq.current)
+        yield from self._read_policy_clocks()
+
+    def _read_policy_clocks(self) -> Iterator[Reading]:
+        """One clock per cpufreq policy, and the spread across them.
+
+        psutil's ``cpu_freq()`` averages every core into one figure, which on
+        a big.LITTLE part like the RK3576 is a number no cluster is actually
+        running at. Each policy (a cluster on Arm, usually a core on x86) is
+        named by its first CPU -- ``host:cpu.freq_mhz.cpu4`` -- and the
+        ``.max`` / ``.min`` pair is the board-neutral view the catalog maps:
+        the fastest and slowest thing on the chip right now, whatever the
+        topology.
+        """
+        clocks: dict[str, float] = {}
+        for policy in sorted((self._sysfs_root / "devices/system/cpu/cpufreq").glob("policy*")):
+            try:
+                related = (policy / "related_cpus").read_text().split()
+                khz = float((policy / "scaling_cur_freq").read_text())
+            except (OSError, ValueError):
+                continue  # a policy mid-hotplug, or a governor exposing no clock
+            if not related:
+                continue
+            clocks[f"cpu{related[0]}"] = khz / 1000.0
+        for name, mhz in clocks.items():
+            yield f"host:cpu.freq_mhz.{name}", mhz
+        if clocks:
+            yield "host:cpu.freq_mhz.max", max(clocks.values())
+            yield "host:cpu.freq_mhz.min", min(clocks.values())
 
     def _read_load(self) -> Iterator[Reading]:
         getloadavg = getattr(self._psutil, "getloadavg", None)
@@ -189,6 +244,41 @@ class HostMetricsReader:
                 self._note_missing_sensor(alias, sensor, found)
                 continue
             yield f"host:temp.{alias}", value
+
+    def _read_throttle(self) -> Iterator[Reading]:
+        """How hard the thermal governor is currently leaning on each device.
+
+        Every thermal cooling device reports ``cur_state`` out of
+        ``max_state``; 0 is unthrottled and ``max_state`` is fully clamped.
+        Normalised to a percentage so it reads the same on a board whose CPU
+        cooling device has 8 steps and one whose has 3. Per device
+        (``host:throttle.cpufreq_cpu4.percent``), per class (the worst of
+        that class -- ``host:throttle.cpu.percent``) and overall
+        (``host:throttle.percent``, the worst of anything). The overall one
+        is the "is the SBC being held back" number; the classes say by what.
+        """
+        per_device: dict[str, float] = {}
+        by_class: dict[str, float] = {}
+        for device in sorted((self._sysfs_root / "class/thermal").glob("cooling_device*")):
+            try:
+                kind = (device / "type").read_text().strip()
+                current = int((device / "cur_state").read_text())
+                maximum = int((device / "max_state").read_text())
+            except (OSError, ValueError):
+                continue
+            if maximum <= 0:
+                continue
+            percent = 100.0 * current / maximum
+            per_device[_sanitize(kind) or "unknown"] = percent
+            klass = _throttle_class(kind)
+            if klass is not None:
+                by_class[klass] = max(by_class.get(klass, 0.0), percent)
+        for name, percent in per_device.items():
+            yield f"host:throttle.{name}.percent", percent
+        for klass, percent in by_class.items():
+            yield f"host:throttle.{klass}.percent", percent
+        if per_device:
+            yield "host:throttle.percent", max(per_device.values())
 
     def _read_memory(self) -> Iterator[Reading]:
         memory = self._psutil.virtual_memory()

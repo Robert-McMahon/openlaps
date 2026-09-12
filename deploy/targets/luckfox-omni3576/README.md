@@ -107,6 +107,17 @@ All six are on the die (they read within a degree of each other, idle at
 about 28 °C), and `crit` is 115 °C on each. `cpu: soc_thermal.0` is the
 mapping; the raw `host:temp.<zone>.0` refs are all emitted as well.
 
+**Throttling and clocks.** The governor's cooling devices are `cpufreq-cpu0`
+(the A53 cluster, 8 steps), `cpufreq-cpu4` (the A72 cluster, 9 steps),
+`devfreq-dmc` (DDR, 3 steps), `devfreq-27800000.gpu` and
+`devfreq-27700000.npu`; the host collector normalises each to a percentage
+and rolls them up as `sys.host.throttle_*`. The two cpufreq policies are
+`policy0` (cores 0–3, 408–2016 MHz) and `policy4` (cores 4–7, up to
+2208 MHz); `sys.host.cpu_freq_max_mhz` / `_min_mhz` are the big and little
+cluster respectively, since psutil's single figure averages the two into a
+clock neither cluster runs at. The first critical trip on every zone is
+115 °C; expect the cooling devices to start stepping well before that.
+
 **No board sensor.** The only other hwmon chip is the USB-PD controller
 (`tcpm_source_psy_2_004e`), which reports voltage and current, not
 temperature. `board` is deliberately left unmapped rather than pointing at

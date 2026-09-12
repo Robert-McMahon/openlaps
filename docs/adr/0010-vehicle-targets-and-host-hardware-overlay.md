@@ -61,8 +61,15 @@ serial:
 - It addresses transports by the profile's own `name` — the same stable
   identifier the catalog's `from:` references already resolve against — so
   remapping a port cannot invalidate a channel.
-- It may set only `interface`, `bitrate`, `port` and `baud`. Everything else
-  in a profile is about the car.
+- It may set only `interface`, `bitrate`, `port`, `baud` and
+  `host.temperatures`. Everything else in a profile is about the car.
+- `host.temperatures` (added 2026-09-12) is the board's thermal sensors
+  behind the `host:temp.<alias>` refs the catalog maps: `cpu: soc_thermal.0`
+  on a Luckfox, `cpu: coretemp.package_id_0` on an X4, and the channel
+  `sys.host.temp_cpu_package` is unchanged by the move. It *replaces* the
+  profile's mapping rather than merging into it, because a board's sensor
+  set is a whole -- an X4 `board: acpitz.0` left behind on a board with no
+  board sensor would be a permanent, misleading warning.
 - A serial source may additionally carry `driver: { configure_on_start: ... }`.
   That one driver setting is not about the receiver: it answers "is a real
   receiver on the other end of this port?", which the *rig* decides. Nothing

@@ -28,3 +28,12 @@ serial:
     # 0009 moved away from.
     port: /dev/ttyACM0
     baud: 115200
+
+host:
+  # The sensors behind the catalog's three temperature channels. The N100's
+  # package sensor, the NVMe's composite reading (nvme hwmon), and the ACPI
+  # thermal zone, which is the nearest thing this board has to a board temp.
+  temperatures:
+    cpu: coretemp.package_id_0
+    nvme: nvme.composite
+    board: acpitz.0

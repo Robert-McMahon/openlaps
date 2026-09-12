@@ -52,14 +52,17 @@ serial:
 host:
   enabled: <bool>              # collect host/system metrics (cpu, mem, disk, net) as sys.* channels
   interval: <duration>         # polling interval, e.g. "5s"
+  temperatures:                # optional: board-neutral aliases for thermal sensors
+    <alias>: <chip>.<label>    #   emits host:temp.<alias> from host:temp.<chip>.<label>
 ```
 
-### `interface` and `port` belong to the board, not the car
+### `interface`, `port` and `host.temperatures` belong to the board, not the car
 
-Two fields above describe the SBC rather than the vehicle: `interface` is a
-socketCAN device name and `port` is a path under `/dev`. Move the same car to
+Three things above describe the SBC rather than the vehicle: `interface` is a
+socketCAN device name, `port` is a path under `/dev`, and `host.temperatures`
+names the thermal sensors the kernel happens to expose. Move the same car to
 a different SBC and every DBC, channel and policy is unchanged while those
-two strings are not.
+are not.
 
 They are still written here, because a profile has to be complete on its own.
 But they can be overlaid per board without touching this file, by a
@@ -72,7 +75,17 @@ buses:
   can0: { interface: can0, bitrate: 1000000 }
 serial:
   serial0: { port: /dev/ttyS4, baud: 115200 }
+host:
+  temperatures: { cpu: soc_thermal.0 }
 ```
+
+The catalog maps temperatures through the aliases (`from: "host:temp.cpu"`),
+never through a sensor name, so a channel like `sys.host.temp_cpu_package`
+is the same channel on every board. The raw `host:temp.<chip>.<label>` refs
+are emitted too, for a profile that wants a specific sensor and accepts that
+it is tied to one board. When an alias names a sensor the host does not
+have, the agent logs the board's actual sensor names once and emits nothing
+for that alias.
 
 The overlay addresses transports by the `name` above -- the same identifier
 catalog `from:` refs resolve against -- and fails at load if it names a

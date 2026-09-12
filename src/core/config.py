@@ -178,16 +178,45 @@ class SerialConfig(StrictModel):
     driver: DriverConfig | None = None
 
 
+_TEMPERATURE_ALIAS_RE = re.compile(r"[a-z0-9_]+")
+_TEMPERATURE_SENSOR_RE = re.compile(r"[a-z0-9_]+\.[a-z0-9_]+")
+
+
 class HostConfig(StrictModel):
-    """Host metrics collector settings."""
+    """Host metrics collector settings.
+
+    `temperatures` names the board's sensors behind stable aliases: each
+    ``<alias>: <chip>.<label>`` entry makes the collector emit
+    ``host:temp.<alias>`` carrying the reading of ``host:temp.<chip>.<label>``,
+    which is how psutil names it after ``collectors.host`` normalizes it.
+    A catalog maps the alias (``host:temp.cpu``), so the channel is the same
+    on every board and only this mapping -- a property of the SBC, overlaid
+    per target by ``hardware.yaml`` (ADR 0010) -- says where it comes from.
+    The raw ``host:temp.<chip>.<label>`` refs are still emitted alongside.
+    """
 
     enabled: bool
     interval: str
+    temperatures: dict[str, str] = Field(default_factory=dict)
     interval_ns: int = Field(init=False, exclude=True, default=0)
 
     @model_validator(mode="after")
     def parse_interval(self) -> HostConfig:
         object.__setattr__(self, "interval_ns", parse_duration_ns(self.interval))
+        return self
+
+    @model_validator(mode="after")
+    def temperature_aliases_are_well_formed(self) -> HostConfig:
+        for alias, sensor in self.temperatures.items():
+            if not _TEMPERATURE_ALIAS_RE.fullmatch(alias):
+                raise ValueError(
+                    f"temperature alias {alias!r} must be lowercase letters, digits and '_'"
+                )
+            if not _TEMPERATURE_SENSOR_RE.fullmatch(sensor):
+                raise ValueError(
+                    f"temperature sensor {sensor!r} for {alias!r} must be '<chip>.<label>', "
+                    "as the collector names it in host:temp.<chip>.<label>"
+                )
         return self
 
 

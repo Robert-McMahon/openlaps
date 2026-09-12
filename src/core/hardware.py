@@ -6,7 +6,9 @@ fields are not about the car at all: `buses[].interface` is a socketCAN
 device name and `serial[].port` is a path under `/dev`, and both belong to
 the SBC the agent happens to be running on. The same car moved from a Radxa
 X4 to a Luckfox Omni3576 keeps every DBC and all 123 channels, and changes
-exactly those two strings.
+exactly those two strings -- plus `host.temperatures`, which says which of
+the board's thermal sensors stands behind each `host:temp.<alias>` the
+catalog maps, and is the third thing about a profile that is the board's.
 
 Until this module existed the only way to change them was to edit
 `vehicle.yaml`, which is why the Phase 4 bench rig was once a byte-for-byte
@@ -118,6 +120,21 @@ class SerialHardware(StrictModel):
         return self.model_dump(exclude_none=True, exclude={"driver"})
 
 
+class HostHardware(StrictModel):
+    """The host collector's board-specific half: which sensor is which.
+
+    `temperatures` is the same ``<alias>: <chip>.<label>`` mapping as
+    `HostConfig.temperatures`, and it **replaces** the profile's rather than
+    merging into it. A board's sensor set is a whole: the X4's
+    `board: acpitz.0` left in place on a Luckfox, which has no board sensor,
+    would be an alias that warns on every start for a reading that cannot
+    exist. An empty mapping is therefore meaningful -- "this board maps no
+    temperatures" -- and distinct from leaving the block out.
+    """
+
+    temperatures: dict[str, str] | None = None
+
+
 class HardwareConfig(StrictModel):
     """Validated contents of a target's ``hardware.yaml``.
 
@@ -129,6 +146,7 @@ class HardwareConfig(StrictModel):
     target: _NON_EMPTY
     buses: dict[str, BusHardware] = Field(default_factory=dict)
     serial: dict[str, SerialHardware] = Field(default_factory=dict)
+    host: HostHardware | None = None
 
     def link(self, bus_name: str) -> CanLinkConfig:
         """Bring-up arguments for `bus_name`, defaulted when it names none."""
@@ -165,6 +183,8 @@ def apply_hardware(
         overlay = hardware.serial.get(source["name"])
         _apply(source, overlay)
         _apply_driver(source, overlay, path=path)
+    if hardware.host is not None and hardware.host.temperatures is not None:
+        data["host"]["temperatures"] = dict(hardware.host.temperatures)
 
     try:
         return VehicleConfig.model_validate(data)

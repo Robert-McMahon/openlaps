@@ -38,9 +38,12 @@ four of them rather than one:
   by the profile's own `name`, plus two host-only settings: a bus's `link:`
   block (`fd`, `dbitrate`, for a controller that needs them to come up at all)
   and a serial source's `driver.configure_on_start` ("is a real receiver on
-  the other end of this port?"). It carries no video: go2rtc reads its own
-  config and the agent never touches a camera, so a `video:` block here would
-  be configuration nothing consumes.
+  the other end of this port?"). It also carries `host.temperatures`, the
+  board's answer to which thermal sensor stands behind each
+  `host:temp.<alias>` the catalog maps -- a Luckfox has no `coretemp`, an X4
+  no `soc_thermal`, and the channel names must not care. It carries no
+  video: go2rtc reads its own config and the agent never touches a camera,
+  so a `video:` block here would be configuration nothing consumes.
 
   The same file type serves a rig that is not a board at all —
   `tools/bench-hardware.yaml` points the Phase 4 bench at `vcan0` and a pty.

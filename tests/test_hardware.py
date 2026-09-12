@@ -232,6 +232,80 @@ host:
     assert "no driver" in str(excinfo.value)
 
 
+def test_an_overlay_names_the_board_s_temperature_sensors(tmp_path):
+    """The third board-owned field: which sensor is behind `host:temp.cpu`."""
+    overlay = _write_overlay(
+        tmp_path / "hardware.yaml",
+        "target: rk-box\nhost:\n  temperatures: { cpu: soc_thermal.0 }\n",
+    )
+
+    profile = load_profile(EXAMPLE_PROFILE, overlay)
+
+    assert profile.vehicle.host.temperatures == {"cpu": "soc_thermal.0"}
+
+
+def test_the_overlay_s_temperatures_replace_the_profile_s_not_merge(tmp_path):
+    """A board's sensor set is a whole; the X4's `board` must not linger."""
+    plain = load_profile(EXAMPLE_PROFILE).vehicle.host.temperatures
+    assert "board" in plain, "the example profile is expected to map a board sensor"
+    overlay = _write_overlay(
+        tmp_path / "hardware.yaml",
+        "target: rk-box\nhost:\n  temperatures: { cpu: soc_thermal.0 }\n",
+    )
+
+    overlaid = load_profile(EXAMPLE_PROFILE, overlay).vehicle.host.temperatures
+
+    assert overlaid == {"cpu": "soc_thermal.0"}
+
+
+def test_an_empty_temperature_mapping_means_none_and_no_block_means_the_profile_s(tmp_path):
+    plain = load_profile(EXAMPLE_PROFILE).vehicle.host.temperatures
+    none = _write_overlay(tmp_path / "none.yaml", "target: rk-box\nhost:\n  temperatures: {}\n")
+    silent = _write_overlay(tmp_path / "silent.yaml", "target: rk-box\n")
+
+    assert load_profile(EXAMPLE_PROFILE, none).vehicle.host.temperatures == {}
+    assert load_profile(EXAMPLE_PROFILE, silent).vehicle.host.temperatures == plain
+
+
+def test_temperatures_leave_the_rest_of_the_host_block_alone(tmp_path):
+    overlay = _write_overlay(
+        tmp_path / "hardware.yaml",
+        "target: rk-box\nhost:\n  temperatures: { cpu: soc_thermal.0 }\n",
+    )
+
+    overlaid = load_profile(EXAMPLE_PROFILE, overlay).vehicle.host
+    plain = load_profile(EXAMPLE_PROFILE).vehicle.host
+
+    assert overlaid.enabled == plain.enabled
+    assert overlaid.interval_ns == plain.interval_ns
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "target: rk-box\nhost:\n  temperatures: { CPU: soc_thermal.0 }\n",
+        "target: rk-box\nhost:\n  temperatures: { cpu: soc_thermal }\n",
+        "target: rk-box\nhost:\n  temperatures: { cpu: 'soc thermal.0' }\n",
+    ],
+)
+def test_a_malformed_sensor_name_is_refused_at_load(tmp_path, body):
+    """`<chip>.<label>`, lowercase, exactly as the collector names them."""
+    overlay = _write_overlay(tmp_path / "hardware.yaml", body)
+
+    with pytest.raises(ConfigError):
+        load_profile(EXAMPLE_PROFILE, overlay)
+
+
+def test_the_host_block_cannot_carry_the_collector_s_own_settings(tmp_path):
+    """`enabled` and `interval` are the car's choice, not the board's."""
+    overlay = _write_overlay(tmp_path / "hardware.yaml", "target: rk-box\nhost:\n  interval: 1s\n")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_hardware(overlay)
+
+    assert "interval" in str(excinfo.value)
+
+
 def test_link_options_do_not_leak_into_the_profile(tmp_path):
     """`link:` is an argument to `ip`, not a field of BusConfig."""
     overlay = _write_overlay(

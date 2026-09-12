@@ -249,13 +249,15 @@ channels:
   sys.host.disk_write_bytes: { from: "host:disk.write_bytes", units: "B", type: int }
 
   # psutil reports Celsius here, unlike the Haltech channels above which are
-  # Kelvin as the DBC delivers them. Sensor labels are host-specific: these
-  # are the Radxa X4's (N100 coretemp, NVMe, ACPI board sensor). Per-core
-  # temps are deliberately not mapped -- the package figure is the one that
-  # says whether the SBC is throttling in a hot car.
-  sys.host.temp_cpu_package: { from: "host:temp.coretemp.package_id_0", units: "degC" }
-  sys.host.temp_nvme:        { from: "host:temp.nvme.composite", units: "degC" }
-  sys.host.temp_board:       { from: "host:temp.acpitz.0", units: "degC" }
+  # Kelvin as the DBC delivers them. These map the board-neutral aliases
+  # that vehicle.yaml's `host.temperatures` (or the target's hardware.yaml)
+  # resolves to real sensors, so the channel names hold across boards while
+  # the sensor behind each one is the SBC's business. Per-core temps are
+  # deliberately not mapped -- the package figure is the one that says
+  # whether the SBC is throttling in a hot car.
+  sys.host.temp_cpu_package: { from: "host:temp.cpu", units: "degC" }
+  sys.host.temp_nvme:        { from: "host:temp.nvme", units: "degC" }
+  sys.host.temp_board:       { from: "host:temp.board", units: "degC" }
 
   # Counters, not rates: the dashboard differentiates them. err/drop are the
   # ones worth an alert -- they climb when the HaLow link is saturated.

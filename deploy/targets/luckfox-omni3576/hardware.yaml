@@ -50,3 +50,24 @@ serial:
     # serial number and name the symlink here instead.
     port: /dev/ttyS2
     baud: 115200
+
+host:
+  # The RK3576's TSADC exposes six on-die zones, each as its own hwmon chip
+  # with an unlabelled single reading: soc_thermal, bigcore_thermal,
+  # little_core_thermal, ddr_thermal, npu_thermal, gpu_thermal. README.md
+  # -> Temperatures has what each one is and what is missing.
+  temperatures:
+    # `soc_thermal` is the zone the kernel's thermal governor throttles on,
+    # so it is the one that answers "is the SBC too hot" -- the same question
+    # the X4's package sensor answers.
+    cpu: soc_thermal.0
+    # **Absent on the shipped kernel**: `CONFIG_NVME_HWMON` is off in the
+    # BSP config, so the NVMe registers no hwmon chip and this alias warns
+    # once at start and emits nothing. The mapping is kept because it is the
+    # right one the moment the kernel is rebuilt with that option (README.md
+    # -> Temperatures), and a warning that names the fix beats silence.
+    nvme: nvme.composite
+    # No `board`: there is no sensor on this board that is not on the SoC
+    # die. The USB-PD controller's hwmon (tcpm_source_psy) carries voltage
+    # and current only. Rather than pass off ddr_thermal -- also on-die --
+    # as a board temperature, the channel is simply absent here.

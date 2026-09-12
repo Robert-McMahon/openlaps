@@ -18,7 +18,7 @@ import re
 import subprocess
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 
 import psutil
@@ -104,10 +104,16 @@ class HostMetricsReader:
         psutil_module: object | None = None,
         disk_path: str = DEFAULT_DISK_PATH,
         chrony_runner: ChronyRunner | None = None,
+        temperatures: Mapping[str, str] | None = None,
     ) -> None:
-        """Build a reader over ``psutil_module`` (injectable for tests)."""
+        """Build a reader over ``psutil_module`` (injectable for tests).
+
+        ``temperatures`` is the profile's ``host.temperatures`` mapping:
+        ``<alias>: <chip>.<label>``, each emitted as ``host:temp.<alias>``.
+        """
         self._psutil = psutil if psutil_module is None else psutil_module
         self._disk_path = disk_path
+        self._temperatures = dict(temperatures or {})
         self._chrony_runner = _run_chronyc_tracking if chrony_runner is None else chrony_runner
         self.stats = HostStats()
         self._reported_failures: set[str] = set()
@@ -167,11 +173,22 @@ class HostMetricsReader:
         sensors = getattr(self._psutil, "sensors_temperatures", None)
         if sensors is None:  # pragma: no cover - not available on every platform
             return
+        found: dict[str, float] = {}
         for chip, entries in (sensors() or {}).items():
             chip_name = _sanitize(chip) or "unknown"
             for index, entry in enumerate(entries):
                 label = _sanitize(entry.label or "") or str(index)
-                yield f"host:temp.{chip_name}.{label}", float(entry.current)
+                found[f"{chip_name}.{label}"] = float(entry.current)
+        for sensor, value in found.items():
+            yield f"host:temp.{sensor}", value
+        # The board-neutral names a catalog maps. A raw sensor ref always
+        # carries a dot and an alias never does, so the two cannot collide.
+        for alias, sensor in self._temperatures.items():
+            value = found.get(sensor)
+            if value is None:
+                self._note_missing_sensor(alias, sensor, found)
+                continue
+            yield f"host:temp.{alias}", value
 
     def _read_memory(self) -> Iterator[Reading]:
         memory = self._psutil.virtual_memory()
@@ -209,6 +226,26 @@ class HostMetricsReader:
     def _read_clock(self) -> Iterator[Reading]:
         yield from parse_chronyc_tracking(self._chrony_runner()).items()
 
+    def _note_missing_sensor(self, alias: str, sensor: str, found: Mapping[str, float]) -> None:
+        """Say once which sensor an alias wanted and which ones exist instead.
+
+        Not a probe failure: the probe worked, and the mismatch is between
+        the profile's ``host.temperatures`` and this board. The message
+        carries the board's actual sensor names so the fix is a copy-paste
+        into the target's ``hardware.yaml``.
+        """
+        key = f"temp.{alias}"
+        if key in self._reported_failures:
+            return
+        self._reported_failures.add(key)
+        logger.warning(
+            "host: temperature %r maps to sensor %r, which this host does not expose"
+            " (it exposes: %s)",
+            alias,
+            sensor,
+            ", ".join(sorted(found)) or "none",
+        )
+
     def _note_failure(self, group: str, exc: Exception) -> None:
         if group in self._reported_failures:
             return
@@ -236,7 +273,9 @@ class HostCollector:
         """Build a collector for ``config``, reading through ``reader``."""
         self.config = config
         self.stats = HostStats()
-        self.reader = HostMetricsReader(disk_path=disk_path) if reader is None else reader
+        if reader is None:
+            reader = HostMetricsReader(disk_path=disk_path, temperatures=config.temperatures)
+        self.reader = reader
         self._emit = emit
         self._wall_clock = wall_clock if wall_clock is not None else MonotonicWallClock()
         self._interval_s = config.interval_ns / 1e9

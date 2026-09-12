@@ -295,6 +295,67 @@ def test_sensor_labels_are_normalized_into_source_refs():
     assert readings["host:temp.acpi_zone.1"] == 41.0
 
 
+def test_temperature_aliases_are_emitted_beside_the_raw_sensors():
+    """`host.temperatures` puts a board-neutral name on a board's sensor."""
+    fake = FakePsutil(
+        temperatures={
+            "soc_thermal": [_Temp(label="", current=48.5)],
+            "nvme": [_Temp(label="Composite", current=39.0)],
+        }
+    )
+    reader = HostMetricsReader(
+        psutil_module=fake,
+        chrony_runner=lambda: CHRONY_TRACKING,
+        temperatures={"cpu": "soc_thermal.0", "nvme": "nvme.composite"},
+    )
+
+    readings = dict(reader.read())
+
+    assert readings["host:temp.cpu"] == 48.5
+    assert readings["host:temp.nvme"] == 39.0
+    # The raw refs are still there for a profile that wants a specific sensor.
+    assert readings["host:temp.soc_thermal.0"] == 48.5
+    assert readings["host:temp.nvme.composite"] == 39.0
+
+
+def test_an_alias_for_a_sensor_the_host_lacks_warns_once_with_the_real_names(
+    caplog: pytest.LogCaptureFixture,
+):
+    """The warning is the fix: it lists what this board actually exposes."""
+    fake = FakePsutil(temperatures={"soc_thermal": [_Temp(label="", current=48.5)]})
+    reader = HostMetricsReader(
+        psutil_module=fake,
+        chrony_runner=lambda: CHRONY_TRACKING,
+        temperatures={"cpu": "soc_thermal.0", "nvme": "nvme.composite"},
+    )
+
+    with caplog.at_level(logging.WARNING):
+        first = dict(reader.read())
+        second = dict(reader.read())
+
+    assert first["host:temp.cpu"] == 48.5
+    assert "host:temp.nvme" not in first
+    assert "host:temp.nvme" not in second
+    warnings = [r for r in caplog.records if "does not expose" in r.getMessage()]
+    assert len(warnings) == 1
+    assert "'nvme.composite'" in warnings[0].getMessage()
+    assert "soc_thermal.0" in warnings[0].getMessage()
+    # A mismatch between profile and board is not a probe failure.
+    assert reader.stats.probe_failures == 0
+
+
+def test_the_collector_hands_the_profile_s_aliases_to_its_reader(monkeypatch):
+    config = HostConfig(enabled=True, interval="5s", temperatures={"cpu": "cpu_thermal.0"})
+    fake = FakePsutil()
+    monkeypatch.setattr("collectors.host.psutil", fake)
+    monkeypatch.setattr("collectors.host._run_chronyc_tracking", lambda: CHRONY_TRACKING)
+    emitted: list[Sample] = []
+
+    HostCollector(config, emitted.append).poll()
+
+    assert {s.source_ref: s.value for s in emitted}["host:temp.cpu"] == 48.5
+
+
 def test_poll_stamps_every_sample_from_one_snapshot():
     samples: list[Sample] = []
     reader, fake = _reader()

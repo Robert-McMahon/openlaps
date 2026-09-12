@@ -86,6 +86,62 @@ Everything else:
 | Audio | `card 0`, ES8388 | captured over PulseAudio, not ALSA |
 | Encode | `/dev/mpp_service` + `/dev/dri/renderD128` | H.264 only |
 
+## Temperatures
+
+The dashboard's three host temperatures come from `host.temperatures` in
+`hardware.yaml` here (ADR 0010), and this board can fill in one of them.
+
+The RK3576's TSADC exposes six zones, each a separate hwmon chip with one
+unlabelled reading, so psutil names them `<zone>.0`:
+
+| Zone | hwmon name | What it is |
+| --- | --- | --- |
+| `thermal_zone0` | `soc_thermal` | the governor's zone: throttling is decided on this one |
+| `thermal_zone1` | `bigcore_thermal` | the four A72s |
+| `thermal_zone2` | `little_core_thermal` | the four A53s |
+| `thermal_zone3` | `ddr_thermal` | the DDR controller, on the SoC die |
+| `thermal_zone4` | `npu_thermal` | |
+| `thermal_zone5` | `gpu_thermal` | |
+
+All six are on the die (they read within a degree of each other, idle at
+about 28 °C), and `crit` is 115 °C on each. `cpu: soc_thermal.0` is the
+mapping; the raw `host:temp.<zone>.0` refs are all emitted as well.
+
+**No board sensor.** The only other hwmon chip is the USB-PD controller
+(`tcpm_source_psy_2_004e`), which reports voltage and current, not
+temperature. `board` is deliberately left unmapped rather than pointing at
+`ddr_thermal` and calling an on-die reading a board temperature.
+
+**NVMe: needs a kernel rebuild.** The drive (`ZHITAI TiPlus7100s`) reports
+its temperature over SMART like any NVMe, and the kernel's `nvme` driver
+would register it as an hwmon chip named `nvme` with a `Composite` reading --
+the `nvme.composite` the mapping already names. But the BSP config has
+
+```
+# CONFIG_NVME_HWMON is not set
+```
+
+so no chip appears, and the agent logs once at start:
+
+```
+host: temperature 'nvme' maps to sensor 'nvme.composite', which this host does not expose (it exposes: bigcore_thermal.0, ddr_thermal.0, ...)
+```
+
+The fix goes in the same kernel config fragment that carries
+`CONFIG_PPS_CLIENT_GPIO` (see "Enabling the hardware UART" -- it is
+`docker.config`, passed as `RK_KERNEL_CFG_FRAGMENTS`):
+
+```
+CONFIG_NVME_HWMON=y
+```
+
+then `./build.sh kernel` and write `boot.img` to `mmcblk2p3` exactly as
+for the UART. It is a config-only change to a driver already built in, and
+the same reflash procedure and the same recovery apply. Until then the
+`nvme` channel is simply absent on this board; `nvme-cli` (`nvme smart-log
+/dev/nvme0`) reads the same value by hand, but it needs root and the agent
+runs as `openlaps`, so it is not a substitute the collector can use.
+
 ## Bring-up
 
 Get the repository onto the board first — everything below is run from its
@@ -324,6 +380,18 @@ GPS       8  4  110   +0.002   0.516   +3ns   9451ns
 Selected, offset a couple of microseconds, **9.4 µs standard deviation** —
 against the ±100 µs the X4's RP2040 path gets. Re-read `chronyc sourcestats`
 under real load before believing that number at an event.
+
+**After a cold boot with no RTC battery, expect `#?` for half an hour.** The
+hym8563 RTC comes up invalid, the clock starts in 2021 (systemd then bumps
+it to its build epoch), and chrony's first act is a step of months. A PPS
+refclock cannot number its own pulses, so each pulse inherits the local
+clock's error estimate as its dispersion, and that estimate is left in the
+tens of thousands of seconds by the step. Seen on 2026-09-12: samples
+31 µs tight, yet `+/- 58318s`, decaying about a quarter per minute, with the
+dashboard's `sys.host.clock_stratum` showing 4 from the pool. It converges
+on its own in roughly 30 minutes. `sudo systemctl restart chrony` once the
+clock is right shortcuts it: selected within a minute, stratum 1. The real
+fix is the RTC battery, which turns the boot-time step into seconds.
 
 ### Userspace shim, if you did not reflash
 

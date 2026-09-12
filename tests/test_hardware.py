@@ -487,6 +487,19 @@ def test_the_agent_unit_does_not_try_to_configure_an_interface_it_cannot():
     assert "openlaps-can.service" in unit
 
 
+def test_a_usb_camera_appearing_starts_the_go2rtc_container():
+    """Docker refuses a container whose --device is absent and never retries."""
+    rule = (ROOT / "deploy" / "udev" / "99-openlaps-camera.rules").read_text(encoding="utf-8")
+    unit = (ROOT / "deploy" / "systemd" / "openlaps-go2rtc.service").read_text(encoding="utf-8")
+    readme = (TARGETS / "luckfox-omni3576" / "README.md").read_text(encoding="utf-8")
+
+    assert 'SUBSYSTEMS=="usb"' in rule, "MIPI video nodes must not trigger it"
+    assert 'ENV{SYSTEMD_WANTS}+="openlaps-go2rtc.service"' in rule
+    assert "Type=oneshot" in unit
+    assert "docker start openlaps-vehicle-go2rtc" in unit
+    assert "--name openlaps-vehicle-go2rtc" in readme, "the unit and the README must agree"
+
+
 def test_the_can_unit_runs_the_tool_as_root_before_the_agent():
     unit = (ROOT / "deploy" / "systemd" / "openlaps-can.service").read_text(encoding="utf-8")
 

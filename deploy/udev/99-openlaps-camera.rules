@@ -1,0 +1,17 @@
+# Start the car camera's go2rtc container when a USB camera enumerates.
+#
+# The container maps the camera with `--device`, and Docker refuses to start
+# a container whose device is absent -- a refusal, not a crash, so the
+# `--restart unless-stopped` policy never retries it. A camera that is
+# missing at boot (an Insta360 X3 that has fallen out of webcam mode, one
+# plugged in after the car is on) therefore leaves go2rtc down until someone
+# runs `docker start`. This rule is that `docker start`, driven by the event
+# that makes it possible: any USB video capture device appearing pulls in
+# openlaps-go2rtc.service, a oneshot that starts the container and is a
+# no-op when it is already running.
+#
+# USB only (SUBSYSTEMS/DRIVERS match the parent interface): a Rockchip board
+# registers dozens of MIPI video nodes at boot, and none of them is the car
+# camera.
+ACTION=="add", SUBSYSTEM=="video4linux", SUBSYSTEMS=="usb", DRIVERS=="uvcvideo", \
+  TAG+="systemd", ENV{SYSTEMD_WANTS}+="openlaps-go2rtc.service"

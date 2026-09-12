@@ -61,11 +61,10 @@ host:
     # so it is the one that answers "is the SBC too hot" -- the same question
     # the X4's package sensor answers.
     cpu: soc_thermal.0
-    # **Absent on the shipped kernel**: `CONFIG_NVME_HWMON` is off in the
-    # BSP config, so the NVMe registers no hwmon chip and this alias warns
-    # once at start and emits nothing. The mapping is kept because it is the
-    # right one the moment the kernel is rebuilt with that option (README.md
-    # -> Temperatures), and a warning that names the fix beats silence.
+    # Needs `CONFIG_NVME_HWMON=y`, which the stock BSP config lacks and the
+    # kernel built per README.md -> Kernel carries. On a stock kernel the
+    # NVMe registers no hwmon chip and this alias warns once at start and
+    # emits nothing -- a warning that names the fix beats silence.
     nvme: nvme.composite
     # No `board`: there is no sensor on this board that is not on the SoC
     # die. The USB-PD controller's hwmon (tcpm_source_psy) carries voltage

@@ -1121,7 +1121,7 @@ Not work packages. Load-bearing for the phase.
   with nothing being timed: a five-second `nc` to the port returned no
   bytes, which matches the reference client (it sends nothing on connect
   and exits when the feed says the event ended) — an idle feed is silent,
-  so a quiet connection is not a failed one.
+  so a quiet connection is not a failed one. A `nc -zv` the same day confirmed the port accepts connections (16.50.72.143:8889), so the public endpoint is reachable and simply idle between meetings.
 - **Ask the timekeepers for the local feed's host and port** at the
   event, and point the same client at it. That is the no-internet path.
 - **Send Natsoft a courtesy email** stating the intended use. No terms

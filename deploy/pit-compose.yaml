@@ -442,6 +442,41 @@ services:
       retries: 4
       start_period: 20s
 
+  watch:
+    # Envelope monitors (P7.5, ADR 0011): scores every sample against a
+    # baseline learned from the session's first clean window, writes
+    # watch_scores and watch_findings, and publishes watch.* live.
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-watch"]
+    environment:
+      OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://nats:4222}
+      OPENLAPS_WATCH_STREAM: ${OPENLAPS_WATCH_STREAM:-TELE_VEHICLE}
+      OPENLAPS_WATCH_CONFIG: /config/watch.yaml
+      OPENLAPS_WATCH_HEALTH_PORT: "8090"
+      OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
+      OPENLAPS_MQTT_HOST: mosquitto
+      OPENLAPS_MQTT_PORT: "1883"
+      TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
+      TIMESCALE_PORT: "5432"
+    volumes:
+      - ${OPENLAPS_WATCH_PROFILE:-../profiles/example-club-racer}:/config:ro
+    ports:
+      - "8090:8090"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      provision-streams:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
   timing-feed:
     # The other cars (P7.10, ADR 0011): standings, laps, transponder
     # passings and the flag state from a timing provider, into the field_*

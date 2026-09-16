@@ -1019,7 +1019,7 @@ def test_entrypoint_compose_env_and_docs_wire_the_service():
     assert "OPENLAPS_TIMING_FEED_SOURCE=natsoft" in env
     assert "OPENLAPS_TIMING_FEED_PORT=8089" in env
     assert "| timing-feed | 8089 |" in readme
-    assert "timing-feed |" in readme.split("| Services |")[1].split("\n")[0]
+    assert "timing-feed" in readme.split("| Services |")[1].split("\n")[0]
     for view in (
         "v_field_standings",
         "v_field_laps",

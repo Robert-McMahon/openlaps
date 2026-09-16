@@ -998,6 +998,150 @@ groups:
         expression: B
         refId: C
         type: threshold
+  - uid: watch-critical
+    title: Critical envelope finding — inspect v_watch_findings for expected and observed
+      values
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      runbook_url: /d/reliability/reliability?var-alert=watch-critical
+      summary: Critical envelope finding — inspect v_watch_findings for expected and observed
+        values
+    labels:
+      service: openlaps
+      kind: watch
+      severity: critical
+      scope: always
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: timescale
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id
+          = 'example-club-racer' AND closed_at IS NULL AND monitor NOT LIKE 'strategy.%' AND
+          monitor NOT LIKE 'field.%' AND severity IN ('critical'))::double precision AS "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource: &id014
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource: *id014
+        expression: B
+        refId: C
+        type: threshold
+  - uid: watch-warning
+    title: Envelope warning — inspect v_watch_findings for expected and observed values
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      runbook_url: /d/reliability/reliability?var-alert=watch-warning
+      summary: Envelope warning — inspect v_watch_findings for expected and observed values
+    labels:
+      service: openlaps
+      kind: watch
+      severity: warning
+      scope: always
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: timescale
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id
+          = 'example-club-racer' AND closed_at IS NULL AND monitor NOT LIKE 'strategy.%' AND
+          monitor NOT LIKE 'field.%' AND severity IN ('warning'))::double precision AS "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource: &id015
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource: *id015
+        expression: B
+        refId: C
+        type: threshold
 contactPoints:
 - orgId: 1
   name: openlaps-local

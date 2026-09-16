@@ -1,0 +1,161 @@
+# P7.5: widths and min_scale are in catalog units; temperatures are K.
+# Load > 0 supplies each PDM circuit on/off condition, not its current.
+baseline_rpm_min: 1200
+max_age_seconds: 10
+monitors:
+  oil_pressure_envelope:
+    kind: envelope
+    target: car.oil_pressure
+    conditioned_on:
+    - channel: car.rpm
+      bins: 250
+    - channel: car.oil_temp
+      bins: 10
+    baseline: session_start
+    baseline_seconds: 180
+    min_bin_samples: 50
+    residual_sigma: 3.0
+    min_scale: 5
+    score_window: 30s
+    open_finding_above: 0.8
+    severity: critical
+    gate: on_track
+  fuel_pressure_envelope:
+    kind: envelope
+    target: car.fuel_pressure
+    conditioned_on:
+    - channel: car.rpm
+      bins: 250
+    - channel: car.injection_stage1_duty
+      bins: 10
+    baseline: session_start
+    baseline_seconds: 180
+    min_bin_samples: 50
+    residual_sigma: 3.0
+    min_scale: 5
+    score_window: 30s
+    open_finding_above: 0.8
+    severity: critical
+    gate: on_track
+  coolant_temperature_envelope:
+    kind: envelope
+    target: car.coolant_temp
+    conditioned_on:
+    - channel: car.ambient_air_temp
+      bins: 10
+    - channel: car.vehicle_speed
+      bins: 20
+    baseline: session_start
+    baseline_seconds: 180
+    min_bin_samples: 50
+    residual_sigma: 3.0
+    min_scale: 1
+    score_window: 30s
+    open_finding_above: 0.8
+    severity: warning
+    gate: on_track
+  thermo_fan_1_envelope:
+    kind: envelope
+    target: car.thermo_fan_1_current
+    conditioned_on:
+    - channel: car.thermo_fan_1_load
+      bins: 1
+      active_above: 0
+    - channel: car.battery_v
+      bins: 1
+    baseline: session_start
+    baseline_seconds: 180
+    min_bin_samples: 50
+    residual_sigma: 3.0
+    min_scale: 0.1
+    score_window: 30s
+    open_finding_above: 0.8
+    severity: warning
+    gate: on_track
+  fuel_pump_envelope:
+    kind: envelope
+    target: car.fuel_pump_current
+    conditioned_on:
+    - channel: car.fuel_pump_load
+      bins: 1
+      active_above: 0
+    - channel: car.battery_v
+      bins: 1
+    baseline: session_start
+    baseline_seconds: 180
+    min_bin_samples: 50
+    residual_sigma: 3.0
+    min_scale: 0.1
+    score_window: 30s
+    open_finding_above: 0.8
+    severity: warning
+    gate: on_track
+  power_steering_pump_1_envelope:
+    kind: envelope
+    target: car.power_steering_pump_1_current
+    conditioned_on:
+    - channel: car.power_steering_pump_1_load
+      bins: 1
+      active_above: 0
+    - channel: car.battery_v
+      bins: 1
+    baseline: session_start
+    baseline_seconds: 180
+    min_bin_samples: 50
+    residual_sigma: 3.0
+    min_scale: 0.1
+    score_window: 30s
+    open_finding_above: 0.8
+    severity: warning
+    gate: on_track
+  oil_pump_envelope:
+    kind: envelope
+    target: car.oil_pump_current
+    conditioned_on:
+    - channel: car.oil_pump_load
+      bins: 1
+      active_above: 0
+    - channel: car.battery_v
+      bins: 1
+    baseline: session_start
+    baseline_seconds: 180
+    min_bin_samples: 50
+    residual_sigma: 3.0
+    min_scale: 0.1
+    score_window: 30s
+    open_finding_above: 0.8
+    severity: warning
+    gate: on_track
+  lift_pump_envelope:
+    kind: envelope
+    target: car.lift_pump_current
+    conditioned_on:
+    - channel: car.lift_pump_load
+      bins: 1
+      active_above: 0
+    - channel: car.battery_v
+      bins: 1
+    baseline: session_start
+    baseline_seconds: 180
+    min_bin_samples: 50
+    residual_sigma: 3.0
+    min_scale: 0.1
+    score_window: 30s
+    open_finding_above: 0.8
+    severity: warning
+    gate: on_track
+  battery_voltage_envelope:
+    kind: envelope
+    target: car.battery_v
+    conditioned_on:
+    - channel: car.pd16_total_current
+      bins: 10
+    baseline: session_start
+    baseline_seconds: 180
+    min_bin_samples: 50
+    residual_sigma: 3.0
+    min_scale: 0.1
+    score_window: 30s
+    open_finding_above: 0.8
+    severity: warning
+    gate: on_track

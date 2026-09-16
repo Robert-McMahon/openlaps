@@ -119,6 +119,10 @@ class Alarm(_Strict):
     # the strategy service's warnings and the anomaly monitors' can carry
     # different severities and different runbooks.
     monitor_prefix: str | None = None
+    # watch: never count findings whose monitor starts with one of these, so
+    # the generic envelope rules leave the `strategy.` and `field.` findings
+    # to their own rules and one finding pages once.
+    exclude_monitor_prefixes: tuple[str, ...] = ()
     # The dashboard the alert annotates and its runbook link opens.
     dashboard: Literal["reliability", "fuel"] = "reliability"
     for_: str = Field(alias="for")
@@ -158,6 +162,8 @@ class Alarm(_Strict):
                 raise ValueError("a watch alarm needs severity_at_least")
         if self.monitor_prefix is not None and self.kind != "watch":
             raise ValueError("monitor_prefix applies to watch alarms only")
+        if self.exclude_monitor_prefixes and self.kind != "watch":
+            raise ValueError("exclude_monitor_prefixes applies to watch alarms only")
         if self.severity_at_most == "warning" and self.severity_at_least == "critical":
             raise ValueError("severity_at_most cannot sit below severity_at_least")
         return self
@@ -284,6 +290,10 @@ def _stale_sql(vehicle: str, alarm: Alarm) -> str:
     return f'SELECT now() AS "time", {value} AS "value"'
 
 
+def _like_prefix(prefix: str) -> str:
+    return prefix.replace("'", "''").replace("%", "\\%").replace("_", "\\_")
+
+
 def _watch_sql(vehicle: str, alarm: Alarm) -> str:
     ladder = ("warning", "critical")
     assert alarm.severity_at_least is not None
@@ -292,8 +302,9 @@ def _watch_sql(vehicle: str, alarm: Alarm) -> str:
     counted = ", ".join(f"'{level}'" for level in reversed(ladder[lowest : highest + 1]))
     monitor = ""
     if alarm.monitor_prefix:
-        prefix = alarm.monitor_prefix.replace("'", "''").replace("%", "\\%").replace("_", "\\_")
-        monitor = f" AND monitor LIKE '{prefix}%'"
+        monitor = f" AND monitor LIKE '{_like_prefix(alarm.monitor_prefix)}%'"
+    for excluded in alarm.exclude_monitor_prefixes:
+        monitor += f" AND monitor NOT LIKE '{_like_prefix(excluded)}%'"
     return (
         'SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id = '
         f"'{vehicle}' AND closed_at IS NULL{monitor} AND severity IN "

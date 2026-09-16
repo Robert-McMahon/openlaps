@@ -48,7 +48,8 @@
 #     stale:     fires when `channel` has had no sample for `older_than_s`
 #     watch:     fires on open v_watch_findings rows at `severity_at_least`
 #                (up to `severity_at_most`), optionally only those whose
-#                monitor starts with `monitor_prefix`
+#                monitor starts with `monitor_prefix`, and never those whose
+#                monitor starts with one of `exclude_monitor_prefixes`
 #     heartbeat: always fires; the notifier's proof the path is alive
 #   dashboard    reliability (default) | fuel -- where the runbook link opens
 
@@ -215,3 +216,25 @@ alarms:
     severity: critical
     gate: always
     summary: Timing feed disagrees with the vehicle (lap count far apart)
+
+  # The watch service's envelope findings (P7.5): everything in
+  # v_watch_findings that the strategy and timing-feed rules above do not
+  # already own, so one finding pages once.
+  watch-critical:
+    kind: watch
+    exclude_monitor_prefixes: [strategy., field.]
+    severity_at_least: critical
+    for: 0s
+    severity: critical
+    gate: always
+    summary: Critical envelope finding — inspect v_watch_findings for expected and observed values
+
+  watch-warning:
+    kind: watch
+    exclude_monitor_prefixes: [strategy., field.]
+    severity_at_least: warning
+    severity_at_most: warning
+    for: 0s
+    severity: warning
+    gate: always
+    summary: Envelope warning — inspect v_watch_findings for expected and observed values

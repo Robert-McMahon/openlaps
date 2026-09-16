@@ -25,6 +25,8 @@ REQUIRED_RULES = {
     "strategy-critical",
     "field-warning",
     "field-critical",
+    "watch-critical",
+    "watch-warning",
 }
 
 

@@ -85,7 +85,7 @@ def test_the_candump_fixtures_predict_the_rate_they_actually_contain(tmp_path: P
 
     mix = bench_check.predict_can(profile, catalog, CANDUMPS)
 
-    assert mix.rate(bench_check.CAN_CLASS) == pytest.approx(2012.1, rel=0.01)
+    assert mix.rate(bench_check.CAN_CLASS) == pytest.approx(2067.7, rel=0.01)
     assert mix.rate(bench_check.IMU_CLASS) == pytest.approx(752.5, rel=0.01)
     devices = mix.device_rates()
     assert set(devices) == {"haltech", "haltech2", "wideband", "imu"}
@@ -115,11 +115,11 @@ def test_gps_is_predicted_from_a_sentence_the_real_decoder_accepts(tmp_path: Pat
 def test_host_clock_metrics_contribute_at_the_host_poll_rate(tmp_path: Path):
     profile, catalog = _catalog(tmp_path)
 
-    # 28 mapped `sys.host.*` channels at the 5 s host poll interval. This was
+    # 34 mapped `sys.host.*` channels at the 5 s host poll interval. This was
     # 0.8/s when only the four clock channels were mapped; 2026-08-29 added
     # the CPU, load, memory, disk, thermal and network group the host
     # collector had been emitting all along and the catalog was dropping.
-    assert bench_check.predict_host(profile, catalog) == pytest.approx(5.6)
+    assert bench_check.predict_host(profile, catalog) == pytest.approx(6.8)
 
 
 def test_the_bench_rig_and_the_car_predict_the_same_mix(tmp_path: Path):
@@ -310,8 +310,9 @@ def test_predict_mode_needs_no_hardware_and_reports_the_model_gap():
     assert status == 0
     assert "vcan0" in text
     assert "Predicted bench mix vs. LINK_BUDGET.md §2 model" in text
-    # 3015.4 before the sys.host.* catalog additions of 2026-08-29 (+4.8/s).
-    assert "3020.2" in text and "4262.2" in text
+    # P7.5 adds five PDM load signals and repairs three current mappings.
+    # The current host catalog also includes six channels added since the old 5.6/s pin.
+    assert "3076.9" in text and "4262.2" in text
 
 
 def test_the_model_gap_can_be_made_fatal_for_those_who_want_it():

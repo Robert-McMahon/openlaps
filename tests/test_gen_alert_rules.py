@@ -85,7 +85,7 @@ def test_the_committed_file_is_a_fresh_render_of_the_profile() -> None:
 
 def test_the_rendered_limits_are_the_phase_6_thresholds_with_retuned_holds() -> None:
     rules = _rules(_rendered())
-    assert rules.keys() == SHIPPED_LIMITS.keys()
+    assert rules.keys() == SHIPPED_LIMITS.keys() | {"watch-critical", "watch-warning"}
     for uid, (channel, comparison, threshold, hold) in SHIPPED_LIMITS.items():
         rule = rules[uid]
         evaluator = _condition(rule)["evaluator"]
@@ -365,6 +365,46 @@ def test_a_watch_alarm_can_be_scoped_to_a_monitor_prefix_and_a_severity_band(
     assert rules["notifier-heartbeat"]["labels"]["severity"] == "none"
 
 
+def test_a_watch_alarm_can_exclude_the_prefixes_other_rules_own(tmp_path: Path) -> None:
+    # The envelope rules (P7.5) count every open finding except the ones the
+    # strategy-* and field-* rules already page on, so one finding pages once.
+    profile = _profile_with_alarms(
+        tmp_path,
+        {
+            "envelopes": {
+                "kind": "watch",
+                "exclude_monitor_prefixes": ["strategy.", "field."],
+                "severity_at_least": "warning",
+                "for": "0s",
+                "severity": "warning",
+                "gate": "always",
+                "summary": "Envelope finding",
+            }
+        },
+    )
+    rules = _rules(yaml.safe_load(gen_alert_rules.render(profile)[1]))
+    sql = _sql(rules["envelopes"])
+    assert "monitor NOT LIKE 'strategy.%'" in sql and "monitor NOT LIKE 'field.%'" in sql
+    assert "monitor LIKE" not in sql.replace("NOT LIKE", "")
+    with pytest.raises(gen_alert_rules.AlarmError, match="watch alarms only"):
+        gen_alert_rules.render(
+            _profile_with_alarms(
+                tmp_path / "threshold",
+                {
+                    "oil": {
+                        "channel": "car.oil_pressure",
+                        "units": "kPa",
+                        "below": 200,
+                        "resting": 400,
+                        "for": "3s",
+                        "summary": "x",
+                        "exclude_monitor_prefixes": ["strategy."],
+                    }
+                },
+            )
+        )
+
+
 def test_the_rendered_cadence_divides_grafana_s_fixed_base_interval() -> None:
     # Grafana 12.4.9 refuses to start on a group interval that does not
     # divide its 10 s base interval, and refuses to lower that base
@@ -391,6 +431,8 @@ def test_every_continuous_shipped_alarm_has_hysteresis() -> None:
         "strategy-critical",
         "field-warning",
         "field-critical",
+        "watch-critical",
+        "watch-warning",
     }
     for uid, rule in _rules(_rendered()).items():
         condition = _condition(rule)

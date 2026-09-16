@@ -162,7 +162,7 @@ channels:
   car.brake_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_4_VOLTAGE", units: "V" }
 
   #Half Bridge Outputs
-  car.power_steering_pump_1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_1_CURRENT", units: "A" }
+  car.power_steering_pump_1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_1_HS_CURRENT", units: "A" }
   car.power_steering_pump_2_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_2_CURRENT", units: "A" }
 
   # High Current Outputs
@@ -177,9 +177,16 @@ channels:
   car.heater_fan_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_9_CURRENT", units: "A" }
   car.oil_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_10_CURRENT", units: "A" }
   car.thermo_fan_2_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HC25_1_CURRENT", units: "A" }
-  car.thermo_fan_1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HC25_2_CURRENT", units: "A" }
+  car.thermo_fan_1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO25_2_HS_CURRENT", units: "A" }
   car.ign_coils_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HC25_3_CURRENT", units: "A" }
-  car.fuel_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HC25_4_CURRENT", units: "A" }
+  car.fuel_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO25_4_HS_CURRENT", units: "A" }
+  # Output duty/load: watch derives the on state as load > 0, independently
+  # of measured current (PIN_STATE is a fault enum, not an on/off signal).
+  car.thermo_fan_1_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO25_2_LOAD", units: "%" }
+  car.fuel_pump_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO25_4_LOAD", units: "%" }
+  car.power_steering_pump_1_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_1_LOAD", units: "%" }
+  car.oil_pump_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_10_LOAD", units: "%" }
+  car.lift_pump_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_8_LOAD", units: "%" }
   # The removed AVI/SPI voltage channels (avi1_v..avi4_v, spi3_v, spi4_v) each
   # carried an rbe policy -- {deadband: 0.05, max_interval: 5s} -- to keep the
   # link quiet on these ~100 Hz analog inputs while still guaranteeing a

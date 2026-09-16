@@ -11,7 +11,7 @@ that.
 | NATS config | `nats/vehicle.conf` | `nats/pit.conf` |
 | JetStream domain | `veh` | `pit` |
 | Streams | `TELE`, `CMD` (created by the agent) | `TELE_VEHICLE` (created by `provision_pit_streams.py`) |
-| Services | agent, go2rtc (`--profile video`) | ingest-writer, live-decoder, timing-extrapolator, session-control, notifier, ntrip-client, pit-monitor, strategy, timing-feed |
+| Services | agent, go2rtc (`--profile video`) | ingest-writer, live-decoder, timing-extrapolator, session-control, notifier, ntrip-client, pit-monitor, strategy, timing-feed, watch |
 | Read surface | — | Grafana on `:3000` |
 
 ## Which SBC the vehicle stack runs on
@@ -326,10 +326,11 @@ docker compose -f deploy/pit-compose.yaml exec timescaledb psql -U openlaps -d o
 | ntfy | 8087 | fixed (`GET /v1/health`); phones subscribe here |
 | strategy | 8088 | `OPENLAPS_STRATEGY_HEALTH_PORT` |
 | timing-feed | 8089 | `OPENLAPS_TIMING_FEED_PORT` (`/health`, `POST /ingest/snapshot`, `WS /ingest/t71`) |
+| watch | 8090 | `OPENLAPS_WATCH_HEALTH_PORT` |
 | grafana | 3000 | fixed (`GET /api/health`) |
 
 ```bash
-for port in 8080 8081 8082 8083 8084 8086 8088 8089; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
+for port in 8080 8081 8082 8083 8084 8086 8088 8089 8090; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
 ```
 
 **Grafana is up and both datasources are green.** The web UI is on

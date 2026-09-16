@@ -278,6 +278,36 @@ redelivery a no-op regardless of dedupe windows or outage length. See the
 ingest-writer's own documentation for why `Nats-Msg-Id` dedupe alone is not
 enough.
 
+### Declared for Phase 7, not yet migrated
+
+ADR 0011 has pit services that derive data write their own tables, in the
+`pit_metrics` pattern above. `docs/plan/PHASE7.md` builds several of them in
+packages that can run in parallel, so their shapes are fixed here first and
+each package's migration is expected to match this section or amend it in
+the same commit. **None of these tables exist until the migration named
+beside them lands**; a dashboard or test that reads one before then is
+reading a plan.
+
+| Table | Written by | Columns |
+| --- | --- | --- |
+| `alert_events` | `notifier` (P7.2) | `time, rule_uid, alertname, status, severity, labels JSONB, annotations JSONB, fingerprint` |
+| `alert_acks` | `notifier` (P7.2) | `fingerprint, acked_at, acked_by, note` |
+| `watch_scores` (hypertable) | `watch` (P7.5) | `time, vehicle_id, monitor, score, residual, expected, observed, baseline_status` |
+| `watch_findings` | `watch` (P7.5), `strategy` (P7.9) | `finding_id, vehicle_id, monitor, opened_at, closed_at, severity, peak_score, summary JSONB` |
+| `watch_baselines` | `watch` (P7.5) | `vehicle_id, monitor, session_id, stint_number, learned_at, model JSONB` |
+| `race_plans` | `session-control` (P7.8) | `session_id, race_end_at, race_end_laps, tank_l, usable_fuel_l, refuel_min_s, service_typical_s, driver_limits JSONB, planned_stops JSONB, updated_at` |
+| `strategy_state` (hypertable) | `strategy` (P7.9) | `time, session_id, fuel_remaining_l, rebase_confidence, burn_l_per_lap, burn_sd, laps_to_dry_lo, laps_to_dry_hi, time_to_dry_s_lo, time_to_dry_s_hi, window_open_lap, window_close_lap, target_lap_s, driver_time_remaining_s, stop_plan JSONB` |
+| `field_session` (hypertable) | `timing-feed` (P7.10) | `time, source, session_name, event_type, flag_state, sub_status, time_remaining_s, laps_remaining, time_elapsed_s, track_temp` |
+| `field_cars` (hypertable) | `timing-feed` (P7.10) | `time, source, car_number, competitor_id, class, position, class_position, laps, last_lap_s, best_lap_s, gap_lead_s, gap_next_s, sec1_s, sec2_s, sec3_s, pit_count, in_pit, pit_flag, driver, state` |
+| `field_passings` (hypertable) | `timing-feed` (P7.10) | `time, source, competitor_id, line, passing_type, active` |
+| `race_forecasts` | `strategy` (P7.11) | `time, session_id, scenario, car_number, p_position JSONB, expected_position, expected_gap_ahead_s, expected_gap_behind_s, runs` |
+
+Their views — `v_alert_events`, `v_watch_scores`, `v_watch_findings`,
+`v_race_plan`, `v_strategy_latest`, `v_strategy_history`,
+`v_field_standings`, `v_field_laps`, `v_field_passings`, `v_field_gaps`,
+`v_field_flags`, `v_race_forecast_latest` — join the stable read surface
+below as each lands, with the `grafana_ro` grant in the same migration.
+
 ## The stable read surface
 
 ADR 0007 puts the private companion repo downstream of this database, with no

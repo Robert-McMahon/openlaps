@@ -39,6 +39,9 @@ flowchart LR
     TSDB --> GSQL[Grafana SQL dashboards]
     SC[session-control] --> PNATS
     NTRIP[ntrip-client] --> PNATS
+    PNATS -.-> WATCH[watch, strategy<br/>Phase 7] -.-> TSDB
+    FEED[timing-feed<br/>Phase 7] -.-> TSDB
+    GSQL -. "alerts" .-> NOTIF[notifier<br/>Phase 7] -.-> NTFY[ntfy, phones]
   end
 ```
 
@@ -122,6 +125,10 @@ flowchart LR
   NC[ntrip-client] -- "rtcm.vehicle, core NATS" --> LEAF[leafnode to vehicle]
   S[session-control] -- "cmd.vehicle.session" --> LEAF
   PM[pit-monitor] -- "chrony, psutil, /health, :8222" --> DB
+  SRC -.-> WT[watch<br/>Phase 7] -. "watch_* tables, watch.* live" .-> DB
+  DB -.-> ST[strategy<br/>Phase 7] -. "strategy_state, strategy.* live" .-> DB
+  TF[timing-feed<br/>Phase 7] -. "field_* tables" .-> DB
+  G2 -. "alert webhook" .-> NF[notifier<br/>Phase 7] -. "ntfy, Discord, annunciator" .-> PH[phones, pit wall]
 ```
 
 - **ingest-writer** is a durable JetStream consumer: decode batch → resolve
@@ -151,6 +158,31 @@ flowchart LR
   NATS is scraped only at the pit's own `:8222` — `/leafz` reports the
   leafnode's remote, so the pit learns the state of both ends without
   needing the vehicle reachable for monitoring.
+
+The dashed nodes are **Phase 7** (`docs/plan/PHASE7.md`, ADR 0011) and are
+drawn before they exist so a reader knows where they will sit; each one
+derives data rather than carrying it, writes its own tables in the
+pit-monitor pattern, and publishes live values only under a pit-owned
+namespace (`watch.*`, `strategy.*`, `field.*`).
+
+- **watch** consumes the sourced stream like the timing extrapolator does
+  and scores anomaly monitors — envelopes, per-lap drift, physical ratios,
+  and a whole-car residual model — writing scores and findings to
+  `watch_*` tables and publishing live scores for the reliability
+  dashboard. Findings become alerts through the same Grafana rules as
+  every threshold.
+- **strategy** runs per lap off the read surface: fuel remaining, burn
+  with bounds, the pit window, the stop plan against the operator's race
+  plan, driver-time compliance, and the race forecast once field data
+  exists. `fuel.json` reads its table rather than computing in a panel.
+- **timing-feed** ingests the other cars from a timing provider — the
+  Natsoft TCP feed first, a browser relay as fallback — into `field_*`
+  tables, and reconciles our own car's count against `v_laps`.
+- **notifier** is Grafana's only contact point. It records every alert,
+  serves the annunciator (sound, acknowledge buttons, a heartbeat that
+  proves the path is alive), and fans out by severity to `ntfy` on the pit
+  LAN and to Discord when there is internet, with a retry queue for when
+  there is not.
 
 ## Link dropout and recovery
 
@@ -229,6 +261,11 @@ session-control publishes into the vehicle's domain from a connection to its
 own local server. `deploy/README.md` is the operational reference — bring-up
 order, how to verify each hop, and the one thing to get right about the
 sourced stream.
+
+Phase 7 adds `notifier`, `watch`, `strategy`, `timing-feed` and an `ntfy`
+server to the pit stack, each pinned and health-checked like the services
+above; `ntfy` is the one third-party service among them and exists so a
+phone on the pit wifi gets a push with no internet at all.
 
 ## Document map
 

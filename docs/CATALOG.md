@@ -227,6 +227,21 @@ Reserved namespaces, unchanged and outside `car.*`:
 | `sys.*` | Host metrics and vehicle-agent health (queue depths, dropped-sample counters, link status) -- not populated via `catalog.yaml`; these are internal agent/host channels, not mapped source signals |
 | `lap.*`, `timing.*` | **Reserved, derived.** Produced by the timing engine from `apps.lap_timing`'s output (lap/sector events, `delta_best`, `predicted_lap`, distance, `lap_elapsed`). Never appear as a `from:` target in `catalog.yaml` -- they are channels the timing engine *writes*, re-entering the sample bus like any other channel. |
 
+Pit-owned namespaces, which are not vehicle channels at all (ADR 0011):
+
+| Namespace | Covers |
+|---|---|
+| `watch.*` | Anomaly-monitor scores and findings computed at the pit from received telemetry (`docs/plan/PHASE7.md`). |
+| `strategy.*` | Fuel, stop-plan, driver-time and race-forecast numbers computed at the pit. |
+| `field.*` | The other cars: standings, laps, passings and flag state ingested from a timing provider. |
+
+These never appear in a catalog, never carry a `from:`, and never cross the
+radio: a pit service may read any vehicle channel but may publish only
+under a pit-owned namespace, so a derived number can always be told from a
+received one by its name alone. The two `timing.*_pit` channels the pit-side
+timing extrapolator publishes predate this rule and are the only
+vehicle-namespace names a pit service will ever emit.
+
 Where the bare, flattened name would be ambiguous on its own, keep the
 former domain word as part of the name instead of the channel name itself:
 `car.engine_demand`, `car.engine_limiting_active`,

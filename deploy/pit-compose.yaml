@@ -112,6 +112,13 @@ services:
       NTFY_CACHE_DURATION: 24h
       NTFY_BEHIND_PROXY: "false"
       NTFY_ATTACHMENT_CACHE_DIR: ""
+      # iPhones only. iOS allows the app no background connection, so a
+      # self-hosted server can only wake an iPhone by asking ntfy.sh to
+      # relay a poll request through Apple -- which needs internet at the
+      # pit at the moment of the alert, and NTFY_BASE_URL set to the
+      # address the phone uses. Android phones with instant delivery on
+      # need none of this. Empty disables it.
+      NTFY_UPSTREAM_BASE_URL: ${OPENLAPS_NTFY_UPSTREAM_URL:-}
     volumes:
       - ntfy-cache:/var/cache/ntfy
     ports:

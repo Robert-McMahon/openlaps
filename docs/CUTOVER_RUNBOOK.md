@@ -270,8 +270,13 @@ garage is decoration.
    `http://<pit-host>:8087`, subscribe to `openlaps-critical` and — for
    the engineers, not the drivers — `openlaps-warning`. On Android, turn
    on **instant delivery** for the self-hosted server in the app's
-   settings, or notifications arrive when Android feels like it. Join
-   the pit wifi.
+   settings, or notifications arrive when Android feels like it -- the
+   persistent "listening for incoming notifications" entry is the proof
+   it is on, and the app's battery-optimisation prompt must be accepted.
+   Join the pit wifi. **iPhones** are different: iOS allows no
+   background connection, so they only get a push if
+   `OPENLAPS_NTFY_UPSTREAM_URL` is set and the pit has internet at that
+   moment (`example.env`); plan for Android phones on the wall.
 3. **Open the annunciator** at `http://<pit-host>:8086/`, enable sound,
    and confirm the header reads **path alive**. If it does not within a
    minute, Grafana is not sending — fix that before anything else.

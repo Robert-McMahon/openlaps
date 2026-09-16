@@ -192,39 +192,51 @@ Do not relitigate.
    reads views; they fail differently and they restart differently.
 
 6. **The field timing feed is an adapter with a fixed internal schema,
-   and the first live source is a browser relay.** The Natsoft live
-   timing page is not HTML that can be polled: it loads a 470 KB
-   obfuscated client that opens a **binary WebSocket** to the same host,
-   sends a binary request, and renders the standings itself, which is why
-   it updates faster than any poll. Timing71's provider plugins are a
-   private package, and its core library states that provider code is
-   reverse-engineered and cannot be published. So P7.10 defines `field.*`
-   tables shaped like Timing71's Common Timing Data format and builds
-   sources behind one interface, in this order:
+   and the first live source is the Natsoft TCP feed, whose protocol is
+   documented.** The Natsoft live timing *web page* is not pollable HTML:
+   it loads a 470 KB obfuscated client that opens a binary WebSocket and
+   renders the standings itself. But the feed behind it is not obscure.
+   A third-party client (`XoTENoC/natsoft-parser`, TypeScript, found by
+   the owner on 2026-09-16) documents it end to end: a plain TCP
+   connection to `natsoft.com.au:8889` with no authentication, carrying
+   XML documents framed by a 10-byte ASCII header — magic `!@#`, a
+   five-digit payload length, and previous/next packet-id characters that
+   chain multi-packet documents. The documents are the whole timing
+   system: `Leaderboard` (full and partial updates, roughly sixty fields
+   per position including last/best lap, sector times, gap to leader and
+   to next, pit-lane flag and pit-stop count), `Passing` (individual
+   transponder crossings), `Counters` (session clock), `Status` and
+   `Heartbeat` (flag state with a `SafetyCar`/`FCY` sub-status), `Track`
+   (pit entry and exit lines), `CompetitorList`, `Grid` and points tables.
+
+   That changes the order of sources in P7.10. It also settles the
+   reverse-engineering question without anyone opening the obfuscated
+   client: the WebSocket almost certainly carries the same documents, and
+   a capture will confirm it, but nothing depends on that.
 
    1. a **replay/file source**, so everything downstream is testable;
-   2. a **browser relay** — a userscript on the pit's own browser that
-      reads the rendered standings table from the Natsoft live page *or*
-      the Timing71 page and posts a snapshot to `timing-feed` about once a
-      second. No protocol work, works with either site, needs internet,
-      breaks only when a page layout changes;
-   3. a **WebSocket frame capture** (Playwright, both directions) of the
-      Natsoft feed during the first live session, so the question of
-      decoding it is answered against real bytes rather than argued;
-   4. the **timekeepers' TCP feed**, with permission — the only source
-      that works with no internet, since it is local at the track.
-      Capture first; decode after the event.
+   2. a **Natsoft feed client** in Python, in this repository,
+      reimplemented from the protocol description — the reference
+      implementation carries no licence, so its code is not ported, only
+      the protocol facts it documents. Needs internet at the pit;
+   3. the **timekeepers' local feed** at the track, which is the same
+      protocol on a different host and port and the only source that
+      works with no internet. The same client, pointed at a LAN address;
+   4. a **browser relay** on the rendered standings of the Timing71 page
+      (or the Natsoft page as a fallback), demoted to the case where the
+      feed is unreachable or a different provider is timing the event;
+   5. a **WebSocket frame capture** of the Natsoft page during a live
+      session, purely to confirm it carries the same framing.
 
-   **Reverse-engineering the binary WebSocket is deferred, not
-   rejected.** No terms of use were found on the Natsoft site, but the
-   obfuscation is a signal of intent, the client changes without notice,
-   and Natsoft already supplies a live feed specification to third
-   parties (HH Timing users obtain a host and port from the timekeepers).
-   **Ask Natsoft for that specification before anyone opens the
-   obfuscated client.** If decoding does go ahead, the decoder lives in
-   the private companion repository (ADR 0007), which is how Timing71
-   handles the same problem. Race prediction (P7.11) consumes the schema
-   and does not care which source filled it.
+   Two things to confirm at the first live meeting, neither of which
+   changes the design: whether the public endpoint serves every live
+   meeting or needs a selection message (the reference client sends
+   nothing after connecting, which suggests the former), and how the
+   local feed is offered at our events. No terms of use were found on
+   the Natsoft site; a courtesy email stating the intended use is still
+   worth sending, because it costs nothing and turns an absence of terms
+   into a yes. Race prediction (P7.11) consumes the schema and does not
+   care which source filled it.
 
 7. **`numpy` is added as a dependency**, for P7.6's whole-car monitor and
    regressions and P7.11's Monte Carlo. Recorded in P7.0's ADR so the
@@ -940,95 +952,99 @@ the new views.
 
 ## P7.10 — `timing-feed`: the field timing adapter
 
-**Specs:** P7.0's declared `field_*` tables; Timing71's Common Timing
-Data format documentation (`info.timing71.org` → reference: service
-manifest, service state — read it before fixing the schema) and the
-`@timing71/common` `Stat` column vocabulary; the Natsoft live timing
-pages (`racing.natsoft.com.au`); `tools/replay.py` for the shape of a
-replayable source; ADR 0007 for where a proprietary decoder would live.
+**Specs:** P7.0's declared `field_*` tables; the Natsoft packet protocol
+and document types as documented by `XoTENoC/natsoft-parser`
+(`docs/architecture.md` → "Natsoft packet protocol", `docs/types.md`,
+`src/types.ts` — read them, do not port them; the repository carries no
+licence); Timing71's Common Timing Data format (`info.timing71.org` →
+reference) for the second ingest shape; `src/pit/timing_extrapolator/`
+for the service shape; `src/pit/pit_monitor/store.py` for the DB writer.
 
 **The stable part: the schema.** `field_session` — `(time, source,
-session_name, flag_state, time_remaining_s, laps_remaining, time_elapsed_s)`
-— and `field_cars` — `(time, source, car_number, class, position,
-class_position, laps, last_lap_s, best_lap_s, gap_s, interval_s,
-pit_count, in_pit, driver, state)` — as snapshot rows per update, plus
-`field_laps` derived in the service when a car's lap count increments.
-Views `v_field_standings` (latest snapshot), `v_field_laps`, `v_field_gaps`
-(gap-to-us per car per lap, joined on the car number in the race plan).
-Shaped after the Common Timing Data format so a Timing71 state maps onto
-it with no loss; a scraped standings table maps onto it with some columns
-NULL.
+session_name, event_type, flag_state, sub_status, time_remaining_s,
+laps_remaining, time_elapsed_s, track_temp)` — and `field_cars` — `(time,
+source, car_number, competitor_id, class, position, class_position, laps,
+last_lap_s, best_lap_s, gap_lead_s, gap_next_s, sec1_s, sec2_s, sec3_s,
+pit_count, in_pit, pit_flag, driver, state)` — as snapshot rows per
+update, plus `field_passings` — `(time, source, competitor_id, line,
+passing_type, active)` — from `Passing` documents, and `field_laps`
+derived when a car's lap count increments. Views `v_field_standings`
+(latest snapshot), `v_field_laps`, `v_field_passings`, `v_field_gaps`
+(gap-to-us per car per lap, joined on the car number in the race plan),
+and `v_field_flags` (flag and sub-status intervals, which is what P7.11's
+eventual safety-car model will be fitted on). The column set is a
+superset of what the Common Timing Data format carries, so a Timing71
+state maps onto it with some columns NULL.
 
-**Two ingest endpoints, both simple.** `POST /ingest/snapshot` takes one
-standings snapshot in the `field_*` shape as JSON — what the browser
-relay sends. `WS /ingest/t71` accepts Timing71's standalone message
-protocol (`MANIFEST_UPDATE` carrying a column spec, `STATE_UPDATE`
-carrying cars as rows against it) so a Timing71 service run locally could
-push to this service unchanged (locked decision 8). Both are
-unauthenticated on the compose network and bounded the way
+**The Natsoft client.** `src/pit/timing_feed/natsoft.py`: an asyncio
+TCP reader that frames packets (validate the `!@#` magic, parse the
+five-digit length, chain packet ids `A`–`Z`, `a`–`z` with `=` as the
+document boundary, decode UTF-8 with a Latin-1 fallback), parses each
+XML document with the standard library, and dispatches by root tag and
+`Type` attribute: `Leaderboard` `full` replaces the standings, `part`
+merges by `Line`; `New` is a container whose children are dispatched
+individually; `CompetitorList` replaces the registry that turns a
+competitor id into a car number, class and driver name; `Counters`,
+`Status` and `Heartbeat` update the session row; `Passing` appends.
+Reconnect with backoff on any framing error, and expect a full
+leaderboard after reconnect. **Every raw document is also written to a
+capture file** with its arrival time, so a live session leaves behind a
+replayable fixture without a separate capture tool.
+
+**Two ingest endpoints for the other shapes.** `POST /ingest/snapshot`
+takes one standings snapshot in the `field_*` shape as JSON — what the
+browser relay sends. `WS /ingest/t71` accepts Timing71's standalone
+message protocol (`MANIFEST_UPDATE` carrying a column spec,
+`STATE_UPDATE` carrying cars as rows against it) so a Timing71 service
+run locally could push to this service unchanged (locked decision 8).
+Both are unauthenticated on the compose network and bounded the way
 `session-control`'s webhook is.
 
 **The sources, in order, behind one `Source` interface (`async for
-snapshot in source`):**
+document in source`):**
 
-1. **Replay** from a recorded snapshot file. Built first so P7.11 and
-   every test have data before any live source works.
-
-2. **Browser relay.** `tools/timing_relay/` holds a userscript (Tampermonkey
-   or equivalent; hand-written, dependency-free, per the repository's
-   no-toolchain rule) that runs on the pit's own browser against the
-   Natsoft live timing page or the Timing71 page, reads the rendered
-   standings table, normalises it to the snapshot shape, and posts it to
-   `POST /ingest/snapshot` about once a second, with a visible indicator
-   on the page that it is relaying and when it last succeeded. It needs
-   internet and it breaks when a page layout changes — say both on the
-   indicator. **A captured set of real page states is the fixture** for
-   the normaliser; the first task is to save some during a live session.
-   The `woodmaniac13/VisualiseRaceResults-natsoft` repository is reading
-   material here: its lesson that Natsoft links carry dynamic object
-   paths (navigate by clicking, never by URL) applies, and its
-   `natsoft-parser.js` shows the Result/Times page columns.
-
-3. **WebSocket frame capture.** `tools/timing_relay/capture.py` drives a
-   Playwright browser to the Natsoft live page and records every
-   WebSocket frame in both directions, timestamped, to a file — the
-   client's binary request on connect included. Run it for a whole live
-   session at the first opportunity. It decodes nothing. Its purpose is
-   to make the decode-or-not decision on evidence and, if the answer is
-   yes, to give the companion repository something to test against.
-   **Before running it, ask Natsoft for the feed specification** they
-   already supply to timing-software vendors; a spec makes the capture a
-   validation set rather than a reverse-engineering target.
-
-4. **Timekeepers' TCP feed.** `timing-feed --capture host:port file` tees
-   the raw byte stream to a timestamped file and does nothing else. Do
-   this at the first event where the port is offered, with the
-   timekeepers' permission. A decoder is "After Phase 7" and cannot be
-   briefed until a capture exists.
-
-**Not built here, and why:** a decoder for either binary feed. It is a
-reverse-engineering task against a deliberately obfuscated client, it
-would live in the private companion repository (ADR 0007) rather than
-here, and locked decision 6 defers it until a capture and Natsoft's
-answer both exist.
+1. **Replay** from a capture file, at recorded pace or unpaced. Built
+   first so P7.11 and every test have data before any live source works.
+   Until a real capture exists the fixture is hand-built from the
+   documented types — and replaced the first time the client runs
+   against a live meeting.
+2. **Natsoft feed**, `natsoft.com.au:8889` by default, host and port from
+   the environment so the timekeepers' local feed (source 3) is the same
+   code with a different address.
+3. **Browser relay.** `tools/timing_relay/`: a hand-written,
+   dependency-free userscript for the Timing71 page (and the Natsoft page
+   as a fallback) that reads the rendered standings table and posts a
+   snapshot to `POST /ingest/snapshot` about once a second, with a visible
+   indicator of when it last succeeded. For events timed by a provider
+   the feed client does not speak.
+4. **WebSocket frame capture**, `tools/timing_relay/capture.py`, driving
+   a Playwright browser to the Natsoft page and recording every frame in
+   both directions. One run at one live session, to confirm the framing
+   is the TCP protocol's; after that it is a curiosity.
 
 **Our own car, reconciled.** The car number from the race plan (P7.8)
 identifies us in the feed. The service compares the feed's lap count and
 last lap for our car against `v_laps`, and writes a finding when they
 disagree by more than a lap — which catches both a missed timing line on
 the vehicle and a transponder problem at the track, and says which is
-which by whose count is higher.
+which by whose count is higher. The `Passing` stream makes this sharper
+than a lap count: our transponder crossing the main line and our GPS
+crossing the start line are two timestamps for one event, and their
+offset is a direct measurement of the vehicle clock against the
+timekeepers'.
 
-**Acceptance:** the replay source drives the schema end to end; the
-relay's normaliser is tested against captured real page states and
-survives a column being absent; `POST /ingest/snapshot` and
-`WS /ingest/t71` both land data in the schema, the latter tested with a
-hand-built `MANIFEST_UPDATE`/`STATE_UPDATE` pair; the capture tools write
-files that replay mode can read back as raw, undecoded bytes with
-timestamps; `v_field_standings` is readable by `grafana_ro`.
+**Acceptance:** the packet framer is unit-tested against hand-built
+single- and multi-packet documents, a broken chain and a bad magic;
+replay of a capture file drives the schema end to end; a `Leaderboard`
+`part` merges without disturbing untouched lines; `POST /ingest/snapshot`
+and `WS /ingest/t71` both land data in the schema; the client survives a
+severed connection and rebuilds from the next full leaderboard; every
+live document is captured; `v_field_standings` is readable by
+`grafana_ro`; the service has a `/health`, a compose entry, an env block
+and a topology row.
 
-**Suggested model:** strong for the schema and the ingest protocol;
-mid-tier for the relay once real page states exist.
+**Suggested model:** strong for the schema and the client; mid-tier for
+the relay.
 
 ---
 
@@ -1054,7 +1070,8 @@ each alternative plan.
 **What it deliberately does not model in v1, stated on the dashboard:**
 safety cars and full-course yellows (they compress the field and reset
 strategy; a v1 that pretends to model them is worse than one that says it
-does not), weather, and retirements. Every number is conditional on the
+does not — but `v_field_flags` records every one, so the v2 model has
+data waiting for it), weather, and retirements. Every number is conditional on the
 race continuing as it has.
 
 **Outputs:** `race_forecasts` — `(time, session_id, scenario, car_number,
@@ -1096,17 +1113,15 @@ Not work packages. Load-bearing for the phase.
   before the car leaves the trailer — is the single most important line
   in this document. A notifier that worked on the bench and has never
   been seen to reach a phone in the garage is decoration.
-- **Ask Natsoft for the live feed specification** before the event. They
-  supply one to timing-software vendors; a reply either way decides
-  whether any reverse-engineering happens at all.
-- **The Natsoft port.** Ask the timekeepers for the live broadcast host
-  and port before the event and run P7.10's TCP capture for the whole of
-  it. Nothing decodes it yet; the capture is what makes decoding possible
-  later.
-- **Capture the WebSocket and the page states.** Run P7.10's frame
-  capture for a whole live session, and keep the relay's saved page
-  states as the fixture set. A normaliser tested against one event's
-  layout is one that breaks at the next.
+- **Connect the feed client to a live meeting before ours.** Any
+  weekend Natsoft is timing something will do. It answers whether the
+  public endpoint needs a selection message, produces the first real
+  capture file, and replaces the hand-built fixture. Until it has been
+  done, P7.10 is untested against reality.
+- **Ask the timekeepers for the local feed's host and port** at the
+  event, and point the same client at it. That is the no-internet path.
+- **Send Natsoft a courtesy email** stating the intended use. No terms
+  were found; a reply either way is worth having in writing.
 - **Baselines are learned from the first clean window of the session.**
   If the car goes out with a known fault, the watch service learns the
   fault as normal. The operator UI should offer "re-learn baselines"
@@ -1117,9 +1132,6 @@ Not work packages. Load-bearing for the phase.
 
 ## After Phase 7
 
-- **A Natsoft decoder** — WebSocket or TCP — once a capture exists and
-  Natsoft has answered. In the private companion repository (ADR 0007),
-  not here.
 - **Official results import.** Parsing Natsoft's post-session Result and
   Times pages into the schema, so the stint report (P6.11) can be
   reconciled against the official classification. The

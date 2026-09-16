@@ -275,8 +275,18 @@ garage is decoration.
    it is on, and the app's battery-optimisation prompt must be accepted.
    Join the pit wifi. **iPhones** are different: iOS allows no
    background connection, so they only get a push if
-   `OPENLAPS_NTFY_UPSTREAM_URL` is set and the pit has internet at that
-   moment (`example.env`); plan for Android phones on the wall.
+   `OPENLAPS_NTFY_UPSTREAM_URL` is set (`example.env`), the pit has
+   internet at that moment, and the phone can reach Apple's push
+   service -- and the server entry in the app must match
+   `OPENLAPS_NTFY_PUBLIC_URL` exactly, since the relay topic is a hash
+   of it. No ntfy.sh account is needed, and the alert content never
+   leaves the LAN; only a wake-up does.
+
+   **Therefore: the wall gets an Android.** Whoever holds the pit wall
+   carries an Android phone (or a tablet left on the wall) with instant
+   delivery on. That device is the one path that needs no internet and
+   no Apple, and it is the one that must buzz in step 4. iPhones are
+   welcome as extras, never as the only phone subscribed.
 3. **Open the annunciator** at `http://<pit-host>:8086/`, enable sound,
    and confirm the header reads **path alive**. If it does not within a
    minute, Grafana is not sending — fix that before anything else.

@@ -1117,7 +1117,11 @@ Not work packages. Load-bearing for the phase.
   weekend Natsoft is timing something will do. It answers whether the
   public endpoint needs a selection message, produces the first real
   capture file, and replaces the hand-built fixture. Until it has been
-  done, P7.10 is untested against reality.
+  done, P7.10 is untested against reality. Observed 2026-09-16, a weekday
+  with nothing being timed: a five-second `nc` to the port returned no
+  bytes, which matches the reference client (it sends nothing on connect
+  and exits when the feed says the event ended) — an idle feed is silent,
+  so a quiet connection is not a failed one.
 - **Ask the timekeepers for the local feed's host and port** at the
   event, and point the same client at it. That is the no-internet path.
 - **Send Natsoft a courtesy email** stating the intended use. No terms

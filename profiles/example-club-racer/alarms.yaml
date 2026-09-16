@@ -133,6 +133,17 @@ alarms:
     summary: Publish lag high
     panel: 7
 
+  # Always firing, on purpose. Grafana re-sends it every minute (its own
+  # notification route in the generated file) and the notifier's annunciator
+  # goes red when it stops arriving: the only way to tell a quiet night from
+  # a broken alert path. Severity none, so no channel but the log hears it.
+  notifier-heartbeat:
+    kind: heartbeat
+    for: 0s
+    severity: none
+    gate: always
+    summary: Notifier heartbeat
+
   live-feed-stale:
     kind: stale
     channel: car.rpm

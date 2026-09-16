@@ -28,6 +28,7 @@ openlaps-live-decoder = "pit.live_decoder.__main__:main"
 openlaps-timing-extrapolator = "pit.timing_extrapolator.__main__:main"
 openlaps-session-control = "pit.session_control.__main__:main"
 openlaps-pit-monitor = "pit.pit_monitor.__main__:main"
+openlaps-notifier = "pit.notifier.__main__:main"
 
 [project.optional-dependencies]
 dev = [

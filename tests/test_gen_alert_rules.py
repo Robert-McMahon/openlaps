@@ -31,7 +31,7 @@ ALERTING = ROOT / "deploy/pit-config/grafana/provisioning/alerting"
 # refactor, and this table pinned it. The holds were then retuned for the
 # under-10-second latency budget (docs/plan/PHASE7.md, locked decision 1)
 # in a separate commit, which is the only reason they differ from Phase 6.
-SHIPPED_LIMITS: dict[str, tuple[str, str, float, str]] = {
+SHIPPED_LIMITS: dict[str, tuple[str | None, str, float, str]] = {
     "oil-pressure-low": ("car.oil_pressure", "lt", 200.0, "3s"),
     "coolant-temperature-high": ("car.coolant_temp", "gt", 383.15, "15s"),
     "oil-temperature-high": ("car.oil_temp", "gt", 398.15, "15s"),
@@ -40,6 +40,7 @@ SHIPPED_LIMITS: dict[str, tuple[str, str, float, str]] = {
     "engine-protection-active": ("car.engine_protection_severity", "gt", 0.0, "2s"),
     "publish-lag-high": ("sys.agent.publish_lag_ms", "gt", 500.0, "30s"),
     "live-feed-stale": ("car.rpm", "gt", 5.0, "5s"),
+    "notifier-heartbeat": (None, "gt", 0.0, "0s"),
 }
 
 
@@ -82,7 +83,8 @@ def test_the_rendered_limits_are_the_phase_6_thresholds_with_retuned_holds() -> 
     for uid, (channel, comparison, threshold, hold) in SHIPPED_LIMITS.items():
         rule = rules[uid]
         evaluator = _condition(rule)["evaluator"]
-        assert f"channel = '{channel}'" in _sql(rule)
+        if channel is not None:
+            assert f"channel = '{channel}'" in _sql(rule)
         assert evaluator["type"] == comparison
         assert evaluator["params"] == [pytest.approx(threshold)]
         assert rule["for"] == hold
@@ -298,7 +300,7 @@ def test_every_continuous_shipped_alarm_has_hysteresis() -> None:
     # The discrete ones (a severity level, a staleness age) fire and clear on
     # their own threshold; everything measured on a continuous scale clears
     # past a second value so a reading that hovers at the limit fires once.
-    discrete = {"engine-protection-active", "live-feed-stale"}
+    discrete = {"engine-protection-active", "live-feed-stale", "notifier-heartbeat"}
     for uid, rule in _rules(_rendered()).items():
         condition = _condition(rule)
         if uid in discrete:

@@ -1,4 +1,4 @@
-# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the six pit
+# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the seven pit
 # services.
 #
 #     docker compose -f deploy/pit-compose.yaml up -d
@@ -241,6 +241,38 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+  notifier:
+    # Grafana's only contact point (ADR 0011). Records every alert in the
+    # ledger, serves the annunciator on :8085, repeats unacknowledged
+    # critical alerts, and fans out to phones (P7.3). The webhook is
+    # unauthenticated by design -- the compose network is the boundary and a
+    # committed provisioning file must not carry a credential -- and what an
+    # unauthenticated caller can do is raise an alert on a page whose job is
+    # to show alerts.
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-notifier"]
+    environment:
+      OPENLAPS_NOTIFIER_HOST: 0.0.0.0
+      OPENLAPS_NOTIFIER_PORT: "8085"
+      OPENLAPS_NOTIFIER_CONFIG: /config/notifier.yaml
+      OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
+      TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
+      TIMESCALE_PORT: "5432"
+    volumes:
+      - ./pit-config:/config:ro
+    ports:
+      - "8085:8085"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8085/health"]
       interval: 15s
       timeout: 5s
       retries: 4

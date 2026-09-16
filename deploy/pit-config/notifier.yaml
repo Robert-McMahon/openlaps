@@ -1,0 +1,34 @@
+# Notifier delivery policy (P7.2). Which channels hear an alert, at what
+# severity, and how often an unacknowledged one is repeated. Deployment
+# wiring, not car configuration -- the limits themselves are in the
+# profile's alarms.yaml. Secrets (a Discord webhook URL, an ntfy access
+# token) come from the environment, never from this file.
+
+# The always-firing Grafana rule that proves the alerting path is alive, and
+# how often its notification policy repeats it. The annunciator goes red
+# after `heartbeat_missed_intervals` of silence: a quiet night and a broken
+# pipe look identical without this.
+heartbeat_rule: notifier-heartbeat
+heartbeat_expected_s: 60
+heartbeat_missed_intervals: 3
+
+# A delivery that fails for a retryable reason (no internet, a phone server
+# down) is queued with backoff for this long before it is given up on.
+retry_deadline_s: 1800
+
+channels:
+  # The pit-wall page served by the notifier itself. Warnings and above;
+  # a critical alert is re-announced every 5 minutes until acknowledged.
+  - name: annunciator
+    type: annunciator
+    min_severity: warning
+    repeat_s: 300
+  # The service log hears everything, including the heartbeat.
+  - name: log
+    type: log
+    min_severity: none
+  # P7.3 adds:
+  #   - { name: phones, type: ntfy, min_severity: warning, repeat_s: 300,
+  #       settings: { url: http://ntfy, critical_topic: openlaps-critical,
+  #                   warning_topic: openlaps-warning } }
+  #   - { name: discord, type: discord, min_severity: critical, repeat_s: 600 }

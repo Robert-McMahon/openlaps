@@ -268,6 +268,27 @@ Compression is `segmentby = source, metric` with a policy at 7 days. As with
 
 The working index is `pit_metrics(source, metric, time DESC)`.
 
+### The alert ledger
+
+```
+alert_events(time, rule_uid, alertname, status, severity, labels JSONB, annotations JSONB, fingerprint, started_at)
+alert_acks(fingerprint, started_at, acked_at, acked_by, note)   PK (fingerprint, started_at)
+```
+
+Every firing and resolution Grafana sends the notifier (`src/pit/notifier/`,
+Grafana's only contact point per ADR 0011), and every acknowledgement a
+person makes on the annunciator. Plain tables, not hypertables: a busy race
+produces hundreds of rows. `fingerprint` is Grafana's identity for an alert
+instance and repeats when the same rule fires again, so `started_at` is
+carried alongside it and an acknowledgement is keyed on both -- a later
+firing needs its own. `rule_uid` is the alarm key in the profile's
+`alarms.yaml` (from Grafana's `__alert_rule_uid__` label), NULL for a
+synthetic test alert raised from the annunciator.
+
+Written directly by the notifier, one transaction per notification, in the
+`pit_metrics` pattern. A ledger failure is counted on `/health` and never
+stops the alert reaching the page.
+
 ### Ingest bookkeeping
 
 `ingest_cursor(consumer, stream, stream_seq, updated)` is the ingest-writer's
@@ -290,8 +311,6 @@ reading a plan.
 
 | Table | Written by | Columns |
 | --- | --- | --- |
-| `alert_events` | `notifier` (P7.2) | `time, rule_uid, alertname, status, severity, labels JSONB, annotations JSONB, fingerprint` |
-| `alert_acks` | `notifier` (P7.2) | `fingerprint, acked_at, acked_by, note` |
 | `watch_scores` (hypertable) | `watch` (P7.5) | `time, vehicle_id, monitor, score, residual, expected, observed, baseline_status` |
 | `watch_findings` | `watch` (P7.5), `strategy` (P7.9) | `finding_id, vehicle_id, monitor, opened_at, closed_at, severity, peak_score, summary JSONB` |
 | `watch_baselines` | `watch` (P7.5) | `vehicle_id, monitor, session_id, stint_number, learned_at, model JSONB` |
@@ -302,7 +321,7 @@ reading a plan.
 | `field_passings` (hypertable) | `timing-feed` (P7.10) | `time, source, competitor_id, line, passing_type, active` |
 | `race_forecasts` | `strategy` (P7.11) | `time, session_id, scenario, car_number, p_position JSONB, expected_position, expected_gap_ahead_s, expected_gap_behind_s, runs` |
 
-Their views — `v_alert_events`, `v_watch_scores`, `v_watch_findings`,
+Their views — `v_watch_scores`, `v_watch_findings`,
 `v_race_plan`, `v_strategy_latest`, `v_strategy_history`,
 `v_field_standings`, `v_field_laps`, `v_field_passings`, `v_field_gaps`,
 `v_field_flags`, `v_race_forecast_latest` — join the stable read surface
@@ -325,6 +344,7 @@ to keep stable, and it is these views:
 | `v_lap_fuel` | The `v_laps` context, counter endpoints, `fuel_used_cc`, `fuel_used_l`, and `measurement_status` |
 | `v_stint_fuel_level` | Stint/session/driver context, accepted level sample count, start/end/used litres, and the level trend in L/hour |
 | `v_pit_metrics` | `time, source, metric, value, value_text` |
+| `v_alert_events` | `time, rule_uid, alertname, status, severity, fingerprint, started_at, acked_at, acked_by, note, labels, annotations` |
 
 **The views are the stable surface. The base tables are not.** Anything
 reading this database from outside the pit services — the companion repo,
@@ -362,6 +382,10 @@ separate because level regression has different failure modes: it rejects
 readings paired with battery voltage below 12 V to avoid cranking transients,
 then exposes the independent stint-scale level trend used to cross-check the
 counter model. Fuel-temperature correction is not part of this first model.
+
+`v_alert_events` joins each alert event to the acknowledgement for that
+firing, so "what fired overnight and who saw it" is one query and a dashboard
+can annotate a trace with both.
 
 `v_pit_metrics` is the pit-health surface, and it is a plain projection of
 `pit_metrics` rather than a join: there is nothing to resolve. It exists so

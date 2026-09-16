@@ -103,6 +103,7 @@ HEALTH_PORTS = {
     "live": 8082,
     "ntrip": 8083,
     "timing": 8084,
+    "notifier": 8085,
 }
 
 DEFAULT_NFT_COUNTER_OUT = "openlaps_leaf_out"
@@ -190,6 +191,13 @@ SAMPLE_COLUMNS: tuple[str, ...] = (
     "timing_publishes",
     "timing_degraded_channels",
     "timing_gate_reason",
+    "notifier_ok",
+    "notifier_heartbeat_ok",
+    "notifier_heartbeat_age_s",
+    "notifier_active",
+    "notifier_unacknowledged",
+    "notifier_queue_pending",
+    "notifier_ledger_errors",
     # Radio, local router only.
     "radio_ok",
     "radio_source",
@@ -592,6 +600,22 @@ def parse_timing_health(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def parse_notifier_health(payload: dict[str, Any]) -> dict[str, Any]:
+    """The notifier's ``/health`` (src/pit/notifier/service.py)."""
+    heartbeat = payload.get("heartbeat") or {}
+    queue = payload.get("queue") or {}
+    ledger = payload.get("ledger") or {}
+    return {
+        "notifier_ok": 1,
+        "notifier_heartbeat_ok": _as_int(heartbeat.get("ok")),
+        "notifier_heartbeat_age_s": heartbeat.get("age_s"),
+        "notifier_active": payload.get("active"),
+        "notifier_unacknowledged": payload.get("unacknowledged"),
+        "notifier_queue_pending": queue.get("pending"),
+        "notifier_ledger_errors": ledger.get("errors"),
+    }
+
+
 def parse_session_health(payload: dict[str, Any]) -> dict[str, Any]:
     """session-control's ``/health`` (src/pit/session_control/service.py)."""
     database = payload.get("database") or {}
@@ -796,6 +820,7 @@ class Sampler:
             "live": parse_live_health,
             "ntrip": parse_ntrip_health,
             "timing": parse_timing_health,
+            "notifier": parse_notifier_health,
         }
         for name, parser in parsers.items():
             port = self.health_ports.get(name)

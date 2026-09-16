@@ -21,6 +21,7 @@ groups:
       panelID: '1'
     labels:
       service: openlaps
+      kind: threshold
       severity: critical
       scope: on track
     data:
@@ -101,6 +102,7 @@ groups:
       panelID: '2'
     labels:
       service: openlaps
+      kind: threshold
       severity: critical
       scope: on track
     data:
@@ -180,6 +182,7 @@ groups:
       panelID: '3'
     labels:
       service: openlaps
+      kind: threshold
       severity: critical
       scope: on track
     data:
@@ -259,6 +262,7 @@ groups:
       panelID: '7'
     labels:
       service: openlaps
+      kind: threshold
       severity: critical
       scope: on track
     data:
@@ -338,6 +342,7 @@ groups:
       panelID: '5'
     labels:
       service: openlaps
+      kind: threshold
       severity: critical
       scope: on track
     data:
@@ -416,6 +421,7 @@ groups:
       panelID: '5'
     labels:
       service: openlaps
+      kind: threshold
       severity: critical
       scope: on track
     data:
@@ -491,6 +497,7 @@ groups:
       panelID: '7'
     labels:
       service: openlaps
+      kind: threshold
       severity: warning
       scope: always
     data:
@@ -554,6 +561,75 @@ groups:
         expression: B
         refId: C
         type: threshold
+  - uid: notifier-heartbeat
+    title: Notifier heartbeat
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      runbook_url: /d/reliability/reliability?var-alert=notifier-heartbeat
+      summary: Notifier heartbeat
+    labels:
+      service: openlaps
+      kind: heartbeat
+      severity: none
+      scope: always
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: timescale
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", 1.0 AS "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource: &id008
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource: *id008
+        expression: B
+        refId: C
+        type: threshold
   - uid: live-feed-stale
     title: Live feed stale while on track
     condition: C
@@ -567,6 +643,7 @@ groups:
       panelID: '7'
     labels:
       service: openlaps
+      kind: stale
       severity: critical
       scope: on track
     data:
@@ -597,7 +674,7 @@ groups:
       datasourceUid: '-100'
       model:
         conditions: []
-        datasource: &id008
+        datasource: &id009
           type: __expr__
           uid: '-100'
         expression: A
@@ -624,7 +701,7 @@ groups:
             params: []
             type: last
           type: query
-        datasource: *id008
+        datasource: *id009
         expression: B
         refId: C
         type: threshold
@@ -635,7 +712,7 @@ contactPoints:
   - uid: openlaps-local-webhook
     type: webhook
     settings:
-      url: http://session-control:8080/grafana-alerts
+      url: http://notifier:8085/grafana-alerts
       httpMethod: POST
     disableResolveMessage: false
 policies:
@@ -647,3 +724,14 @@ policies:
   group_wait: 0s
   group_interval: 10s
   repeat_interval: 4h
+  routes:
+  - receiver: openlaps-local
+    object_matchers:
+    - - kind
+      - '='
+      - heartbeat
+    group_by:
+    - alertname
+    group_wait: 0s
+    group_interval: 30s
+    repeat_interval: 1m

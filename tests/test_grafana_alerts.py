@@ -20,6 +20,7 @@ REQUIRED_RULES = {
     "engine-protection-active",
     "publish-lag-high",
     "live-feed-stale",
+    "notifier-heartbeat",
 }
 
 

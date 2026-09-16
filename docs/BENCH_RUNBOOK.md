@@ -670,13 +670,24 @@ because the ECU reports Kelvin, even though `alarms.yaml` declares them in
 Celsius.
 
 Run this drill against a disposable bench database, never against the race
-archive.  Open Grafana's **Reliability watch** dashboard (`uid=reliability`)
-and Alerting page first.  The provisioned `openlaps-local` contact point posts
-only to session-control (`http://session-control:8080/grafana-alerts`, the
-compose service name) and requires no external account.  That receiver logs a
-one-line summary per alert, so `docker compose -f deploy/pit-compose.yaml logs
-session-control` is the read-back for what fired during a session.  A failed
-local delivery does not prevent Grafana showing the rule as Firing.
+archive.  Open Grafana's **Reliability watch** dashboard (`uid=reliability`),
+its Alerting page, and the **annunciator** at `http://<pit-host>:8085/`
+first.  The provisioned `openlaps-local` contact point posts only to the
+notifier (`http://notifier:8085/grafana-alerts`, the compose service name)
+and requires no external account.  The notifier records every alert in the
+`alert_events` table (`SELECT * FROM v_alert_events ORDER BY time DESC`),
+shows it on the annunciator with a tone, and repeats it until someone
+acknowledges -- so the annunciator, not a log, is the read-back for what
+fired during a session and who saw it.  A failed delivery does not prevent
+Grafana showing the rule as Firing.
+
+Before any rule is exercised, confirm the path itself is alive: the
+annunciator's header must read **path alive** with a heartbeat age under a
+minute.  That indicator is the `notifier-heartbeat` rule, always firing and
+re-sent by Grafana every minute; stop Grafana and the indicator goes red
+within three minutes.  Then press **Test critical delivery** on the
+annunciator: the tone sounds, the alert appears, and acknowledging it with a
+name clears it and records the acknowledgement in `alert_acks`.
 
 Connect as the database owner and create this disposable helper.  It writes
 through the same registry/sample shape as ingest while keeping every alert
@@ -720,8 +731,8 @@ Normal rule Normal.  Temperatures below are Kelvin, not Celsius.
 
 **Latency budget (P7.1).**  With `oil-pressure-low` reset, note the wall
 clock, `CALL bench_alert_sample('car.oil_pressure', 150);` (RPM already at
-4000), and note the time the contact point receives the notification (the
-session-control log line today; the notifier's ledger once P7.2 lands).
+4000), and note the time the annunciator shows it (or the `time` column of
+the `alert_events` row).
 The budget is under 10 s for a critical alarm: 3 s `for`, up to 4 s of
 evaluation, 0 s `group_wait`.  Record the measurement below each time the
 Grafana pin or the evaluation floor changes.
@@ -740,6 +751,7 @@ Grafana pin or the evaluation floor changes.
 | `engine-protection-active` | `CALL bench_alert_sample('car.engine_protection_severity', 2);` | `CALL bench_alert_sample('car.engine_protection_severity', 0);` |
 | `publish-lag-high` | `CALL bench_alert_sample('sys.agent.publish_lag_ms', 750);` | `CALL bench_alert_sample('sys.agent.publish_lag_ms', 0);` |
 | `live-feed-stale` | Stop the replay after an on-track `car.rpm` sample and wait more than 5 seconds. | Restart replay or `CALL bench_alert_sample('car.rpm', 3000);` |
+| `notifier-heartbeat` | Always firing; nothing to do. | Stop the grafana container: the annunciator's path indicator goes red within three minutes and `/health` reports `heartbeat.ok: false`. |
 
 Finally write a `lap.event` with `"pit_status":"pit"`, repeat each car-channel
 firing sample, and verify the seven on-track-gated rules remain Normal.  The

@@ -326,6 +326,7 @@ def _rule(uid: str, alarm: Alarm, vehicle: str, channels: dict[str, Any]) -> dic
         "annotations": annotations,
         "labels": {
             "service": "openlaps",
+            "kind": alarm.kind,
             "severity": alarm.severity,
             "scope": "on track" if alarm.gate == "on_track" else "always",
         },
@@ -376,10 +377,15 @@ def _rule(uid: str, alarm: Alarm, vehicle: str, channels: dict[str, Any]) -> dic
 def _delivery() -> dict[str, Any]:
     """The contact point and policy: deployment wiring, not car configuration.
 
-    One contact point, posting to a pit service by its compose name. The
-    receiver is unauthenticated by design -- see POST /grafana-alerts in
-    pit/session_control/service.py for why the operator key deliberately
-    does not appear in a committed file. P7.2 moves the URL to `notifier`.
+    One contact point: the notifier (P7.2, ADR 0011), by its compose service
+    name. It is Grafana's only receiver -- delivery policy, acknowledgement
+    and fan-out to phones live in the notifier, not here. The webhook is
+    unauthenticated by design: the compose network is the boundary and a
+    committed provisioning file must not carry a credential.
+
+    The heartbeat rule gets its own route so that Grafana re-sends it every
+    minute; the default repeat interval of four hours is right for a real
+    alert and useless as a liveness signal.
     """
     return {
         "contactPoints": [
@@ -391,7 +397,7 @@ def _delivery() -> dict[str, Any]:
                         "uid": "openlaps-local-webhook",
                         "type": "webhook",
                         "settings": {
-                            "url": "http://session-control:8080/grafana-alerts",
+                            "url": "http://notifier:8085/grafana-alerts",
                             "httpMethod": "POST",
                         },
                         "disableResolveMessage": False,
@@ -410,6 +416,16 @@ def _delivery() -> dict[str, Any]:
                 "group_wait": "0s",
                 "group_interval": "10s",
                 "repeat_interval": "4h",
+                "routes": [
+                    {
+                        "receiver": "openlaps-local",
+                        "object_matchers": [["kind", "=", "heartbeat"]],
+                        "group_by": ["alertname"],
+                        "group_wait": "0s",
+                        "group_interval": "30s",
+                        "repeat_interval": "1m",
+                    }
+                ],
             }
         ],
     }

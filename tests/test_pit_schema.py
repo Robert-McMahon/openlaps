@@ -123,6 +123,10 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "003_endurance_read_surface.sql",
             "004_minute_traces.sql",
             "005_pit_metrics.sql",
+            "006_alert_ledger.sql",
+            "008_session_active.sql",
+            "009_race_plans.sql",
+            "010_strategy.sql",
         ]
 
     # A real upgrade runs later in a new process/connection, so deployment
@@ -132,6 +136,10 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "003_endurance_read_surface.sql",
             "004_minute_traces.sql",
             "005_pit_metrics.sql",
+            "006_alert_ledger.sql",
+            "008_session_active.sql",
+            "009_race_plans.sql",
+            "010_strategy.sql",
         ]
         assert pending(conn) == []
 
@@ -200,12 +208,20 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "003_endurance_read_surface.sql",
             "004_minute_traces.sql",
             "005_pit_metrics.sql",
+            "006_alert_ledger.sql",
+            "008_session_active.sql",
+            "009_race_plans.sql",
+            "010_strategy.sql",
         ]
         assert apply_migrations(conn) == [
             "002_trace_read_surface.sql",
             "003_endurance_read_surface.sql",
             "004_minute_traces.sql",
             "005_pit_metrics.sql",
+            "006_alert_ledger.sql",
+            "008_session_active.sql",
+            "009_race_plans.sql",
+            "010_strategy.sql",
         ]
         assert pending(conn) == []
 
@@ -406,9 +422,12 @@ def test_grafana_role_reads_every_view_but_not_base_tables(migrated, timescale_d
             "v_lap_fuel",
             "v_stint_fuel_level",
             "v_pit_metrics",
+            "v_watch_findings",
+            "v_strategy_latest",
+            "v_strategy_history",
         ):
             reader.execute(sql.SQL("SELECT * FROM {} LIMIT 0").format(sql.Identifier(view)))
-        for base_table in ("samples", "pit_metrics"):
+        for base_table in ("samples", "pit_metrics", "strategy_state", "watch_findings"):
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 reader.execute(
                     sql.SQL("SELECT * FROM {} LIMIT 0").format(sql.Identifier(base_table))

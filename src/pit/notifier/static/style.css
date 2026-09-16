@@ -1,0 +1,104 @@
+/* The annunciator: read from across a garage, at night, by someone doing
+   three other things. Big type, few colours, and the whole page goes red
+   while a critical alert is unacknowledged. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #e8e8e8;
+  color: #111;
+  font-size: 18px;
+  line-height: 1.4;
+  transition: background 0.3s;
+}
+body.critical { background: #ffd9d9; }
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: #1c1c1c;
+  color: #fff;
+}
+.header-right { display: flex; align-items: center; gap: 1rem; }
+
+h1 { font-size: 1.5rem; font-weight: 700; }
+h2 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+
+.pipeline { font-size: 0.95rem; padding: 0.25rem 0.6rem; border-radius: 4px; white-space: nowrap; }
+.pipeline.ok { background: #1f5f2a; color: #b8f5c0; }
+.pipeline.down { background: #8a0000; color: #fff; font-weight: 700; animation: blink 1s step-start infinite; }
+.pipeline.unknown { background: #444; color: #ddd; }
+
+@keyframes blink { 50% { opacity: 0.4; } }
+
+button {
+  font: inherit;
+  font-size: 1rem;
+  padding: 0.5rem 1rem;
+  border: 0;
+  border-radius: 6px;
+  background: #ccc;
+  color: #111;
+  cursor: pointer;
+  min-height: 44px;
+}
+button.sound { background: #555; color: #fff; }
+button.sound.on { background: #2b7a3a; }
+button.danger { background: #b00020; color: #fff; }
+button.ack { background: #1565c0; color: #fff; font-size: 1.1rem; padding: 0.6rem 1.4rem; }
+
+main { max-width: 900px; margin: 0 auto; padding: 1rem; }
+.card { background: #fff; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.meta { display: flex; gap: 1rem; font-size: 0.9rem; color: #555; }
+.hint { font-size: 0.85rem; color: #666; margin: 0.4rem 0 0.8rem; }
+.inline { display: flex; gap: 0.5rem; }
+.inline input { flex: 1; font: inherit; padding: 0.5rem; border: 1px solid #aaa; border-radius: 6px; }
+
+.all-clear { font-size: 1.6rem; font-weight: 600; color: #2b7a3a; text-align: center; padding: 1.5rem 0; }
+
+.alerts { list-style: none; }
+.alert {
+  border-left: 10px solid #999;
+  background: #f4f4f4;
+  padding: 0.8rem 1rem;
+  margin-bottom: 0.6rem;
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "title ack" "detail ack" "link ack";
+  gap: 0.2rem 1rem;
+  align-items: center;
+}
+.alert.critical { border-color: #b00020; background: #ffe5e5; }
+.alert.warning { border-color: #e6a100; background: #fff4d6; }
+.alert.acked { opacity: 0.65; }
+.alert .title { grid-area: title; font-size: 1.4rem; font-weight: 700; }
+.alert .detail { grid-area: detail; font-size: 0.95rem; color: #333; }
+.alert .panel-link { grid-area: link; font-size: 0.9rem; }
+.alert .ack { grid-area: ack; }
+
+.history { list-style: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; white-space: pre-wrap; }
+.event { padding: 0.15rem 0; border-bottom: 1px solid #eee; }
+.event.firing.critical { color: #b00020; font-weight: 600; }
+.event.firing.warning { color: #9a6a00; }
+.event.resolved { color: #2b7a3a; }
+.event.ack { color: #1565c0; }
+
+.queue.busy { color: #b00020; font-weight: 700; }
+.connection.live { color: #2b7a3a; }
+.connection.down { color: #b00020; }
+
+.notice { padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 1rem; background: #dde; }
+.notice.warn { background: #fff4d6; }
+.notice.error { background: #ffe5e5; }
+.hidden { display: none !important; }
+
+@media (max-width: 600px) {
+  .alert { grid-template-columns: 1fr; grid-template-areas: "title" "detail" "link" "ack"; }
+  header { flex-direction: column; align-items: flex-start; }
+}

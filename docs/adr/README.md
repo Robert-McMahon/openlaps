@@ -10,3 +10,4 @@
 8. [0008 — GNSS time reference via an RP2040 timing head](0008-gnss-time-reference-rp2040-timing-head.md)
 9. [0009 — GNSS data through the RP2040, sharing one receiver port](0009-gnss-data-through-the-rp2040.md)
 10. [0010 — Vehicle targets, and a host-hardware overlay on the profile](0010-vehicle-targets-and-host-hardware-overlay.md)
+11. [0011 — Pit-derived data: namespaces, storage, and the alert path](0011-pit-derived-data-and-the-alert-path.md)

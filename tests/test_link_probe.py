@@ -408,6 +408,20 @@ def test_health_parsers_null_missing_keys():
 
 def test_timing_extrapolator_health_is_a_default_pit_probe_endpoint():
     assert link_probe.HEALTH_PORTS["timing"] == 8084
+    assert link_probe.HEALTH_PORTS["notifier"] == 8086
+    notifier = link_probe.parse_notifier_health(
+        {
+            "active": 2,
+            "unacknowledged": 1,
+            "heartbeat": {"ok": True, "age_s": 12.0},
+            "queue": {"pending": 3},
+            "ledger": {"errors": 0},
+        }
+    )
+    assert notifier["notifier_ok"] == 1
+    assert notifier["notifier_heartbeat_ok"] == 1
+    assert notifier["notifier_unacknowledged"] == 1
+    assert notifier["notifier_queue_pending"] == 3
     assert "timing_ok" in link_probe.SAMPLE_COLUMNS
 
 

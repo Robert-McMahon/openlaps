@@ -117,6 +117,8 @@ function renderSession() {
   show($("end-section"), Boolean(apiKey) && active);
   if (ended) resetEndButton();
   updateDriverSelect();
+  renderPlan();
+  renderStrategy();
 }
 
 // The driver select marks whoever is in the car and preselects the first
@@ -293,6 +295,7 @@ $("key-form").addEventListener("submit", async (event) => {
   try {
     await loadRoster();
     await refreshSession();
+    await refreshPlan();
     setNotice("ok", "Unlocked");
   } catch (error) {
     setNotice("error", error.message);
@@ -354,6 +357,224 @@ $("end-button").addEventListener("click", async () => {
 // Boot
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Race plan (P7.8). One revision per save; the form always shows the latest
+// and says who saved it and when. The stops textarea is a tiny grammar so a
+// tired operator types "lap 42 refuel Driver B", not JSON.
+// ---------------------------------------------------------------------------
+
+let plan = null; // last GET /session/plan payload
+
+function toLocalInput(ms) {
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
+    "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+
+function stopsToText(stops) {
+  return (stops || []).map((s) => {
+    const when = s.at_lap != null ? "lap " + s.at_lap
+      : new Date(s.at_ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    return when + " " + s.type + (s.driver_in ? " " + s.driver_in : "");
+  }).join("\n");
+}
+
+function parseStops(text) {
+  const stops = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    let m = line.match(/^lap\s+(\d+)\s+(refuel|service)(?:\s+(.+))?$/i);
+    if (m) {
+      stops.push({ at_lap: Number(m[1]), type: m[2].toLowerCase(), driver_in: m[3] ? m[3].trim() : null });
+      continue;
+    }
+    m = line.match(/^(\d{1,2}):(\d{2})\s+(refuel|service)(?:\s+(.+))?$/i);
+    if (m) {
+      const at = new Date();
+      at.setHours(Number(m[1]), Number(m[2]), 0, 0);
+      stops.push({ at_ms: at.getTime(), type: m[3].toLowerCase(), driver_in: m[4] ? m[4].trim() : null });
+      continue;
+    }
+    throw new Error("cannot read stop line: " + line);
+  }
+  return stops;
+}
+
+function renderPlan() {
+  const hasSession = session !== null && session.status !== "none";
+  show($("plan-section"), Boolean(apiKey) && hasSession);
+  if (!hasSession) return;
+  const current = plan && plan.plan;
+  if (!current) {
+    $("plan-status").textContent = "No plan entered for this session yet.";
+    return;
+  }
+  $("plan-status").textContent =
+    "Revision " + current.revision + ", saved " + fmtClock(current.updated_at_ms) +
+    (current.updated_by ? " by " + current.updated_by : "") + ".";
+}
+
+function fillPlanForm() {
+  const current = plan && plan.plan;
+  if (!current) return;
+  $("plan-end-at").value = current.race_end_at_ms ? toLocalInput(current.race_end_at_ms) : "";
+  $("plan-end-laps").value = current.race_end_laps == null ? "" : current.race_end_laps;
+  $("plan-authority").value = current.end_authority;
+  $("plan-tank").value = current.tank_l;
+  $("plan-usable").value = current.usable_fuel_l;
+  $("plan-refuel-min").value = current.refuel_min_s / 60;
+  $("plan-service-min").value = current.service_typical_s / 60;
+  const limits = current.driver_limits || {};
+  $("plan-max-continuous").value = limits.max_continuous_min == null ? "" : limits.max_continuous_min;
+  $("plan-max-total").value = limits.max_total_min == null ? "" : limits.max_total_min;
+  $("plan-min-rest").value = limits.min_rest_min == null ? "" : limits.min_rest_min;
+  $("plan-stops").value = stopsToText(current.planned_stops);
+  $("plan-car-number").value = current.car_number || "";
+  if (current.updated_by && !$("plan-by").value) $("plan-by").value = current.updated_by;
+}
+
+async function refreshPlan() {
+  if (!apiKey || session === null || session.status === "none") {
+    plan = null;
+    renderPlan();
+    return;
+  }
+  try {
+    const fresh = await api("/session/plan");
+    const changed = JSON.stringify(fresh) !== JSON.stringify(plan);
+    plan = fresh;
+    renderPlan();
+    if (changed) fillPlanForm();
+  } catch (error) {
+    $("plan-status").textContent = "Plan unavailable: " + error.message;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Strategy (P7.9). Read-only: the strategy service's latest evaluation for
+// this session, from GET /session/strategy. The lower bound is the number
+// that gets radioed, so it is the one shown.
+// ---------------------------------------------------------------------------
+
+let strategy = null; // last GET /session/strategy payload
+
+function fmtLapTime(seconds) {
+  if (seconds == null) return "--";
+  const m = Math.floor(seconds / 60);
+  const s = (seconds - m * 60).toFixed(1).padStart(4, "0");
+  return m + ":" + s;
+}
+
+function fmtSeconds(seconds) {
+  return seconds == null ? "--" : fmtDuration(seconds * 1000);
+}
+
+function strategyRows(s) {
+  const window = s.window_open_lap == null ? (s.stops_needed === 0 ? "no stop needed" : "--")
+    : "laps " + s.window_open_lap + " to " + s.window_close_lap;
+  return [
+    ["Fuel remaining", s.fuel_remaining_l == null ? "--"
+      : s.fuel_remaining_l.toFixed(1) + " L (" + s.rebase_confidence + ")", false],
+    ["Burn per lap", s.burn_l_per_lap == null ? "--"
+      : s.burn_l_per_lap.toFixed(2) + " L over " + s.burn_laps + " laps", false],
+    ["Laps to dry (lower bound)", s.laps_to_dry_lo == null ? "--"
+      : s.laps_to_dry_lo.toFixed(1) + " (up to " + s.laps_to_dry_hi.toFixed(1) + ")", false],
+    ["Time to dry", fmtSeconds(s.time_to_dry_s_lo), false],
+    ["Pit window", window, false],
+    ["Target lap", fmtLapTime(s.target_lap_s), false],
+    ["Driver time left", (s.driver || "--") + ": " + fmtSeconds(s.driver_time_remaining_s),
+      s.driver_time_remaining_s != null && s.driver_time_remaining_s < 600],
+    ["Refuel release", s.refuel_release_at_ms == null ? "--"
+      : fmtClock(s.refuel_release_at_ms) + " (" + fmtSeconds(s.refuel_remaining_s) + " to go)", false],
+  ];
+}
+
+function renderStrategy() {
+  const hasSession = session !== null && session.status !== "none";
+  show($("strategy-section"), Boolean(apiKey) && hasSession);
+  if (!hasSession) return;
+  const current = strategy && strategy.strategy;
+  const grid = $("strategy-grid");
+  grid.replaceChildren();
+  if (!current) {
+    $("strategy-status").textContent = "The strategy service has not evaluated this session yet.";
+    $("strategy-stops").textContent = "";
+    return;
+  }
+  $("strategy-status").textContent =
+    "Evaluated " + fmtClock(current.time_ms) + " after lap " + (current.lap_number ?? "--") +
+    (current.plan_revision ? ", plan revision " + current.plan_revision : ", no plan") + ".";
+  for (const [label, value, warn] of strategyRows(current)) {
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    if (warn) dd.classList.add("warn");
+    grid.append(dt, dd);
+  }
+  const stops = (current.stop_plan || []).map((stop) =>
+    "lap " + stop.lap + " " + stop.type + (stop.driver_in ? " " + stop.driver_in : "") +
+    (stop.delta_laps ? " (" + (stop.delta_laps > 0 ? "+" : "") + stop.delta_laps + " vs plan)" : ""));
+  $("strategy-stops").textContent = stops.length
+    ? "Stops the numbers say: " + stops.join("; ") + "."
+    : (current.stops_needed === 0 ? "No further stop needed on current fuel." : "");
+}
+
+async function refreshStrategy() {
+  if (!apiKey || session === null || session.status === "none") {
+    strategy = null;
+    renderStrategy();
+    return;
+  }
+  try {
+    strategy = await api("/session/strategy");
+    renderStrategy();
+  } catch (error) {
+    $("strategy-status").textContent = "Strategy unavailable: " + error.message;
+  }
+}
+
+function numberOrNull(id) {
+  const value = $(id).value.trim();
+  return value === "" ? null : Number(value);
+}
+
+$("plan-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  let body;
+  try {
+    body = {
+      race_end_at_ms: parseAt($("plan-end-at")),
+      race_end_laps: numberOrNull("plan-end-laps"),
+      end_authority: $("plan-authority").value,
+      tank_l: numberOrNull("plan-tank"),
+      usable_fuel_l: numberOrNull("plan-usable"),
+      refuel_min_s: Math.round((numberOrNull("plan-refuel-min") || 0) * 60),
+      service_typical_s: Math.round((numberOrNull("plan-service-min") || 0) * 60),
+      driver_limits: {
+        max_continuous_min: numberOrNull("plan-max-continuous"),
+        max_total_min: numberOrNull("plan-max-total"),
+        min_rest_min: numberOrNull("plan-min-rest"),
+      },
+      planned_stops: parseStops($("plan-stops").value),
+      car_number: $("plan-car-number").value.trim() || null,
+      updated_by: $("plan-by").value.trim() || null,
+    };
+  } catch (error) {
+    setNotice("error", error.message);
+    return;
+  }
+  try {
+    plan = await api("/session/plan", body);
+    setNotice("ok", "Race plan saved as revision " + plan.plan.revision);
+    renderPlan();
+  } catch (error) {
+    setNotice("error", "Race plan not saved: " + error.message);
+  }
+});
+
 async function boot() {
   await refreshHealth();
   if (!apiKey) {
@@ -364,6 +585,8 @@ async function boot() {
   try {
     await loadRoster();
     await refreshSession();
+    await refreshPlan();
+    await refreshStrategy();
   } catch (error) {
     setNotice("error", error.message);
   }
@@ -371,6 +594,8 @@ async function boot() {
 
 setInterval(refreshHealth, 5000);
 setInterval(refreshSession, 2000);
+setInterval(refreshPlan, 5000);
+setInterval(refreshStrategy, 5000);
 setInterval(() => {
   if (session !== null && session.status === "active") renderSession();
 }, 1000);

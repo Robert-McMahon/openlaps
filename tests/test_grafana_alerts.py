@@ -20,6 +20,9 @@ REQUIRED_RULES = {
     "engine-protection-active",
     "publish-lag-high",
     "live-feed-stale",
+    "notifier-heartbeat",
+    "strategy-warning",
+    "strategy-critical",
 }
 
 
@@ -51,15 +54,16 @@ def test_alert_rules_are_provisioned_with_stable_uids_and_local_contact_point() 
     assert all(rule.get("for") for rule in rules)
 
 
-def test_alert_files_contain_no_secrets_and_every_rule_links_to_reliability() -> None:
+def test_alert_files_contain_no_secrets_and_every_rule_links_to_its_dashboard() -> None:
     serialized = "\n".join(path.read_text(encoding="utf-8") for path in ALERTING.glob("*.yaml"))
     assert not SECRET.search(serialized)
     for rule in _rules():
         annotations = rule.get("annotations", {})
-        assert (
-            "reliability"
-            in (annotations.get("dashboardUID", "") + annotations.get("runbook_url", "")).lower()
-        )
+        # Car and pipeline rules explain themselves on the reliability
+        # dashboard; the strategy rules (P7.9) on the fuel dashboard.
+        expected = "fuel" if rule["uid"].startswith("strategy-") else "reliability"
+        assert annotations.get("dashboardUID") == expected, rule["uid"]
+        assert f"/d/{expected}/" in annotations.get("runbook_url", ""), rule["uid"]
 
 
 def test_car_staleness_alerts_are_gated_off_in_the_pits() -> None:
@@ -81,3 +85,38 @@ def test_each_rule_has_a_secret_free_demonstrated_firing_procedure() -> None:
     runbook = (ROOT / "docs/BENCH_RUNBOOK.md").read_text(encoding="utf-8").lower()
     for uid in REQUIRED_RULES:
         assert uid in runbook
+
+
+def test_every_rule_annotates_a_panel_that_exists_on_its_dashboard() -> None:
+    # Grafana draws alert state changes on the panel a rule names; a stale
+    # panel id annotates nothing and says nothing (P7.4).
+    dashboards = ROOT / "deploy/pit-config/grafana/dashboards"
+    for rule in _rules():
+        annotations = rule.get("annotations", {})
+        panel_id = annotations.get("panelID")
+        if panel_id is None:
+            continue
+        dashboard = yaml.safe_load(
+            (dashboards / f"{annotations['dashboardUID']}.json").read_text(encoding="utf-8")
+        )
+        panels = list(dashboard["panels"])
+        for panel in list(panels):
+            panels.extend(panel.get("panels", []))
+        matching = [p for p in panels if str(p.get("id")) == str(panel_id)]
+        uid = annotations["dashboardUID"]
+        assert matching, f"{rule['uid']} names panel {panel_id}, absent from {uid}"
+        assert matching[0]["type"] in {"timeseries", "xychart", "state-timeline", "trend"}, (
+            f"{rule['uid']} annotates a {matching[0]['type']} panel, which draws no annotations"
+        )
+
+
+def test_the_four_watched_dashboards_carry_a_firing_alert_strip_at_the_top() -> None:
+    dashboards = ROOT / "deploy/pit-config/grafana/dashboards"
+    for name in ("pitwall", "car", "reliability", "fuel"):
+        dashboard = yaml.safe_load((dashboards / f"{name}.json").read_text(encoding="utf-8"))
+        strips = [p for p in dashboard["panels"] if p.get("type") == "alertlist"]
+        assert len(strips) == 1, f"{name} needs exactly one alert strip"
+        strip = strips[0]
+        assert strip["gridPos"]["y"] == 0 and strip["gridPos"]["w"] == 24
+        assert strip["options"]["stateFilter"]["firing"] is True
+        assert strip["options"]["stateFilter"]["normal"] is False

@@ -135,6 +135,39 @@
   },
   "panels": [
     {
+      "id": 13,
+      "title": "ALERTS",
+      "description": "Every rule in the openlaps folder that is firing right now, wherever you are looking. Acknowledge on the annunciator (notifier, port 8086); this strip shows, it does not silence.",
+      "type": "alertlist",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "options": {
+        "alertName": "",
+        "dashboardAlerts": false,
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 8,
+        "sortOrder": 3,
+        "stateFilter": {
+          "error": true,
+          "firing": true,
+          "noData": false,
+          "normal": false,
+          "pending": false
+        },
+        "viewMode": "list"
+      },
+      "targets": []
+    },
+    {
       "id": 1,
       "title": "Lap",
       "type": "stat",
@@ -144,7 +177,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 4,
         "w": 4,
         "h": 5
       },
@@ -211,7 +244,7 @@
       },
       "gridPos": {
         "x": 4,
-        "y": 0,
+        "y": 4,
         "w": 5,
         "h": 5
       },
@@ -287,7 +320,7 @@
       },
       "gridPos": {
         "x": 9,
-        "y": 0,
+        "y": 4,
         "w": 5,
         "h": 5
       },
@@ -355,7 +388,7 @@
       },
       "gridPos": {
         "x": 14,
-        "y": 0,
+        "y": 4,
         "w": 5,
         "h": 5
       },
@@ -431,7 +464,7 @@
       },
       "gridPos": {
         "x": 19,
-        "y": 0,
+        "y": 4,
         "w": 5,
         "h": 5
       },
@@ -507,7 +540,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 9,
         "w": 16,
         "h": 10
       },
@@ -664,7 +697,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 5,
+        "y": 9,
         "w": 8,
         "h": 5
       },
@@ -797,7 +830,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 10,
+        "y": 14,
         "w": 8,
         "h": 5
       },
@@ -862,7 +895,7 @@
       "title": "Current driver",
       "gridPos": {
         "x": 16,
-        "y": 15,
+        "y": 19,
         "w": 4,
         "h": 4
       },
@@ -890,7 +923,7 @@
       },
       "gridPos": {
         "x": 20,
-        "y": 15,
+        "y": 19,
         "w": 4,
         "h": 4
       },
@@ -971,7 +1004,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 15,
+        "y": 19,
         "w": 8,
         "h": 4
       },
@@ -1052,7 +1085,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 15,
+        "y": 19,
         "w": 8,
         "h": 4
       },

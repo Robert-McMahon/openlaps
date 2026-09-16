@@ -23,6 +23,7 @@ from pathlib import Path
 
 import psycopg
 
+from pit.session_control.plan import RacePlan
 from pit.session_control.state import SessionState
 
 logger = logging.getLogger(__name__)
@@ -31,8 +32,28 @@ _CONNECT_BACKOFF_START_S = 0.5
 _CONNECT_BACKOFF_MAX_S = 15.0
 
 
+class PlanUnavailable(RuntimeError):
+    """The race plan could not be read or written because the database is unreachable."""
+
+
+_PLAN_COLUMNS = (
+    "session_id, revision, race_end_at, race_end_laps, end_authority, tank_l, usable_fuel_l, "
+    "refuel_min_s, service_typical_s, driver_limits, planned_stops, car_number, updated_at, "
+    "updated_by"
+)
+
+
+_STRATEGY_COLUMNS = (
+    "time, session_id, trigger, lap_number, plan_revision, fuel_remaining_l, "
+    "fuel_remaining_lo_l, fuel_remaining_hi_l, rebase_confidence, burn_l_per_lap, burn_sd, "
+    "burn_laps, laps_to_dry_lo, laps_to_dry_hi, time_to_dry_s_lo, laps_remaining, stops_needed, "
+    "window_open_lap, window_close_lap, target_lap_s, driver, driver_time_remaining_s, "
+    "driver_total_remaining_s, refuel_remaining_s, refuel_release_at, stop_plan, plan_drift"
+)
+
+
 class SessionDatabase:
-    """Own ``drivers``, ``sessions`` and ``stints`` with outage retry."""
+    """Own ``drivers``, ``sessions``, ``stints`` and ``race_plans`` with outage retry."""
 
     def __init__(
         self,
@@ -119,6 +140,129 @@ class SessionDatabase:
                     await self._drop_connection()
             self._queue(state)
             return False
+
+    async def save_plan(self, session_id: str, plan: RacePlan) -> dict[str, object]:
+        """Insert the next revision of the session's race plan and return it.
+
+        No retry queue, unlike session snapshots: a plan the operator cannot
+        confirm was saved is worse than one they have to submit again, so an
+        unreachable database is a 503 to the form, not a promise.
+        """
+        async with self._lock:
+            if not self.connected:
+                raise PlanUnavailable("database unavailable; the plan was not saved")
+            try:
+                return await asyncio.wait_for(
+                    self._insert_plan(self._require(), session_id, plan),
+                    timeout=self._operation_timeout_s,
+                )
+            except psycopg.IntegrityError as exc:
+                # The session row is not there yet -- it is in the retry
+                # queue from an outage -- so the plan cannot reference it.
+                # The transaction rolled back; the connection is fine.
+                raise PlanUnavailable(
+                    "the session is not in the database yet; try again shortly"
+                ) from exc
+            except (TimeoutError, psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                self.errors += 1
+                await self._drop_connection()
+                raise PlanUnavailable("database unavailable; the plan was not saved") from exc
+
+    async def load_plan(self, session_id: str) -> dict[str, object] | None:
+        """The latest revision of the session's plan, or None if it has none."""
+        async with self._lock:
+            if not self.connected:
+                raise PlanUnavailable("database unavailable; the plan cannot be read")
+            try:
+                return await asyncio.wait_for(
+                    self._select_plan(self._require(), session_id),
+                    timeout=self._operation_timeout_s,
+                )
+            except (TimeoutError, psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                self.errors += 1
+                await self._drop_connection()
+                raise PlanUnavailable("database unavailable; the plan cannot be read") from exc
+
+    async def load_strategy(self, session_id: str) -> dict[str, object] | None:
+        """The strategy service's latest evaluation for the session, or None.
+
+        Read-only, from `v_strategy_latest` (P7.9): the session UI shows the
+        numbers the crew would otherwise open a dashboard for. None when
+        the strategy service has not evaluated this session yet.
+        """
+        async with self._lock:
+            if not self.connected:
+                raise PlanUnavailable("database unavailable; strategy cannot be read")
+            try:
+                return await asyncio.wait_for(
+                    self._select_strategy(self._require(), session_id),
+                    timeout=self._operation_timeout_s,
+                )
+            except (TimeoutError, psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                self.errors += 1
+                await self._drop_connection()
+                raise PlanUnavailable("database unavailable; strategy cannot be read") from exc
+
+    async def _select_strategy(
+        self, conn: psycopg.AsyncConnection, session_id: str
+    ) -> dict[str, object] | None:
+        async with conn.transaction():
+            row = await (
+                await conn.execute(
+                    f"SELECT {_STRATEGY_COLUMNS} FROM v_strategy_latest WHERE session_id = %s",
+                    (session_id,),
+                )
+            ).fetchone()
+        return _strategy_row(row) if row is not None else None
+
+    async def _insert_plan(
+        self, conn: psycopg.AsyncConnection, session_id: str, plan: RacePlan
+    ) -> dict[str, object]:
+        async with conn.transaction():
+            row = await (
+                await conn.execute(
+                    f"""
+                    INSERT INTO race_plans (
+                        session_id, revision, race_end_at, race_end_laps, end_authority,
+                        tank_l, usable_fuel_l, refuel_min_s, service_typical_s,
+                        driver_limits, planned_stops, car_number, updated_by
+                    )
+                    SELECT %s, COALESCE(MAX(revision), 0) + 1, %s, %s, %s, %s, %s, %s, %s,
+                           %s::jsonb, %s::jsonb, %s, %s
+                    FROM race_plans WHERE session_id = %s
+                    RETURNING {_PLAN_COLUMNS}
+                    """,
+                    (
+                        session_id,
+                        _timestamp(plan.race_end_at_ms) if plan.race_end_at_ms else None,
+                        plan.race_end_laps,
+                        plan.end_authority,
+                        plan.tank_l,
+                        plan.usable_fuel_l,
+                        plan.refuel_min_s,
+                        plan.service_typical_s,
+                        json.dumps(plan.driver_limits),
+                        json.dumps(plan.to_dict()["planned_stops"]),
+                        plan.car_number,
+                        plan.updated_by,
+                        session_id,
+                    ),
+                )
+            ).fetchone()
+        assert row is not None
+        return _plan_row(row)
+
+    async def _select_plan(
+        self, conn: psycopg.AsyncConnection, session_id: str
+    ) -> dict[str, object] | None:
+        async with conn.transaction():
+            row = await (
+                await conn.execute(
+                    f"SELECT {_PLAN_COLUMNS} FROM v_race_plan WHERE session_id = %s",
+                    (session_id,),
+                )
+            ).fetchone()
+        return _plan_row(row) if row is not None else None
 
     async def run(self, stop: asyncio.Event) -> None:
         """Reconnect and drain queued snapshots until stopped."""
@@ -403,3 +547,49 @@ def retry_backoff(current: float, *, made_progress: bool) -> float:
     if made_progress:
         return _CONNECT_BACKOFF_START_S
     return min(current * 2, _CONNECT_BACKOFF_MAX_S)
+
+
+def _plan_row(row: tuple) -> dict[str, object]:
+    """A race_plans row in the shape the API returns (epoch ms, not datetimes)."""
+    (
+        session_id,
+        revision,
+        race_end_at,
+        race_end_laps,
+        end_authority,
+        tank_l,
+        usable_fuel_l,
+        refuel_min_s,
+        service_typical_s,
+        driver_limits,
+        planned_stops,
+        car_number,
+        updated_at,
+        updated_by,
+    ) = row
+    return {
+        "session_id": session_id,
+        "revision": revision,
+        "race_end_at_ms": int(race_end_at.timestamp() * 1000) if race_end_at else None,
+        "race_end_laps": race_end_laps,
+        "end_authority": end_authority,
+        "tank_l": tank_l,
+        "usable_fuel_l": usable_fuel_l,
+        "refuel_min_s": refuel_min_s,
+        "service_typical_s": service_typical_s,
+        "driver_limits": driver_limits,
+        "planned_stops": planned_stops,
+        "car_number": car_number,
+        "updated_at_ms": int(updated_at.timestamp() * 1000),
+        "updated_by": updated_by,
+    }
+
+
+def _strategy_row(row: tuple) -> dict[str, object]:
+    """A v_strategy_latest row in the API's shape (epoch ms, not datetimes)."""
+    names = [name.strip() for name in _STRATEGY_COLUMNS.split(",")]
+    data = dict(zip(names, row, strict=True))
+    for name in ("time", "refuel_release_at"):
+        stamp = data.pop(name)
+        data[f"{name}_ms"] = int(stamp.timestamp() * 1000) if stamp else None
+    return data

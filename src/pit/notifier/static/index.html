@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<!-- The annunciator (P7.2). Hand-written, dependency-free, buildless, in the
+     session-control UI's style. Meant to be left open on a screen at the
+     pit wall: it lists what is firing, makes a noise until someone
+     acknowledges, and says whether the alerting path itself is alive. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>openlaps alerts</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>Alerts</h1>
+    <div class="header-right">
+      <div id="pipeline" class="pipeline unknown" title="Heartbeat from Grafana: proves the alerting path is alive">path: waiting for heartbeat</div>
+      <button id="sound-button" class="sound" type="button">Enable sound</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="notice" class="notice hidden"></div>
+
+    <section id="active-section" class="card">
+      <div id="all-clear" class="all-clear">No active alerts</div>
+      <ul id="active-list" class="alerts"></ul>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <h2>Last hour</h2>
+        <div class="meta">
+          <span id="queue" class="queue" title="Deliveries waiting to be retried">queue: 0</span>
+          <span id="connection" class="connection">connecting&hellip;</span>
+        </div>
+      </div>
+      <ul id="history-list" class="history"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Acknowledging as</h2>
+      <form id="name-form" class="inline">
+        <input type="text" id="name-input" autocomplete="off" placeholder="your name" maxlength="40">
+        <button type="submit">Save</button>
+      </form>
+      <p class="hint">Kept in this browser only. Every acknowledgement is recorded with this name.</p>
+      <div class="row">
+        <button id="test-critical" type="button" class="danger">Test critical delivery</button>
+        <button id="test-warning" type="button">Test warning delivery</button>
+      </div>
+      <p class="hint">A test alert goes through every channel like a real one and is cleared by acknowledging it.</p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

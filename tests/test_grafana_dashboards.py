@@ -16,6 +16,7 @@ from psycopg.conninfo import make_conninfo
 
 from agent.agent import agent_derived_channels
 from pit.db.migrate import apply_migrations
+from pit.strategy.publisher import OUTPUT_CHANNELS as STRATEGY_CHANNELS
 from pit.timing_extrapolator.config import load_config as load_timing_config
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -180,6 +181,7 @@ def _known_channels() -> set[str]:
     channels = set(catalog["channels"])
     channels.update(channel.name for channel in agent_derived_channels(_collector_names()))
     channels.update(load_timing_config(TIMING_EXTRAPOLATOR).output_channels)
+    channels.update(STRATEGY_CHANNELS)
     return channels
 
 
@@ -437,6 +439,46 @@ def test_every_dashboard_query_executes_and_returns_configured_fields(timescale_
                     ),
                 )
 
+        # The strategy service's output (P7.9): one evaluation and one open
+        # finding, so the fuel dashboard's consumer panels have rows.
+        conn.execute(
+            "INSERT INTO strategy_state (time, vehicle_id, session_id, trigger, lap_number, "
+            "plan_revision, fuel_remaining_l, fuel_remaining_lo_l, fuel_remaining_hi_l, "
+            "rebase_confidence, rebase_level_l, rebase_at, fuel_added_l, burn_l_per_lap, "
+            "burn_sd, burn_laps, lap_time_ref_s, laps_to_dry_lo, laps_to_dry_hi, "
+            "time_to_dry_s_lo, time_to_dry_s_hi, laps_remaining, stops_needed, "
+            "window_open_lap, window_close_lap, target_lap_s, driver, "
+            "driver_time_remaining_s, driver_total_remaining_s, refuel_elapsed_s, "
+            "refuel_remaining_s, refuel_release_at, stop_plan, plan_drift) VALUES "
+            "(%s, %s, 's-1', 'lap', 2, 1, 44.2, 43.7, 44.7, 'session_start', 45.0, %s, NULL, "
+            "0.4, 0.0, 2, 109.0, 98.0, 99.3, 10682.0, 10823.0, 60, 1, 10, 100, 110.5, "
+            "'Driver A', 6000.0, 20000.0, 60.0, 420.0, %s, %s, %s)",
+            (
+                stamp,
+                VEHICLE,
+                stamp - timedelta(minutes=10),
+                stamp + timedelta(minutes=7),
+                json.dumps(
+                    [
+                        {
+                            "lap": 100,
+                            "type": "refuel",
+                            "driver_in": "Driver A",
+                            "reason": "fuel",
+                            "planned_lap": 95,
+                            "delta_laps": 5,
+                        }
+                    ]
+                ),
+                json.dumps({"planned": 1, "computed": 1, "max_abs_delta": 5, "diverged": True}),
+            ),
+        )
+        conn.execute(
+            "INSERT INTO watch_findings (finding_id, vehicle_id, monitor, opened_at, severity, "
+            "peak_score, summary) VALUES (gen_random_uuid(), %s, 'strategy.plan_drift', %s, "
+            "'warning', 1.0, %s)",
+            (VEHICLE, stamp, json.dumps({"message": "the numbers now say 1 stop"})),
+        )
         conn.commit()
         conn.autocommit = True
         for aggregate in ("samples_1s", "samples_1m"):

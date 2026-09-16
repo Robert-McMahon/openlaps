@@ -33,6 +33,8 @@ Entry points, all configured from the environment
 | `openlaps-agent` | The vehicle agent (collectors → catalog → timing → JetStream) |
 | `openlaps-migrate` | Applies the pit database schema; a bring-up step, not a service |
 | `openlaps-ingest-writer` | The pit's durable consumer: JetStream → TimescaleDB |
+| `openlaps-notifier` | Grafana's alert contact point: ledger, annunciator, acknowledgements, phone fan-out |
+| `openlaps-strategy` | The state of the race for this car: fuel, stops, driver time and the target lap, per lap |
 
 ## License
 

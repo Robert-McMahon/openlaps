@@ -79,6 +79,62 @@
       </form>
     </section>
 
+    <section id="plan-section" class="card hidden">
+      <h2>Race plan</h2>
+      <p class="hint" id="plan-status">No plan entered for this session yet.</p>
+      <form id="plan-form">
+        <label>Race ends at <span class="hint">(wall clock)</span>
+          <input type="datetime-local" id="plan-end-at" step="60">
+        </label>
+        <label>Race ends after <span class="hint">(laps; leave empty if time only)</span>
+          <input type="number" id="plan-end-laps" min="1" step="1">
+        </label>
+        <label>Which one decides
+          <select id="plan-authority">
+            <option value="time">Time</option>
+            <option value="laps">Laps</option>
+          </select>
+        </label>
+        <label>Tank capacity <span class="hint">(litres)</span>
+          <input type="number" id="plan-tank" min="0.1" step="0.1" required>
+        </label>
+        <label>Usable fuel <span class="hint">(litres; at most the tank)</span>
+          <input type="number" id="plan-usable" min="0.1" step="0.1" required>
+        </label>
+        <label>Refuel stop minimum <span class="hint">(minutes, per the regulations)</span>
+          <input type="number" id="plan-refuel-min" min="0" step="0.5" required>
+        </label>
+        <label>Service stop, typical <span class="hint">(minutes)</span>
+          <input type="number" id="plan-service-min" min="0" step="0.5" required>
+        </label>
+        <label>Driver limits <span class="hint">(minutes; leave any empty if unregulated)</span>
+          <div class="triple">
+            <input type="number" id="plan-max-continuous" min="0" step="1" placeholder="max continuous">
+            <input type="number" id="plan-max-total" min="0" step="1" placeholder="max total">
+            <input type="number" id="plan-min-rest" min="0" step="1" placeholder="min rest">
+          </div>
+        </label>
+        <label>Planned stops <span class="hint">(one per line: <code>lap 42 refuel Driver B</code>
+          or <code>14:30 service</code>; the driver is optional)</span>
+          <textarea id="plan-stops" rows="4" spellcheck="false"></textarea>
+        </label>
+        <label>Car number <span class="hint">(as the timekeepers list it)</span>
+          <input type="text" id="plan-car-number" autocomplete="off" maxlength="8">
+        </label>
+        <label>Your name <span class="hint">(recorded with the revision)</span>
+          <input type="text" id="plan-by" autocomplete="off" maxlength="40">
+        </label>
+        <button type="submit" class="primary">Save plan</button>
+      </form>
+    </section>
+
+    <section id="strategy-section" class="card hidden">
+      <h2>Strategy</h2>
+      <p class="hint" id="strategy-status">The strategy service has not evaluated this session yet.</p>
+      <dl class="strategy" id="strategy-grid"></dl>
+      <p class="hint" id="strategy-stops"></p>
+    </section>
+
     <section id="end-section" class="card hidden">
       <h2>End session</h2>
       <label>Actually ended at <span class="hint">(optional; leave empty

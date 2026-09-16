@@ -658,16 +658,36 @@ before running P4.3 — the usual causes are an incomplete clean slate, a
 `canplayer` that died and was not noticed, and counters left loaded from a
 previous session.
 
-# Endurance alert firing drill (P6.12)
+# Endurance alert firing drill (P6.12, P7.1)
+
+The rules exercised here are rendered from
+`profiles/example-club-racer/alarms.yaml` by `tools/gen_alert_rules.py`
+(`docs/CATALOG.md` → `alarms.yaml` schema).  Change a limit there, re-run the
+generator, and commit both files together; `tests/test_gen_alert_rules.py`
+fails when the provisioning file is stale.  The thresholds in the table
+below are the *rendered* values in catalog units -- temperatures are Kelvin
+because the ECU reports Kelvin, even though `alarms.yaml` declares them in
+Celsius.
 
 Run this drill against a disposable bench database, never against the race
-archive.  Open Grafana's **Reliability watch** dashboard (`uid=reliability`)
-and Alerting page first.  The provisioned `openlaps-local` contact point posts
-only to session-control (`http://session-control:8080/grafana-alerts`, the
-compose service name) and requires no external account.  That receiver logs a
-one-line summary per alert, so `docker compose -f deploy/pit-compose.yaml logs
-session-control` is the read-back for what fired during a session.  A failed
-local delivery does not prevent Grafana showing the rule as Firing.
+archive.  Open Grafana's **Reliability watch** dashboard (`uid=reliability`),
+its Alerting page, and the **annunciator** at `http://<pit-host>:8086/`
+first.  The provisioned `openlaps-local` contact point posts only to the
+notifier (`http://notifier:8086/grafana-alerts`, the compose service name)
+and requires no external account.  The notifier records every alert in the
+`alert_events` table (`SELECT * FROM v_alert_events ORDER BY time DESC`),
+shows it on the annunciator with a tone, and repeats it until someone
+acknowledges -- so the annunciator, not a log, is the read-back for what
+fired during a session and who saw it.  A failed delivery does not prevent
+Grafana showing the rule as Firing.
+
+Before any rule is exercised, confirm the path itself is alive: the
+annunciator's header must read **path alive** with a heartbeat age under a
+minute.  That indicator is the `notifier-heartbeat` rule, always firing and
+re-sent by Grafana every minute; stop Grafana and the indicator goes red
+within three minutes.  Then press **Test critical delivery** on the
+annunciator: the tone sounds, the alert appears, and acknowledging it with a
+name clears it and records the acknowledgement in `alert_acks`.
 
 Connect as the database owner and create this disposable helper.  It writes
 through the same registry/sample shape as ingest while keeping every alert
@@ -687,8 +707,16 @@ BEGIN
   INSERT INTO samples (time, channel_key, value) VALUES (sample_time, key, numeric_value);
 END $$;
 
--- All car-channel rules are explicitly on-track gated.  This event puts the
--- bench in the on-track state; substitute "pit" to prove they remain Normal.
+-- All car-channel rules are gated on an open session AND an on-track lap
+-- event.  Open a bench session first (the session UI does the same through
+-- session-control); set status = 'ended' at the end of the drill and prove
+-- every car-channel rule falls Normal with the car still "on track".
+INSERT INTO sessions (session_id, vehicle_id, session_type, started, status)
+VALUES ('bench-drill', 'example-club-racer', 'test', now(), 'active')
+ON CONFLICT (session_id) DO UPDATE SET status = 'active', ended = NULL;
+
+-- This event puts the bench in the on-track state; substitute "pit" to
+-- prove the same rules remain Normal in the pits.
 WITH channel AS (
   INSERT INTO channels (vehicle_id, name, units, value_type)
   VALUES ('example-club-racer', 'lap.event', '', 4)
@@ -700,20 +728,49 @@ SELECT now(), channel_key, '{"type":"lap_completed","pit_status":"track"}' FROM 
 ```
 
 Exercise one rule at a time, wait for its configured `for` period plus two
-10-second evaluation intervals, verify **Firing**, then write the reset value
-and verify **Normal**.  Temperatures below are Kelvin, not Celsius.
+10-second evaluation intervals (Grafana's base interval, which 12.4.9
+refuses to lower -- see the comment in `deploy/pit-compose.yaml`), verify
+**Firing**, then write the reset value and verify **Normal**.  Every
+continuous rule carries a recovery threshold: a value between the firing
+and clear thresholds must leave a Firing rule Firing, and must leave a
+Normal rule Normal.  Temperatures below are Kelvin, not Celsius.
+
+**Latency budget (P7.1).**  With `oil-pressure-low` reset, note the wall
+clock, `CALL bench_alert_sample('car.oil_pressure', 150);` (RPM already at
+4000), and note the time the annunciator shows it (or the `time` column of
+the `alert_events` row).
+The budget is under 10 s for a critical alarm.  Through Grafana the path is
+3 s `for` plus up to 10 s of evaluation plus 0 s `group_wait`: 3-13 s, over
+budget in the worst case, which is why the watch service (P7.5) evaluates
+critical limits at sample rate and posts to the notifier directly.  Record
+the measurement below each time the Grafana pin or the path changes.
+
+| Date | Grafana | Path | Crossing to notification | Notes |
+| --- | --- | --- | --- | --- |
+| 2026-09-16 | 12.4.9 | Grafana rules | _not measured_ | evaluation floor cannot be lowered below 10 s; see pit-compose.yaml |
 
 | Rule uid | Firing sample | Reset sample |
 | --- | --- | --- |
-| `oil-pressure-low` | `CALL bench_alert_sample('car.rpm', 4000); CALL bench_alert_sample('car.oil_pressure', 150);` | `CALL bench_alert_sample('car.oil_pressure', 350);` |
-| `coolant-temperature-high` | `CALL bench_alert_sample('car.coolant_temp', 384.15);` | `CALL bench_alert_sample('car.coolant_temp', 363.15);` |
+| `oil-pressure-low` | `CALL bench_alert_sample('car.rpm', 4000); CALL bench_alert_sample('car.oil_pressure', 150);` | `CALL bench_alert_sample('car.oil_pressure', 350);` (clears above 250) |
+| `coolant-temperature-high` | `CALL bench_alert_sample('car.coolant_temp', 384.15);` | `CALL bench_alert_sample('car.coolant_temp', 363.15);` (clears below 378.15) |
 | `oil-temperature-high` | `CALL bench_alert_sample('car.oil_temp', 399.15);` | `CALL bench_alert_sample('car.oil_temp', 373.15);` |
 | `battery-voltage-low` | `CALL bench_alert_sample('car.battery_v', 11.0);` | `CALL bench_alert_sample('car.battery_v', 13.8);` |
 | `knock-high` | `CALL bench_alert_sample('car.knock_level1', 90);` | `CALL bench_alert_sample('car.knock_level1', 0);` |
 | `engine-protection-active` | `CALL bench_alert_sample('car.engine_protection_severity', 2);` | `CALL bench_alert_sample('car.engine_protection_severity', 0);` |
 | `publish-lag-high` | `CALL bench_alert_sample('sys.agent.publish_lag_ms', 750);` | `CALL bench_alert_sample('sys.agent.publish_lag_ms', 0);` |
 | `live-feed-stale` | Stop the replay after an on-track `car.rpm` sample and wait more than 5 seconds. | Restart replay or `CALL bench_alert_sample('car.rpm', 3000);` |
+| `notifier-heartbeat` | Always firing; nothing to do. | Stop the grafana container: the annunciator's path indicator goes red within three minutes and `/health` reports `heartbeat.ok: false`. |
+| `strategy-warning` | `INSERT INTO watch_findings (finding_id, vehicle_id, monitor, opened_at, severity, peak_score, summary) VALUES (gen_random_uuid(), 'example-club-racer', 'strategy.bench_drill', now(), 'warning', 1.0, '{"message": "bench drill"}');` | `UPDATE watch_findings SET closed_at = now() WHERE monitor = 'strategy.bench_drill' AND closed_at IS NULL;` |
+| `strategy-critical` | As above with `'critical'`. The real path: a race plan with `max continuous` a few minutes ahead of the current stint's elapsed time raises `strategy.driver_time` from the strategy service within its poll interval; the dashboard's *Open strategy findings* table shows it. | Close the row as above, or end the session: the service closes every strategy finding when no session is open. |
+
+The two `strategy-*` rules watch `v_watch_findings` rows whose monitor
+starts with `strategy.`; the drill monitor name above is one the strategy
+service does not own, so a running service leaves the drill row alone (it
+adopts and closes only the monitors it judges).
 
 Finally write a `lap.event` with `"pit_status":"pit"`, repeat each car-channel
-firing sample, and verify the seven on-track-gated rules remain Normal.  The
-`publish-lag-high` pipeline rule deliberately remains active in the pits.
+firing sample, and verify the seven on-track-gated rules remain Normal.  Then
+restore `"track"`, `UPDATE sessions SET status = 'ended' WHERE session_id =
+'bench-drill'`, repeat the firing samples again, and verify the same seven
+stay Normal: that is the overnight case.  The `publish-lag-high` pipeline
+rule deliberately remains active in both.

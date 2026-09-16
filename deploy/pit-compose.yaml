@@ -1,4 +1,4 @@
-# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the six pit
+# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the seven pit
 # services.
 #
 #     docker compose -f deploy/pit-compose.yaml up -d
@@ -85,6 +85,47 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -t '$$SYS/#' -C 1 -W 3 >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  ntfy:
+    # Push notifications to phones on the pit wifi with no internet at all
+    # (docs/plan/PHASE7.md locked decision 2). Pinned: a push server that
+    # changes its API two days before an event is the failure this line
+    # prevents. The notifier posts to it by compose name; phones subscribe
+    # to http://<pit-host>:8087 with the ntfy app's "instant delivery" on,
+    # or Android only fetches when it feels like it.
+    #
+    # Open by default: anyone on the pit LAN can read and post the two
+    # topics. That is the trust model of the rest of the LAN (mosquitto,
+    # the session UI behind one shared key). Turn on access control in
+    # ntfy/server.yml and set OPENLAPS_NTFY_TOKEN if the wifi is shared
+    # with strangers.
+    image: binwiederhier/ntfy:${NTFY_IMAGE_TAG:-v2.28.0}
+    command: ["serve"]
+    environment:
+      NTFY_BASE_URL: ${OPENLAPS_NTFY_PUBLIC_URL:-http://localhost:8087}
+      NTFY_LISTEN_HTTP: ":80"
+      NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+      NTFY_CACHE_DURATION: 24h
+      NTFY_BEHIND_PROXY: "false"
+      NTFY_ATTACHMENT_CACHE_DIR: ""
+      # iPhones only. iOS allows the app no background connection, so a
+      # self-hosted server can only wake an iPhone by asking ntfy.sh to
+      # relay a poll request through Apple -- which needs internet at the
+      # pit at the moment of the alert, and NTFY_BASE_URL set to the
+      # address the phone uses. Android phones with instant delivery on
+      # need none of this. Empty disables it.
+      NTFY_UPSTREAM_BASE_URL: ${OPENLAPS_NTFY_UPSTREAM_URL:-}
+    volumes:
+      - ntfy-cache:/var/cache/ntfy
+    ports:
+      - "8087:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/v1/health | grep -q '\"healthy\":true'"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -246,6 +287,45 @@ services:
       retries: 4
       start_period: 20s
 
+  notifier:
+    # Grafana's only contact point (ADR 0011). Records every alert in the
+    # ledger, serves the annunciator on :8086, repeats unacknowledged
+    # critical alerts, and fans out to phones (P7.3). The webhook is
+    # unauthenticated by design -- the compose network is the boundary and a
+    # committed provisioning file must not carry a credential -- and what an
+    # unauthenticated caller can do is raise an alert on a page whose job is
+    # to show alerts.
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-notifier"]
+    environment:
+      OPENLAPS_NOTIFIER_HOST: 0.0.0.0
+      OPENLAPS_NOTIFIER_PORT: "8086"
+      OPENLAPS_NOTIFIER_CONFIG: /config/notifier.yaml
+      OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
+      # The address a phone reaches this service at, for the Acknowledge
+      # button in a push. Empty disables the button, not the push.
+      OPENLAPS_NOTIFIER_PUBLIC_URL: ${OPENLAPS_NOTIFIER_PUBLIC_URL:-}
+      OPENLAPS_NTFY_TOKEN: ${OPENLAPS_NTFY_TOKEN:-}
+      OPENLAPS_DISCORD_WEBHOOK: ${OPENLAPS_DISCORD_WEBHOOK:-}
+      TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
+      TIMESCALE_PORT: "5432"
+    volumes:
+      - ./pit-config:/config:ro
+    ports:
+      - "8086:8086"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      ntfy:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8086/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
   ntrip-client:
     <<: [*openlaps-image, *pit-env]
     command: ["openlaps-ntrip-client"]
@@ -330,6 +410,38 @@ services:
       retries: 4
       start_period: 20s
 
+  strategy:
+    # The state of the race for this car (P7.9, ADR 0011): fuel remaining
+    # with its re-base, burn with bounds, the pit window, the stop plan
+    # against the operator's race plan, driver time and the refuel clock.
+    # Runs per lap off the read surface -- it polls the views and evaluates
+    # on a new crossing, a plan revision or a timer -- writes strategy_state,
+    # raises its warnings as strategy.* findings, and publishes the live
+    # numbers under strategy.* on the pit-local broker for the pit wall.
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-strategy"]
+    environment:
+      OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
+      OPENLAPS_STRATEGY_HEALTH_PORT: "8088"
+      OPENLAPS_MQTT_HOST: mosquitto
+      OPENLAPS_MQTT_PORT: "1883"
+      TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
+      TIMESCALE_PORT: "5432"
+    ports:
+      - "8088:8088"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8088/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
   # --- read surface ---------------------------------------------------------
 
   grafana:
@@ -377,6 +489,18 @@ services:
       # sanitization, a global switch this stack will not flip), and no core
       # panel plays a live MSE/WebRTC stream. The `video` dashboard is its
       # only consumer.
+      # Alert evaluation floor: 10 s, and on this Grafana it cannot be
+      # lowered. Tried on 2026-09-16 against 12.4.9: with
+      # GF_UNIFIED_ALERTING_MIN_INTERVAL and _SCHEDULER_TICK_INTERVAL at 2s,
+      # with and without the configurableSchedulerTick feature toggle,
+      # Grafana refuses to start ("value of setting 'min_interval' should be
+      # greater than the base interval (10s)"). The generated rules
+      # therefore evaluate every 10 s, which puts a critical alarm 3-13 s
+      # from the notifier once its `for` is added -- over the under-10 s
+      # budget in the worst case. docs/plan/PHASE7.md locked decision 1
+      # names the fallback for exactly this measurement: sample-rate
+      # evaluation of critical limits in the watch service (P7.5), posting
+      # to the notifier directly, with Grafana kept as the record.
       GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.1.0},grafana-clock-panel@${GRAFANA_CLOCK_PLUGIN_VERSION:-3.2.4},innius-video-panel@${GRAFANA_VIDEO_PLUGIN_VERSION:-1.0.7}
       # Read by the provisioning YAML, which Grafana interpolates at load.
       # No password among them but the read-only one.
@@ -429,3 +553,4 @@ volumes:
   timescale-data:
   session-data:
   grafana-data:
+  ntfy-cache:

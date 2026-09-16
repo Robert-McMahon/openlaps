@@ -254,6 +254,55 @@ not skip ahead.
 
 ---
 
+### 3.4 Phones: the alert path, end to end (~10 min, before the car leaves the trailer)
+
+The single most important line in `docs/plan/PHASE7.md`. An alert path
+that worked on the bench and has never been seen to reach a phone in the
+garage is decoration.
+
+1. **The pit stack is up with `ntfy` and `notifier` healthy**
+   (`curl -fsS http://127.0.0.1:8087/v1/health`, `:8086/health`), and
+   `OPENLAPS_NOTIFIER_PUBLIC_URL` and `OPENLAPS_NTFY_PUBLIC_URL` in the
+   pit's `.env` name the pit host's **LAN address**, not localhost — a
+   phone cannot follow `localhost` anywhere.
+2. **On every phone that is meant to hear an alert:** install the ntfy
+   app (F-Droid, Play, App Store), add the server
+   `http://<pit-host>:8087`, subscribe to `openlaps-critical` and — for
+   the engineers, not the drivers — `openlaps-warning`. On Android, turn
+   on **instant delivery** for the self-hosted server in the app's
+   settings, or notifications arrive when Android feels like it -- the
+   persistent "listening for incoming notifications" entry is the proof
+   it is on, and the app's battery-optimisation prompt must be accepted.
+   Join the pit wifi. **iPhones** are different: iOS allows no
+   background connection, so they only get a push if
+   `OPENLAPS_NTFY_UPSTREAM_URL` is set (`example.env`), the pit has
+   internet at that moment, and the phone can reach Apple's push
+   service -- and the server entry in the app must match
+   `OPENLAPS_NTFY_PUBLIC_URL` exactly, since the relay topic is a hash
+   of it. No ntfy.sh account is needed, and the alert content never
+   leaves the LAN; only a wake-up does.
+
+   **Therefore: the wall gets an Android.** Whoever holds the pit wall
+   carries an Android phone (or a tablet left on the wall) with instant
+   delivery on. That device is the one path that needs no internet and
+   no Apple, and it is the one that must buzz in step 4. iPhones are
+   welcome as extras, never as the only phone subscribed.
+3. **Open the annunciator** at `http://<pit-host>:8086/`, enable sound,
+   and confirm the header reads **path alive**. If it does not within a
+   minute, Grafana is not sending — fix that before anything else.
+4. **Press "Test critical delivery".** Every phone from step 2 must
+   buzz, the annunciator must sound, and Discord (if the webhook is set)
+   must show the embed. Acknowledge from a phone's notification button:
+   the annunciator entry must show who acknowledged, within a second.
+5. **Sever the internet** (unplug the uplink, leave the pit wifi) and
+   repeat step 4. Phones on the wifi still buzz; Discord queues and the
+   annunciator's queue counter goes non-zero, then drains when the
+   uplink returns.
+
+A phone that did not buzz in step 4 is not subscribed to the right
+server, has instant delivery off, or is on a different wifi. Do not
+proceed on "it probably works".
+
 ## 4. Decision points
 
 What specifically would make the operator stop, and what stopping means.

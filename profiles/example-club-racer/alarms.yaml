@@ -1,0 +1,190 @@
+# profiles/example-club-racer/alarms.yaml
+#
+# Alarm limits for this car. `tools/gen_alert_rules.py` renders these into
+# Grafana alert rules under deploy/pit-config/grafana/provisioning/alerting/,
+# and tests/test_gen_alert_rules.py fails when the rendered file is stale --
+# so this file is the source of truth and the provisioning YAML is output.
+# Run `uv run python tools/gen_alert_rules.py` after editing.
+#
+# Latency budget (docs/plan/PHASE7.md, locked decision 1): under 10 s from a
+# threshold crossing to a phone for a critical alarm. The rule group
+# evaluates every 2 s (Grafana's floor is lowered in deploy/pit-compose.yaml),
+# the notification policy waits 0 s, and each alarm's `for` below is chosen
+# from the physics of the thing it watches, not from one number for all --
+# it is the dominant term and the one that stops a single bad sample paging
+# the crew. `clear_*` is hysteresis: a value that hovers at the limit fires
+# once and resolves once, instead of flapping on every sample.
+#
+# Every limit is declared in the units it is *thought about in*, which is
+# not always the unit the car reports. The Haltech ECU broadcasts
+# temperatures in Kelvin; nobody reasons about coolant in Kelvin. The
+# generator reads each channel's `units` from catalog.yaml and converts, and
+# it refuses a limit whose declared unit it cannot reconcile with the
+# catalog's. A limit with no `units` is an error, not a default.
+#
+# Fields per alarm (the key is the rule uid and must be stable -- alert
+# history is keyed on it):
+#   channel      canonical channel name
+#   units        the unit the numbers below are in; `none` for unitless channels
+#   above/below  the firing threshold (exactly one, unless kind is stale/watch)
+#   clear_below/clear_above
+#                optional hysteresis: the rule resolves only past this value
+#   for          how long the condition must hold before firing
+#   severity     critical | warning   (notifier routing, docs/plan/PHASE7.md P7.2)
+#   gate         on_track | always | engine_running
+#                on_track: evaluates as `resting` unless a session is open
+#                (session-control's status, via v_session_active) AND the last
+#                lap.event does not say "pit". A refuelling stop looks exactly
+#                like a CAN failure -- the ECU is off while the logger keeps
+#                publishing -- and a car parked overnight looks like one too,
+#                so every car channel rule is gated, and `noDataState: OK`
+#                stays. Ending the session on the session UI ends the alerts.
+#   resting      the value the rule evaluates when gated off or with no
+#                sample yet; must be on the non-firing side of the threshold
+#   when         optional second-channel condition, e.g. only above an RPM
+#   summary      the alert title
+#   panel        the reliability dashboard panel that explains the alert
+#   kind         threshold (default) | stale | watch | heartbeat
+#     stale:     fires when `channel` has had no sample for `older_than_s`
+#     watch:     fires on open v_watch_findings rows at `severity_at_least`
+#                (up to `severity_at_most`), optionally only those whose
+#                monitor starts with `monitor_prefix`
+#     heartbeat: always fires; the notifier's proof the path is alive
+#   dashboard    reliability (default) | fuel -- where the runbook link opens
+
+group: endurance
+
+alarms:
+  oil-pressure-low:
+    channel: car.oil_pressure
+    units: kPa
+    below: 200
+    clear_above: 250
+    for: 3s                      # oil starvation is damage in seconds
+    severity: critical
+    gate: on_track
+    when: { channel: car.rpm, at_least: 2000 }
+    resting: 10000
+    summary: Oil pressure low against RPM
+    panel: 1
+
+  coolant-temperature-high:
+    channel: car.coolant_temp
+    units: "°C"
+    above: 110
+    clear_below: 105
+    for: 15s                     # coolant moves slowly; 15 s rejects a sensor blip
+    severity: critical
+    gate: on_track
+    resting: 0
+    summary: Coolant temperature high
+    panel: 2
+
+  oil-temperature-high:
+    channel: car.oil_temp
+    units: "°C"
+    above: 125
+    clear_below: 120
+    for: 15s
+    severity: critical
+    gate: on_track
+    resting: 0
+    summary: Oil temperature high
+    panel: 3
+
+  battery-voltage-low:
+    channel: car.battery_v
+    units: V
+    below: 11.5
+    clear_above: 12.0
+    for: 10s                     # cranking sags below this for ~3 s; a stint does not
+    severity: critical
+    gate: on_track
+    resting: 14.0
+    summary: Battery voltage low
+    panel: 7
+
+  knock-high:
+    channel: car.knock_level1
+    units: dB
+    above: 80
+    clear_below: 60
+    for: 5s
+    severity: critical
+    gate: on_track
+    resting: 0
+    summary: Knock high
+    panel: 5
+
+  engine-protection-active:
+    channel: car.engine_protection_severity
+    units: none
+    above: 0
+    for: 2s                      # the ECU has already acted; the crew needs to know now
+    severity: critical
+    gate: on_track
+    resting: 0
+    summary: Engine protection active
+    panel: 5
+
+  publish-lag-high:
+    channel: sys.agent.publish_lag_ms
+    units: ms
+    above: 500
+    clear_below: 250
+    for: 30s                     # the link is allowed a bad corner
+    severity: warning
+    gate: always
+    resting: 0
+    summary: Publish lag high
+    panel: 7
+
+  # Always firing, on purpose. Grafana re-sends it every minute (its own
+  # notification route in the generated file) and the notifier's annunciator
+  # goes red when it stops arriving: the only way to tell a quiet night from
+  # a broken alert path. Severity none, so no channel but the log hears it.
+  notifier-heartbeat:
+    kind: heartbeat
+    for: 0s
+    severity: none
+    gate: always
+    summary: Notifier heartbeat
+
+  live-feed-stale:
+    kind: stale
+    channel: car.rpm
+    units: s
+    older_than_s: 5
+    for: 5s                      # 10 s of silence on track, end to end
+    severity: critical
+    gate: on_track
+    summary: Live feed stale while on track
+    panel: 7
+
+  # The strategy service's warnings (P7.9): driver time against the
+  # regulation limits, the pit window closing, the computed stop plan
+  # drifting from the operator's, a short fill. They are findings with a
+  # `strategy.` monitor, judged by the service on every lap and only while a
+  # session is open, so the rules carry no gate and no hold of their own.
+  strategy-warning:
+    kind: watch
+    monitor_prefix: strategy.
+    severity_at_least: warning
+    severity_at_most: warning    # a critical finding fires the rule below, not both
+    for: 0s
+    severity: warning
+    gate: always
+    dashboard: fuel
+    summary: Strategy warning (driver time, pit window, plan drift, short fill)
+    panel: 3
+
+  strategy-critical:
+    kind: watch
+    monitor_prefix: strategy.
+    severity_at_least: critical
+    for: 0s
+    severity: critical
+    gate: always
+    dashboard: fuel
+    summary: Strategy critical (driver over a limit, pit window closed)
+    panel: 3

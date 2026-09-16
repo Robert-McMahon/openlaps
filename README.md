@@ -35,6 +35,7 @@ Entry points, all configured from the environment
 | `openlaps-ingest-writer` | The pit's durable consumer: JetStream → TimescaleDB |
 | `openlaps-notifier` | Grafana's alert contact point: ledger, annunciator, acknowledgements, phone fan-out |
 | `openlaps-strategy` | The state of the race for this car: fuel, stops, driver time and the target lap, per lap |
+| `openlaps-timing-feed` | The other cars: standings, laps, passings and the flag state from a timing provider, into `field_*` |
 
 ## License
 

@@ -39,7 +39,12 @@ DEFAULT_PROFILE = ROOT / "profiles" / "example-club-racer"
 ALERTING_DIR = ROOT / "deploy" / "pit-config" / "grafana" / "provisioning" / "alerting"
 TIMESCALE_UID = "timescale"
 EXPRESSION_UID = "-100"
-GROUP_INTERVAL = "10s"
+# Evaluation cadence. 2 s is below Grafana's default floor of 10 s; the floor
+# is lowered in deploy/pit-compose.yaml (GF_UNIFIED_ALERTING_MIN_INTERVAL and
+# _SCHEDULER_TICK_INTERVAL) and Grafana silently rounds a group interval up
+# to the floor if the two disagree -- which is why the bench drill measures
+# the result instead of trusting this constant.
+GROUP_INTERVAL = "2s"
 
 # Units the generator knows how to convert between, as families. Each entry
 # maps a unit to (scale, offset) into the family's base unit. Anything
@@ -399,8 +404,11 @@ def _delivery() -> dict[str, Any]:
                 "orgId": 1,
                 "receiver": "openlaps-local",
                 "group_by": ["grafana_folder", "alertname"],
-                "group_wait": "10s",
-                "group_interval": "1m",
+                # Send the first notification the moment a group has an alert,
+                # follow-ups for the group every 10 s, and leave repeats to the
+                # notifier's acknowledgement logic rather than Grafana's clock.
+                "group_wait": "0s",
+                "group_interval": "10s",
                 "repeat_interval": "4h",
             }
         ],

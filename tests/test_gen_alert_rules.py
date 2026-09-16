@@ -26,18 +26,20 @@ ROOT = Path(__file__).parents[1]
 EXAMPLE_PROFILE = ROOT / "profiles" / "example-club-racer"
 ALERTING = ROOT / "deploy/pit-config/grafana/provisioning/alerting"
 
-# The Phase 6 limits, as endurance.yaml carried them before the generator
-# existed: channel, comparison, threshold in catalog units, `for`. The first
-# render had to be a refactor, and this is the table that says it was.
-PHASE_6_LIMITS: dict[str, tuple[str, str, float, str]] = {
-    "oil-pressure-low": ("car.oil_pressure", "lt", 200.0, "15s"),
-    "coolant-temperature-high": ("car.coolant_temp", "gt", 383.15, "30s"),
-    "oil-temperature-high": ("car.oil_temp", "gt", 398.15, "30s"),
-    "battery-voltage-low": ("car.battery_v", "lt", 11.5, "30s"),
-    "knock-high": ("car.knock_level1", "gt", 80.0, "15s"),
-    "engine-protection-active": ("car.engine_protection_severity", "gt", 0.0, "10s"),
+# The shipped limits: channel, comparison, threshold in catalog units, `for`.
+# The thresholds are the Phase 6 ones unchanged -- the first render was a
+# refactor, and this table pinned it. The holds were then retuned for the
+# under-10-second latency budget (docs/plan/PHASE7.md, locked decision 1)
+# in a separate commit, which is the only reason they differ from Phase 6.
+SHIPPED_LIMITS: dict[str, tuple[str, str, float, str]] = {
+    "oil-pressure-low": ("car.oil_pressure", "lt", 200.0, "3s"),
+    "coolant-temperature-high": ("car.coolant_temp", "gt", 383.15, "15s"),
+    "oil-temperature-high": ("car.oil_temp", "gt", 398.15, "15s"),
+    "battery-voltage-low": ("car.battery_v", "lt", 11.5, "10s"),
+    "knock-high": ("car.knock_level1", "gt", 80.0, "5s"),
+    "engine-protection-active": ("car.engine_protection_severity", "gt", 0.0, "2s"),
     "publish-lag-high": ("sys.agent.publish_lag_ms", "gt", 500.0, "30s"),
-    "live-feed-stale": ("car.rpm", "gt", 5.0, "15s"),
+    "live-feed-stale": ("car.rpm", "gt", 5.0, "5s"),
 }
 
 
@@ -74,10 +76,10 @@ def test_the_committed_file_is_a_fresh_render_of_the_profile() -> None:
     assert committed == text, "run `uv run python tools/gen_alert_rules.py`"
 
 
-def test_the_first_render_preserves_the_phase_6_limits() -> None:
+def test_the_rendered_limits_are_the_phase_6_thresholds_with_retuned_holds() -> None:
     rules = _rules(_rendered())
-    assert rules.keys() == PHASE_6_LIMITS.keys()
-    for uid, (channel, comparison, threshold, hold) in PHASE_6_LIMITS.items():
+    assert rules.keys() == SHIPPED_LIMITS.keys()
+    for uid, (channel, comparison, threshold, hold) in SHIPPED_LIMITS.items():
         rule = rules[uid]
         evaluator = _condition(rule)["evaluator"]
         assert f"channel = '{channel}'" in _sql(rule)
@@ -279,6 +281,30 @@ def test_the_stale_watch_and_heartbeat_kinds_render(tmp_path: Path) -> None:
     assert "'critical', 'warning'" in _sql(rules["findings"])
     assert _sql(rules["notifier-heartbeat"]).endswith('1.0 AS "value"')
     assert rules["notifier-heartbeat"]["labels"]["severity"] == "none"
+
+
+def test_the_latency_budget_is_in_the_rendered_cadence_and_the_compose_floor() -> None:
+    document = _rendered()
+    assert all(group["interval"] == "2s" for group in document["groups"])
+    policy = document["policies"][0]
+    assert policy["group_wait"] == "0s"
+    compose = yaml.safe_load((ROOT / "deploy/pit-compose.yaml").read_text(encoding="utf-8"))
+    environment = compose["services"]["grafana"]["environment"]
+    assert environment["GF_UNIFIED_ALERTING_MIN_INTERVAL"] == "2s"
+    assert environment["GF_UNIFIED_ALERTING_SCHEDULER_TICK_INTERVAL"] == "2s"
+
+
+def test_every_continuous_shipped_alarm_has_hysteresis() -> None:
+    # The discrete ones (a severity level, a staleness age) fire and clear on
+    # their own threshold; everything measured on a continuous scale clears
+    # past a second value so a reading that hovers at the limit fires once.
+    discrete = {"engine-protection-active", "live-feed-stale"}
+    for uid, rule in _rules(_rendered()).items():
+        condition = _condition(rule)
+        if uid in discrete:
+            assert "unloadEvaluator" not in condition, uid
+        else:
+            assert "unloadEvaluator" in condition, uid
 
 
 def test_every_rendered_rule_carries_a_severity_label_for_the_notifier() -> None:

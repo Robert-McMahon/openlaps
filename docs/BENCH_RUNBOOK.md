@@ -709,13 +709,31 @@ SELECT now(), channel_key, '{"type":"lap_completed","pit_status":"track"}' FROM 
 ```
 
 Exercise one rule at a time, wait for its configured `for` period plus two
-10-second evaluation intervals, verify **Firing**, then write the reset value
-and verify **Normal**.  Temperatures below are Kelvin, not Celsius.
+evaluation intervals (2 s each -- the group interval in the rendered file,
+which only holds if `GF_UNIFIED_ALERTING_MIN_INTERVAL` and
+`_SCHEDULER_TICK_INTERVAL` in `deploy/pit-compose.yaml` are honoured; a rule
+that takes 10 s or more to move is the sign they are not), verify
+**Firing**, then write the reset value and verify **Normal**.  Every
+continuous rule carries a recovery threshold: a value between the firing
+and clear thresholds must leave a Firing rule Firing, and must leave a
+Normal rule Normal.  Temperatures below are Kelvin, not Celsius.
+
+**Latency budget (P7.1).**  With `oil-pressure-low` reset, note the wall
+clock, `CALL bench_alert_sample('car.oil_pressure', 150);` (RPM already at
+4000), and note the time the contact point receives the notification (the
+session-control log line today; the notifier's ledger once P7.2 lands).
+The budget is under 10 s for a critical alarm: 3 s `for`, up to 4 s of
+evaluation, 0 s `group_wait`.  Record the measurement below each time the
+Grafana pin or the evaluation floor changes.
+
+| Date | Grafana | Crossing to notification | Notes |
+| --- | --- | --- | --- |
+| _not yet measured_ | 12.4.9 | | first measurement pending a bench run |
 
 | Rule uid | Firing sample | Reset sample |
 | --- | --- | --- |
-| `oil-pressure-low` | `CALL bench_alert_sample('car.rpm', 4000); CALL bench_alert_sample('car.oil_pressure', 150);` | `CALL bench_alert_sample('car.oil_pressure', 350);` |
-| `coolant-temperature-high` | `CALL bench_alert_sample('car.coolant_temp', 384.15);` | `CALL bench_alert_sample('car.coolant_temp', 363.15);` |
+| `oil-pressure-low` | `CALL bench_alert_sample('car.rpm', 4000); CALL bench_alert_sample('car.oil_pressure', 150);` | `CALL bench_alert_sample('car.oil_pressure', 350);` (clears above 250) |
+| `coolant-temperature-high` | `CALL bench_alert_sample('car.coolant_temp', 384.15);` | `CALL bench_alert_sample('car.coolant_temp', 363.15);` (clears below 378.15) |
 | `oil-temperature-high` | `CALL bench_alert_sample('car.oil_temp', 399.15);` | `CALL bench_alert_sample('car.oil_temp', 373.15);` |
 | `battery-voltage-low` | `CALL bench_alert_sample('car.battery_v', 11.0);` | `CALL bench_alert_sample('car.battery_v', 13.8);` |
 | `knock-high` | `CALL bench_alert_sample('car.knock_level1', 90);` | `CALL bench_alert_sample('car.knock_level1', 0);` |

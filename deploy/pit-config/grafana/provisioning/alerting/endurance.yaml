@@ -6,12 +6,12 @@ groups:
 - orgId: 1
   name: openlaps-endurance
   folder: openlaps
-  interval: 10s
+  interval: 2s
   rules:
   - uid: oil-pressure-low
     title: Oil pressure low against RPM
     condition: C
-    for: 15s
+    for: 3s
     noDataState: OK
     execErrState: Error
     annotations:
@@ -80,6 +80,10 @@ groups:
             params: []
             type: last
           type: query
+          unloadEvaluator:
+            type: gt
+            params:
+            - 250.0
         datasource: *id001
         expression: B
         refId: C
@@ -87,7 +91,7 @@ groups:
   - uid: coolant-temperature-high
     title: Coolant temperature high
     condition: C
-    for: 30s
+    for: 15s
     noDataState: OK
     execErrState: Error
     annotations:
@@ -155,6 +159,10 @@ groups:
             params: []
             type: last
           type: query
+          unloadEvaluator:
+            type: lt
+            params:
+            - 378.15
         datasource: *id002
         expression: B
         refId: C
@@ -162,7 +170,7 @@ groups:
   - uid: oil-temperature-high
     title: Oil temperature high
     condition: C
-    for: 30s
+    for: 15s
     noDataState: OK
     execErrState: Error
     annotations:
@@ -230,6 +238,10 @@ groups:
             params: []
             type: last
           type: query
+          unloadEvaluator:
+            type: lt
+            params:
+            - 393.15
         datasource: *id003
         expression: B
         refId: C
@@ -237,7 +249,7 @@ groups:
   - uid: battery-voltage-low
     title: Battery voltage low
     condition: C
-    for: 30s
+    for: 10s
     noDataState: OK
     execErrState: Error
     annotations:
@@ -305,6 +317,10 @@ groups:
             params: []
             type: last
           type: query
+          unloadEvaluator:
+            type: gt
+            params:
+            - 12.0
         datasource: *id004
         expression: B
         refId: C
@@ -312,7 +328,7 @@ groups:
   - uid: knock-high
     title: Knock high
     condition: C
-    for: 15s
+    for: 5s
     noDataState: OK
     execErrState: Error
     annotations:
@@ -379,6 +395,10 @@ groups:
             params: []
             type: last
           type: query
+          unloadEvaluator:
+            type: lt
+            params:
+            - 60.0
         datasource: *id005
         expression: B
         refId: C
@@ -386,7 +406,7 @@ groups:
   - uid: engine-protection-active
     title: Engine protection active
     condition: C
-    for: 10s
+    for: 2s
     noDataState: OK
     execErrState: Error
     annotations:
@@ -526,6 +546,10 @@ groups:
             params: []
             type: last
           type: query
+          unloadEvaluator:
+            type: lt
+            params:
+            - 250.0
         datasource: *id007
         expression: B
         refId: C
@@ -533,7 +557,7 @@ groups:
   - uid: live-feed-stale
     title: Live feed stale while on track
     condition: C
-    for: 15s
+    for: 5s
     noDataState: OK
     execErrState: Error
     annotations:
@@ -620,6 +644,6 @@ policies:
   group_by:
   - grafana_folder
   - alertname
-  group_wait: 10s
-  group_interval: 1m
+  group_wait: 0s
+  group_interval: 10s
   repeat_interval: 4h

@@ -6,6 +6,15 @@
 # so this file is the source of truth and the provisioning YAML is output.
 # Run `uv run python tools/gen_alert_rules.py` after editing.
 #
+# Latency budget (docs/plan/PHASE7.md, locked decision 1): under 10 s from a
+# threshold crossing to a phone for a critical alarm. The rule group
+# evaluates every 2 s (Grafana's floor is lowered in deploy/pit-compose.yaml),
+# the notification policy waits 0 s, and each alarm's `for` below is chosen
+# from the physics of the thing it watches, not from one number for all --
+# it is the dominant term and the one that stops a single bad sample paging
+# the crew. `clear_*` is hysteresis: a value that hovers at the limit fires
+# once and resolves once, instead of flapping on every sample.
+#
 # Every limit is declared in the units it is *thought about in*, which is
 # not always the unit the car reports. The Haltech ECU broadcasts
 # temperatures in Kelvin; nobody reasons about coolant in Kelvin. The
@@ -44,7 +53,8 @@ alarms:
     channel: car.oil_pressure
     units: kPa
     below: 200
-    for: 15s
+    clear_above: 250
+    for: 3s                      # oil starvation is damage in seconds
     severity: critical
     gate: on_track
     when: { channel: car.rpm, at_least: 2000 }
@@ -56,7 +66,8 @@ alarms:
     channel: car.coolant_temp
     units: "°C"
     above: 110
-    for: 30s
+    clear_below: 105
+    for: 15s                     # coolant moves slowly; 15 s rejects a sensor blip
     severity: critical
     gate: on_track
     resting: 0
@@ -67,7 +78,8 @@ alarms:
     channel: car.oil_temp
     units: "°C"
     above: 125
-    for: 30s
+    clear_below: 120
+    for: 15s
     severity: critical
     gate: on_track
     resting: 0
@@ -78,7 +90,8 @@ alarms:
     channel: car.battery_v
     units: V
     below: 11.5
-    for: 30s
+    clear_above: 12.0
+    for: 10s                     # cranking sags below this for ~3 s; a stint does not
     severity: critical
     gate: on_track
     resting: 14.0
@@ -89,7 +102,8 @@ alarms:
     channel: car.knock_level1
     units: dB
     above: 80
-    for: 15s
+    clear_below: 60
+    for: 5s
     severity: critical
     gate: on_track
     resting: 0
@@ -100,7 +114,7 @@ alarms:
     channel: car.engine_protection_severity
     units: none
     above: 0
-    for: 10s
+    for: 2s                      # the ECU has already acted; the crew needs to know now
     severity: critical
     gate: on_track
     resting: 0
@@ -111,7 +125,8 @@ alarms:
     channel: sys.agent.publish_lag_ms
     units: ms
     above: 500
-    for: 30s
+    clear_below: 250
+    for: 30s                     # the link is allowed a bad corner
     severity: warning
     gate: always
     resting: 0
@@ -123,7 +138,7 @@ alarms:
     channel: car.rpm
     units: s
     older_than_s: 5
-    for: 15s
+    for: 5s                      # 10 s of silence on track, end to end
     severity: critical
     gate: on_track
     summary: Live feed stale while on track

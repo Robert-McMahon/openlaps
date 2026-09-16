@@ -397,7 +397,7 @@ def _delivery() -> dict[str, Any]:
                         "uid": "openlaps-local-webhook",
                         "type": "webhook",
                         "settings": {
-                            "url": "http://notifier:8085/grafana-alerts",
+                            "url": "http://notifier:8086/grafana-alerts",
                             "httpMethod": "POST",
                         },
                         "disableResolveMessage": False,

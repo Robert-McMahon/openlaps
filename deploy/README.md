@@ -322,11 +322,11 @@ docker compose -f deploy/pit-compose.yaml exec timescaledb psql -U openlaps -d o
 | live-decoder | 8082 | `OPENLAPS_LIVE_HEALTH_PORT` |
 | ntrip-client | 8083 | `OPENLAPS_NTRIP_HEALTH_PORT` |
 | timing-extrapolator | 8084 | `OPENLAPS_TIMING_HEALTH_PORT` |
-| notifier | 8085 | `OPENLAPS_NOTIFIER_PORT` (annunciator UI at `/`, Grafana webhook, `/health`) |
+| notifier | 8086 | `OPENLAPS_NOTIFIER_PORT` (annunciator UI at `/`, Grafana webhook, `/health`) |
 | grafana | 3000 | fixed (`GET /api/health`) |
 
 ```bash
-for port in 8080 8081 8082 8083 8084 8085; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
+for port in 8080 8081 8082 8083 8084 8086; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
 ```
 
 **Grafana is up and both datasources are green.** The web UI is on

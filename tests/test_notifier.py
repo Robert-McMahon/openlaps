@@ -252,12 +252,12 @@ def test_the_shipped_config_loads_and_names_the_heartbeat_rule_the_profile_rende
     assert {c.type for c in config.channels} >= {"annunciator", "log"}
     rendered = (ROOT / "deploy/pit-config/grafana/provisioning/alerting/endurance.yaml").read_text()
     assert "uid: notifier-heartbeat" in rendered
-    assert "http://notifier:8085/grafana-alerts" in rendered
+    assert "http://notifier:8086/grafana-alerts" in rendered
 
 
 def test_settings_run_without_a_database_but_refuse_a_bad_port():
-    settings = NotifierSettings.from_env({"OPENLAPS_NOTIFIER_PORT": "8085"})
-    assert settings.dsn is None and settings.port == 8085
+    settings = NotifierSettings.from_env({"OPENLAPS_NOTIFIER_PORT": "8086"})
+    assert settings.dsn is None and settings.port == 8086
     with pytest.raises(ValueError):
         NotifierSettings.from_env({"OPENLAPS_NOTIFIER_PORT": "70000"})
 

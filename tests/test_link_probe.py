@@ -408,7 +408,7 @@ def test_health_parsers_null_missing_keys():
 
 def test_timing_extrapolator_health_is_a_default_pit_probe_endpoint():
     assert link_probe.HEALTH_PORTS["timing"] == 8084
-    assert link_probe.HEALTH_PORTS["notifier"] == 8085
+    assert link_probe.HEALTH_PORTS["notifier"] == 8086
     notifier = link_probe.parse_notifier_health(
         {
             "active": 2,

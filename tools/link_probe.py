@@ -103,7 +103,7 @@ HEALTH_PORTS = {
     "live": 8082,
     "ntrip": 8083,
     "timing": 8084,
-    "notifier": 8085,
+    "notifier": 8086,
 }
 
 DEFAULT_NFT_COUNTER_OUT = "openlaps_leaf_out"

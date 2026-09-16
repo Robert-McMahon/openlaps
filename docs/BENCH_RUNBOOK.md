@@ -671,9 +671,9 @@ Celsius.
 
 Run this drill against a disposable bench database, never against the race
 archive.  Open Grafana's **Reliability watch** dashboard (`uid=reliability`),
-its Alerting page, and the **annunciator** at `http://<pit-host>:8085/`
+its Alerting page, and the **annunciator** at `http://<pit-host>:8086/`
 first.  The provisioned `openlaps-local` contact point posts only to the
-notifier (`http://notifier:8085/grafana-alerts`, the compose service name)
+notifier (`http://notifier:8086/grafana-alerts`, the compose service name)
 and requires no external account.  The notifier records every alert in the
 `alert_events` table (`SELECT * FROM v_alert_events ORDER BY time DESC`),
 shows it on the annunciator with a tone, and repeats it until someone

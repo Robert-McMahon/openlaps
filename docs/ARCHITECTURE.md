@@ -181,7 +181,7 @@ namespace (`watch.*`, `strategy.*`, `field.*`).
   tables, and reconciles our own car's count against `v_laps`.
 - **notifier** (landed, P7.2) is Grafana's only contact point. It records
   every alert in the `alert_events` ledger, serves the annunciator at
-  `:8085` (sound, acknowledge buttons, a heartbeat that proves the path is
+  `:8086` (sound, acknowledge buttons, a heartbeat that proves the path is
   alive), repeats unacknowledged critical alerts, and holds a retry queue
   for the phone channels P7.3 adds -- `ntfy` on the pit LAN and Discord when
   there is internet.

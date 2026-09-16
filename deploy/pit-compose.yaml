@@ -248,7 +248,7 @@ services:
 
   notifier:
     # Grafana's only contact point (ADR 0011). Records every alert in the
-    # ledger, serves the annunciator on :8085, repeats unacknowledged
+    # ledger, serves the annunciator on :8086, repeats unacknowledged
     # critical alerts, and fans out to phones (P7.3). The webhook is
     # unauthenticated by design -- the compose network is the boundary and a
     # committed provisioning file must not carry a credential -- and what an
@@ -258,7 +258,7 @@ services:
     command: ["openlaps-notifier"]
     environment:
       OPENLAPS_NOTIFIER_HOST: 0.0.0.0
-      OPENLAPS_NOTIFIER_PORT: "8085"
+      OPENLAPS_NOTIFIER_PORT: "8086"
       OPENLAPS_NOTIFIER_CONFIG: /config/notifier.yaml
       OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
       TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
@@ -266,13 +266,13 @@ services:
     volumes:
       - ./pit-config:/config:ro
     ports:
-      - "8085:8085"
+      - "8086:8086"
     depends_on:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8085/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8086/health"]
       interval: 15s
       timeout: 5s
       retries: 4
@@ -418,7 +418,10 @@ services:
       # at 2 s is a few queries a second. Verified on the bench per
       # docs/BENCH_RUNBOOK.md -> alert firing drill; the tick interval is
       # thinly documented and is the one to suspect if rules still
-      # evaluate at 10 s.
+      # evaluate at 10 s. Changing either needs `up -d grafana` (a
+      # recreate): `restart` keeps the old environment while the
+      # bind-mounted rules file changes underneath it, and Grafana then
+      # crash-loops on "interval (2s) ... scheduler interval: 10".
       GF_UNIFIED_ALERTING_MIN_INTERVAL: 2s
       GF_UNIFIED_ALERTING_SCHEDULER_TICK_INTERVAL: 2s
       GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.1.0},grafana-clock-panel@${GRAFANA_CLOCK_PLUGIN_VERSION:-3.2.4},innius-video-panel@${GRAFANA_VIDEO_PLUGIN_VERSION:-1.0.7}

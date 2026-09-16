@@ -70,7 +70,7 @@ class NotifierSettings:
     config_path: Path
     dsn: str | None
     host: str = "127.0.0.1"
-    port: int = 8085
+    port: int = 8086
     vehicle_id: str | None = None
 
     @classmethod
@@ -78,7 +78,7 @@ class NotifierSettings:
         cls, env: Mapping[str, str] | None = None, *, config_path: str | Path | None = None
     ) -> NotifierSettings:
         env = os.environ if env is None else env
-        port = int(env.get("OPENLAPS_NOTIFIER_PORT", "8085"))
+        port = int(env.get("OPENLAPS_NOTIFIER_PORT", "8086"))
         if not 0 <= port <= 65535:
             raise ValueError("OPENLAPS_NOTIFIER_PORT must be between 0 and 65535")
         try:

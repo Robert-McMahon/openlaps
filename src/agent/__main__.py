@@ -21,6 +21,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="profile directory (default: $OPENLAPS_PROFILE)",
     )
+    parser.add_argument(
+        "--hardware",
+        default=None,
+        help="host-wiring overlay for this board (default: $OPENLAPS_HARDWARE)",
+    )
     parser.add_argument("--log-level", default="INFO", help="python logging level name")
     args = parser.parse_args(argv)
 
@@ -30,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        settings = AgentSettings.from_env(profile_dir=args.profile)
+        settings = AgentSettings.from_env(profile_dir=args.profile, hardware_path=args.hardware)
         agent = VehicleAgent(settings)
     except (ConfigError, ValueError) as exc:
         # Config errors are the one thing that should stop the agent —

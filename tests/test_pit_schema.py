@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import time
 from datetime import UTC, datetime, timedelta
 
 import psycopg
@@ -63,6 +65,33 @@ def _register(
     return channel_key
 
 
+def _insert_pit_events(conn: psycopg.Connection, events: list[tuple[datetime, str, str]]) -> None:
+    event_key = _register(conn, name="lap.event", registry_seq=1, wire_id=8, value_type=STRING)
+    with conn.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO samples (time, channel_key, value_text) VALUES (%s, %s, %s)",
+            [
+                (stamp, event_key, json.dumps({"type": event_type, "line": line}))
+                for stamp, event_type, line in events
+            ],
+        )
+
+
+def _refresh_aggregate(conn: psycopg.Connection, name: str, start: datetime, end: datetime) -> None:
+    """Refresh after a disabled policy's in-flight job has finished exiting."""
+    for attempt in range(50):
+        try:
+            conn.execute(
+                sql.SQL("CALL refresh_continuous_aggregate({}, %s, %s)").format(sql.Literal(name)),
+                (start, end),
+            )
+            return
+        except psycopg.errors.LockNotAvailable:
+            if attempt == 49:
+                raise
+            time.sleep(0.1)
+
+
 @pytest.fixture
 def migrated(timescale_dsn):
     """A connection to a database with every migration applied."""
@@ -79,6 +108,32 @@ def test_discover_returns_migrations_in_filename_order():
     assert names == sorted(names)
     assert "001_init.sql" in names
     assert "002_trace_read_surface.sql" in names
+
+
+def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_dsn):
+    first_two = [path for path in discover() if path.name.startswith(("001_", "002_"))]
+    for migration in first_two:
+        (tmp_path / migration.name).write_text(
+            migration.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+
+    with psycopg.connect(timescale_dsn) as conn:
+        assert apply_migrations(conn, tmp_path) == [path.name for path in first_two]
+        assert [path.name for path in pending(conn)] == [
+            "003_endurance_read_surface.sql",
+            "004_minute_traces.sql",
+            "005_pit_metrics.sql",
+        ]
+
+    # A real upgrade runs later in a new process/connection, so deployment
+    # settings established while 002 ran are no longer in the session.
+    with psycopg.connect(timescale_dsn) as conn:
+        assert apply_migrations(conn) == [
+            "003_endurance_read_surface.sql",
+            "004_minute_traces.sql",
+            "005_pit_metrics.sql",
+        ]
+        assert pending(conn) == []
 
 
 def test_dsn_from_env_prefers_an_explicit_dsn():
@@ -140,8 +195,18 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
 
     with psycopg.connect(timescale_dsn) as conn:
         assert apply_migrations(conn, tmp_path) == ["001_init.sql"]
-        assert [path.name for path in pending(conn)] == ["002_trace_read_surface.sql"]
-        assert apply_migrations(conn) == ["002_trace_read_surface.sql"]
+        assert [path.name for path in pending(conn)] == [
+            "002_trace_read_surface.sql",
+            "003_endurance_read_surface.sql",
+            "004_minute_traces.sql",
+            "005_pit_metrics.sql",
+        ]
+        assert apply_migrations(conn) == [
+            "002_trace_read_surface.sql",
+            "003_endurance_read_surface.sql",
+            "004_minute_traces.sql",
+            "005_pit_metrics.sql",
+        ]
         assert pending(conn) == []
 
 
@@ -151,6 +216,44 @@ def test_samples_is_an_hourly_hypertable(migrated):
         "WHERE hypertable_name = 'samples'"
     ).fetchall()
     assert row == [("time", timedelta(hours=1))]
+
+
+def test_pit_metrics_is_a_daily_hypertable(migrated):
+    """Not the hourly chunking `samples` uses: this table accrues far slower."""
+    row = migrated.execute(
+        "SELECT column_name, time_interval FROM timescaledb_information.dimensions "
+        "WHERE hypertable_name = 'pit_metrics'"
+    ).fetchall()
+    assert row == [("time", timedelta(days=1))]
+
+
+def test_pit_metrics_round_trip_through_the_view_and_stay_out_of_the_vehicle_surface(migrated):
+    """Pit health is readable as itself and invisible to the vehicle views.
+
+    The second half is the point of the separate table: every dashboard's
+    Vehicle variable is `SELECT DISTINCT vehicle_id FROM v_samples_named`, so
+    a pit row leaking into that view would appear in six dropdowns.
+    """
+    stamp = datetime(2026, 7, 27, 4, 30, tzinfo=UTC)
+    migrated.execute(
+        "INSERT INTO pit_metrics (source, metric, time, value, value_text) "
+        "VALUES ('host', 'cpu.percent', %s, 17.5, NULL), "
+        "('chrony', 'source', %s, NULL, 'GPS'), "
+        "('nats', 'slow_consumers', %s, 0, NULL)",
+        (stamp, stamp, stamp),
+    )
+
+    rows = migrated.execute(
+        "SELECT source, metric, value, value_text FROM v_pit_metrics "
+        "WHERE time = %s ORDER BY source, metric",
+        (stamp,),
+    ).fetchall()
+    assert rows == [
+        ("chrony", "source", None, "GPS"),
+        ("host", "cpu.percent", 17.5, None),
+        ("nats", "slow_consumers", 0.0, None),
+    ]
+    assert migrated.execute("SELECT count(*) FROM v_samples_named").fetchone()[0] == 0
 
 
 def test_numeric_and_string_values_round_trip_through_the_named_view(migrated):
@@ -178,6 +281,14 @@ def test_numeric_and_string_values_round_trip_through_the_named_view(migrated):
 
 
 def test_samples_1s_buckets_numeric_rows_with_extrema_and_count(migrated):
+    # The policy can otherwise race this test's deterministic manual refresh,
+    # especially now that the minute aggregate also depends on samples_1s.
+    job_id = migrated.execute(
+        "SELECT job_id FROM timescaledb_information.jobs "
+        "WHERE proc_name = 'policy_refresh_continuous_aggregate' "
+        "AND hypertable_name = 'samples_1s'"
+    ).fetchone()[0]
+    migrated.execute("SELECT alter_job(%s, scheduled => false)", (job_id,))
     rpm = _register(migrated, name="car.rpm", registry_seq=1, wire_id=7, units="rpm")
     event = _register(migrated, name="lap.event", registry_seq=1, wire_id=8, value_type=STRING)
     bucket = datetime(2026, 7, 27, 4, 30, tzinfo=UTC)
@@ -193,10 +304,7 @@ def test_samples_1s_buckets_numeric_rows_with_extrema_and_count(migrated):
         )
     migrated.commit()
     migrated.autocommit = True
-    migrated.execute(
-        "CALL refresh_continuous_aggregate('samples_1s', %s, %s)",
-        (bucket, bucket + timedelta(seconds=1)),
-    )
+    _refresh_aggregate(migrated, "samples_1s", bucket, bucket + timedelta(seconds=1))
     migrated.autocommit = False
 
     rows = migrated.execute(
@@ -225,6 +333,61 @@ def test_samples_1s_policy_covers_late_data_and_keeps_recent_data_live(migrated)
     assert materialized_only is False
 
 
+def test_samples_1m_composes_extrema_and_count_weighted_average(migrated):
+    # Keep Timescale's scheduler from racing the deterministic manual refresh.
+    job_ids = migrated.execute(
+        "SELECT job_id FROM timescaledb_information.jobs "
+        "WHERE proc_name = 'policy_refresh_continuous_aggregate' "
+        "AND hypertable_name IN ('samples_1s', 'samples_1m')"
+    ).fetchall()
+    for (job_id,) in job_ids:
+        migrated.execute("SELECT alter_job(%s, scheduled => false)", (job_id,))
+    rpm = _register(migrated, name="car.rpm", registry_seq=1, wire_id=7, units="rpm")
+    event = _register(migrated, name="lap.event", registry_seq=1, wire_id=8, value_type=STRING)
+    bucket = datetime(2026, 7, 27, 4, 30, tzinfo=UTC)
+    with migrated.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO samples (time, channel_key, value, value_text) VALUES (%s, %s, %s, %s)",
+            [
+                (bucket + timedelta(milliseconds=100), rpm, 0.0, None),
+                (bucket + timedelta(seconds=1, milliseconds=100), rpm, 10.0, None),
+                (bucket + timedelta(seconds=1, milliseconds=300), rpm, 20.0, None),
+                (bucket + timedelta(seconds=1, milliseconds=500), rpm, 30.0, None),
+                (bucket + timedelta(milliseconds=200), event, None, '{"type":"pit_entry"}'),
+            ],
+        )
+    migrated.commit()
+    migrated.autocommit = True
+    _refresh_aggregate(migrated, "samples_1s", bucket, bucket + timedelta(minutes=1))
+    _refresh_aggregate(migrated, "samples_1m", bucket, bucket + timedelta(minutes=1))
+    migrated.autocommit = False
+
+    rows = migrated.execute(
+        "SELECT time, vehicle_id, channel, units, avg, min, max, count "
+        "FROM v_samples_1m_named WHERE time = %s ORDER BY channel",
+        (bucket,),
+    ).fetchall()
+    assert rows == [(bucket, VEHICLE, "car.rpm", "rpm", 15.0, 0.0, 30.0, 4)]
+
+
+def test_samples_1m_policy_covers_late_data_and_keeps_recent_data_live(migrated):
+    schedule, start_offset, end_offset = migrated.execute(
+        "SELECT schedule_interval, (config ->> 'start_offset')::interval, "
+        "(config ->> 'end_offset')::interval FROM timescaledb_information.jobs "
+        "WHERE proc_name = 'policy_refresh_continuous_aggregate' "
+        "AND hypertable_name = 'samples_1m'"
+    ).fetchone()
+    materialized_only = migrated.execute(
+        "SELECT materialized_only FROM timescaledb_information.continuous_aggregates "
+        "WHERE view_name = 'samples_1m'"
+    ).fetchone()[0]
+
+    assert schedule == timedelta(minutes=1)
+    assert start_offset is None
+    assert end_offset == timedelta(minutes=2)
+    assert materialized_only is False
+
+
 def test_grafana_role_reads_every_view_but_not_base_tables(migrated, timescale_dsn):
     migrated.commit()
     grafana_dsn = make_conninfo(
@@ -233,10 +396,27 @@ def test_grafana_role_reads_every_view_but_not_base_tables(migrated, timescale_d
         password="openlaps-grafana-test",
     )
     with psycopg.connect(grafana_dsn) as reader:
-        for view in ("v_samples_named", "v_samples_1s_named", "v_laps"):
+        for view in (
+            "v_samples_named",
+            "v_samples_1s_named",
+            "v_samples_1m_named",
+            "v_laps",
+            "v_lap_sectors",
+            "v_pit_stops",
+            "v_lap_fuel",
+            "v_stint_fuel_level",
+            "v_pit_metrics",
+        ):
             reader.execute(sql.SQL("SELECT * FROM {} LIMIT 0").format(sql.Identifier(view)))
-        with pytest.raises(psycopg.errors.InsufficientPrivilege):
-            reader.execute("SELECT * FROM samples LIMIT 0")
+        for base_table in ("samples", "pit_metrics"):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                reader.execute(
+                    sql.SQL("SELECT * FROM {} LIMIT 0").format(sql.Identifier(base_table))
+                )
+            # A denied read aborts the transaction; without this the second
+            # table's denial would surface as InFailedSqlTransaction and the
+            # assertion would pass for the wrong reason.
+            reader.rollback()
 
 
 def test_one_channel_key_survives_a_registry_rollover(migrated):
@@ -329,6 +509,257 @@ def _open_session(conn: psycopg.Connection, session_id: str = "s-1") -> int:
         "VALUES (%s, 1, %s, %s) RETURNING stint_id",
         (session_id, driver, started),
     ).fetchone()[0]
+
+
+def test_lap_sectors_flatten_lap_context_without_emitting_empty_laps(migrated):
+    stint = _open_session(migrated)
+    first_crossing = datetime(2026, 7, 27, 1, 2, tzinfo=UTC)
+    second_crossing = datetime(2026, 7, 27, 1, 4, tzinfo=UTC)
+    migrated.execute(_LAP_UPSERT, (VEHICLE, "s-1", stint, 1, first_crossing, 108.842))
+    migrated.execute(_LAP_UPSERT, (VEHICLE, "s-1", stint, 2, second_crossing, 109.101))
+    lap_id = migrated.execute(
+        "SELECT lap_id FROM laps WHERE vehicle_id = %s AND crossed_at = %s",
+        (VEHICLE, first_crossing),
+    ).fetchone()[0]
+    with migrated.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO lap_sectors (lap_id, sector, split_time_s, crossed_at) "
+            "VALUES (%s, %s, %s, %s)",
+            [
+                (lap_id, 1, 35.1, first_crossing - timedelta(seconds=73)),
+                (lap_id, 2, 36.2, first_crossing - timedelta(seconds=36.8)),
+            ],
+        )
+
+    rows = migrated.execute(
+        "SELECT lap_id, vehicle_id, session_id, session_type, stint_number, driver, "
+        "lap_number, lap_crossed_at, sector, split_time_s, crossed_at "
+        "FROM v_lap_sectors ORDER BY sector"
+    ).fetchall()
+    assert rows == [
+        (
+            lap_id,
+            VEHICLE,
+            "s-1",
+            "practice",
+            1,
+            "Driver A",
+            1,
+            first_crossing,
+            1,
+            35.1,
+            first_crossing - timedelta(seconds=73),
+        ),
+        (
+            lap_id,
+            VEHICLE,
+            "s-1",
+            "practice",
+            1,
+            "Driver A",
+            1,
+            first_crossing,
+            2,
+            36.2,
+            first_crossing - timedelta(seconds=36.8),
+        ),
+    ]
+
+
+def test_pit_stops_pair_events_and_derive_explicit_stop_types(migrated):
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    _insert_pit_events(
+        migrated,
+        [
+            (start, "pit_entry", "PitEntryRefuel"),
+            (start + timedelta(minutes=8), "pit_exit", "PitExitRefuel"),
+            (start + timedelta(minutes=20), "pit_entry", "PitEntryService"),
+            (start + timedelta(minutes=22), "pit_exit", "PitExitService"),
+            (start + timedelta(minutes=30), "pit_entry", "PitEntryOther"),
+            (start + timedelta(minutes=31), "pit_exit", "PitExitOther"),
+        ],
+    )
+
+    rows = migrated.execute(
+        "SELECT entry_at, exit_at, duration_s, is_open, stop_type, entry_line, exit_line "
+        "FROM v_pit_stops ORDER BY entry_at"
+    ).fetchall()
+    assert rows == [
+        (
+            start,
+            start + timedelta(minutes=8),
+            480.0,
+            False,
+            "refuel",
+            "PitEntryRefuel",
+            "PitExitRefuel",
+        ),
+        (
+            start + timedelta(minutes=20),
+            start + timedelta(minutes=22),
+            120.0,
+            False,
+            "service",
+            "PitEntryService",
+            "PitExitService",
+        ),
+        (
+            start + timedelta(minutes=30),
+            start + timedelta(minutes=31),
+            60.0,
+            False,
+            "unknown",
+            "PitEntryOther",
+            "PitExitOther",
+        ),
+    ]
+
+
+def test_pit_stops_stay_open_on_a_mismatched_exit_line_type(migrated):
+    """A refuel entry answered by a service exit is a missed crossing, not a
+    stop: pairing them used to present a phantom closed refuel stop spanning
+    the whole gap between two separate bench runs."""
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    _insert_pit_events(
+        migrated,
+        [
+            (start, "pit_entry", "PitEntryRefuel"),
+            (start + timedelta(minutes=19), "pit_exit", "PitExitService"),
+        ],
+    )
+
+    rows = migrated.execute(
+        "SELECT exit_at, is_open, stop_type, entry_line, exit_line FROM v_pit_stops"
+    ).fetchall()
+    assert rows == [(None, True, "refuel", "PitEntryRefuel", None)]
+
+
+def test_pit_stops_discard_an_exit_without_a_preceding_entry(migrated):
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    _insert_pit_events(migrated, [(start, "pit_exit", "PitExitService")])
+
+    assert migrated.execute("SELECT count(*) FROM v_pit_stops").fetchone()[0] == 0
+
+
+def test_open_pit_stop_duration_grows_without_samples_during_stop(migrated):
+    entered = datetime.now(tz=UTC) - timedelta(seconds=2)
+    _insert_pit_events(migrated, [(entered, "pit_entry", "PitEntryRefuel")])
+
+    first = migrated.execute("SELECT exit_at, duration_s, is_open FROM v_pit_stops").fetchone()
+    time.sleep(0.05)
+    second_duration = migrated.execute("SELECT duration_s FROM v_pit_stops").fetchone()[0]
+
+    assert first[0] is None
+    assert first[2] is True
+    assert second_duration > first[1]
+
+
+def test_pit_stop_with_missing_line_is_explicitly_unknown(migrated):
+    entered = datetime.now(tz=UTC) - timedelta(seconds=1)
+    event_key = _register(migrated, name="lap.event", registry_seq=1, wire_id=8, value_type=STRING)
+    migrated.execute(
+        "INSERT INTO samples (time, channel_key, value_text) VALUES (%s, %s, %s)",
+        (entered, event_key, json.dumps({"type": "pit_entry"})),
+    )
+
+    assert migrated.execute("SELECT stop_type FROM v_pit_stops").fetchone() == ("unknown",)
+
+
+def test_lap_fuel_reports_clean_counter_delta_in_cc_and_litres(migrated):
+    stint = _open_session(migrated)
+    crossed = datetime(2026, 7, 27, 1, 2, tzinfo=UTC)
+    migrated.execute(_LAP_UPSERT, (VEHICLE, "s-1", stint, 1, crossed, 100.0))
+    fuel = _register(
+        migrated,
+        name="car.fuel_total_used",
+        registry_seq=1,
+        wire_id=9,
+        units="cc",
+    )
+    with migrated.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO samples (time, channel_key, value) VALUES (%s, %s, %s)",
+            [
+                (crossed - timedelta(seconds=99), fuel, 1000.0),
+                (crossed - timedelta(seconds=50), fuel, 1200.0),
+                (crossed, fuel, 1450.0),
+            ],
+        )
+
+    row = migrated.execute(
+        "SELECT session_id, stint_number, driver, fuel_counter_start_cc, "
+        "fuel_counter_end_cc, fuel_used_cc, fuel_used_l, measurement_status "
+        "FROM v_lap_fuel"
+    ).fetchone()
+    assert row == ("s-1", 1, "Driver A", 1000.0, 1450.0, 450.0, 0.45, "clean")
+
+
+def test_lap_fuel_discards_any_mid_lap_counter_reset(migrated):
+    crossed = datetime(2026, 7, 27, 1, 2, tzinfo=UTC)
+    migrated.execute(_LAP_UPSERT, (VEHICLE, None, None, 1, crossed, 100.0))
+    fuel = _register(
+        migrated,
+        name="car.fuel_total_used",
+        registry_seq=1,
+        wire_id=9,
+        units="cc",
+    )
+    with migrated.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO samples (time, channel_key, value) VALUES (%s, %s, %s)",
+            [
+                (crossed - timedelta(seconds=99), fuel, 1000.0),
+                (crossed - timedelta(seconds=70), fuel, 1200.0),
+                (crossed - timedelta(seconds=40), fuel, 10.0),
+                # The endpoint overtakes the pre-reset start, so endpoint-only
+                # reset detection would quietly report a plausible 100 cc.
+                (crossed, fuel, 1100.0),
+            ],
+        )
+
+    row = migrated.execute(
+        "SELECT session_id, fuel_counter_start_cc, fuel_counter_end_cc, "
+        "fuel_used_cc, fuel_used_l, measurement_status FROM v_lap_fuel"
+    ).fetchone()
+    assert row == (None, 1000.0, 1100.0, None, None, "counter_reset")
+
+
+def test_lap_fuel_marks_missing_samples_null_instead_of_zero(migrated):
+    crossed = datetime(2026, 7, 27, 1, 2, tzinfo=UTC)
+    migrated.execute(_LAP_UPSERT, (VEHICLE, None, None, 1, crossed, 100.0))
+
+    row = migrated.execute(
+        "SELECT fuel_counter_start_cc, fuel_counter_end_cc, fuel_used_cc, "
+        "fuel_used_l, measurement_status FROM v_lap_fuel"
+    ).fetchone()
+    assert row == (None, None, None, None, "missing")
+
+
+def test_stint_fuel_level_regression_rejects_low_voltage_transients(migrated):
+    stint = _open_session(migrated)
+    started = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    level = _register(migrated, name="car.fuel_level", registry_seq=1, wire_id=10, units="L")
+    battery = _register(migrated, name="car.battery_v", registry_seq=1, wire_id=11, units="V")
+    samples = [
+        (started + timedelta(minutes=1), level, 60.0),
+        (started + timedelta(minutes=1), battery, 13.8),
+        (started + timedelta(minutes=2), level, 59.9),
+        (started + timedelta(minutes=2), battery, 10.4),
+        (started + timedelta(minutes=3), level, 59.8),
+        (started + timedelta(minutes=3), battery, 13.7),
+    ]
+    with migrated.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO samples (time, channel_key, value) VALUES (%s, %s, %s)", samples
+        )
+
+    row = migrated.execute(
+        "SELECT stint_id, sample_count, level_start_l, level_end_l, "
+        "level_used_l, level_trend_l_per_hour FROM v_stint_fuel_level"
+    ).fetchone()
+    assert row[0] == stint
+    assert row[1:5] == (2, 60.0, 59.8, pytest.approx(0.2))
+    assert row[5] == pytest.approx(-6.0)
 
 
 def test_laps_upsert_converges_with_and_without_a_session(migrated):

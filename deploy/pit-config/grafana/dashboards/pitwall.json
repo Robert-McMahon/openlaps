@@ -1,0 +1,1127 @@
+{
+  "uid": "pitwall",
+  "title": "Pit wall / live timing",
+  "description": "Pit wall / live timing \u2014 provisioned openlaps endurance operations dashboard.",
+  "editable": false,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "1s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "tags": [
+    "openlaps",
+    "endurance"
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "vehicle",
+        "label": "Vehicle",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
+        "query": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": false,
+        "sort": 1,
+        "current": {
+          "text": "example-club-racer",
+          "value": "example-club-racer"
+        }
+      },
+      {
+        "name": "session",
+        "label": "Session",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "driver",
+        "label": "Driver",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "stint",
+        "label": "Stint",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "lap",
+        "label": "Lap",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Lap",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/lap.number"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "timeFrom": "1m",
+      "maxDataPoints": 600,
+      "hideTimeOverride": true
+    },
+    {
+      "id": 2,
+      "title": "Pit extrapolated lap clock",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 5,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/timing.lap_elapsed"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/timing.lap_elapsed_pit"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "display"
+              ]
+            }
+          }
+        }
+      ],
+      "timeFrom": "1m",
+      "maxDataPoints": 600,
+      "description": "Authoritative vehicle elapsed beside the pit-side extrapolated clock, which keeps counting through a radio dropout and corrects at the next crossing. Running clocks read in tenths (m:ss.t); the value announced at a crossing is definitive and shows milliseconds. A gated pit clock shows \u2014 instead of holding a stale number.",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 3,
+      "title": "Pit extrapolated sector clock",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 9,
+        "y": 0,
+        "w": 5,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/timing.sector_elapsed_pit"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "display"
+              ]
+            }
+          }
+        }
+      ],
+      "timeFrom": "1m",
+      "maxDataPoints": 600,
+      "description": "Pit-side extrapolated sector clock; visibly derived rather than vehicle telemetry. Tenths while running, milliseconds at the crossing, \u2014 when gated.",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 4,
+      "title": "Last / best lap",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 14,
+        "y": 0,
+        "w": 5,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/lap.last_time"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/lap.best_time"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "display"
+              ]
+            }
+          }
+        }
+      ],
+      "timeFrom": "1m",
+      "maxDataPoints": 600,
+      "hideTimeOverride": true,
+      "description": "Definitive completed times from the vehicle, shown to 0.001 s."
+    },
+    {
+      "id": 5,
+      "title": "Delta / prediction",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 19,
+        "y": 0,
+        "w": 5,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/timing.delta_best"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/timing.predicted_lap"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "display"
+              ]
+            }
+          }
+        }
+      ],
+      "timeFrom": "1m",
+      "maxDataPoints": 600,
+      "hideTimeOverride": true,
+      "description": "Delta to best is signed tenths; the predicted lap is a running estimate and reads m:ss.t."
+    },
+    {
+      "id": 6,
+      "title": "Track position and speed",
+      "type": "geomap",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 16,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "velocitykmh",
+          "color": {
+            "mode": "continuous-GrYlRd"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "view": {
+          "id": "fit",
+          "allLayers": true,
+          "padding": 15
+        },
+        "controls": {
+          "showZoom": true,
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showScale": false,
+          "showMeasure": false,
+          "showDebug": false
+        },
+        "basemap": {
+          "type": "default",
+          "name": "Basemap",
+          "config": {}
+        },
+        "tooltip": {
+          "mode": "details"
+        },
+        "legend": {
+          "show": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "layers": [
+          {
+            "name": "Trail",
+            "type": "route",
+            "filterData": {
+              "id": "byRefId",
+              "options": "A"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "field": "speed",
+                  "fixed": "dark-green"
+                },
+                "opacity": 0.9,
+                "lineWidth": 4,
+                "size": {
+                  "field": "speed",
+                  "fixed": 4,
+                  "max": 6,
+                  "min": 2
+                }
+              }
+            }
+          },
+          {
+            "name": "Car",
+            "type": "markers",
+            "filterData": {
+              "id": "byRefId",
+              "options": "B"
+            },
+            "location": {
+              "mode": "auto"
+            },
+            "tooltip": true,
+            "config": {
+              "style": {
+                "color": {
+                  "fixed": "red"
+                },
+                "opacity": 1,
+                "size": {
+                  "fixed": 10,
+                  "max": 15,
+                  "min": 5
+                },
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                },
+                "symbolAlign": {
+                  "horizontal": "center",
+                  "vertical": "center"
+                },
+                "textConfig": {
+                  "fontSize": 12,
+                  "offsetX": 0,
+                  "offsetY": 0,
+                  "textAlign": "center",
+                  "textBaseline": "middle"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('200 ms', time) AS \"time\",\n       max(value) FILTER (WHERE channel = 'position.lat')   AS \"latitude\",\n       max(value) FILTER (WHERE channel = 'position.lon')   AS \"longitude\",\n       max(value) FILTER (WHERE channel = 'position.speed') AS \"speed\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle'\n  AND channel IN ('position.lat', 'position.lon', 'position.speed')\n  AND $__timeFilter(time)\nGROUP BY 1\nHAVING max(value) FILTER (WHERE channel = 'position.lat') IS NOT NULL\n   AND max(value) FILTER (WHERE channel = 'position.lon') IS NOT NULL\nORDER BY 1"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time_bucket('200 ms', time) AS \"time\",\n       max(value) FILTER (WHERE channel = 'position.lat')   AS \"latitude\",\n       max(value) FILTER (WHERE channel = 'position.lon')   AS \"longitude\",\n       max(value) FILTER (WHERE channel = 'position.speed') AS \"speed\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle'\n  AND channel IN ('position.lat', 'position.lon', 'position.speed')\n  AND $__timeFilter(time)\nGROUP BY 1\nHAVING max(value) FILTER (WHERE channel = 'position.lat') IS NOT NULL\n   AND max(value) FILTER (WHERE channel = 'position.lon') IS NOT NULL\nORDER BY 1 DESC\nLIMIT 1"
+        }
+      ],
+      "timeFrom": "1m",
+      "maxDataPoints": 600,
+      "description": "Trail and current position. Pivoted to one frame with real latitude/longitude fields -- the geomap locates by field name, which three separate single-value MQTT frames could never provide.",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 7,
+      "title": "GNSS fix quality",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 5,
+        "w": 8,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "V": {
+                  "text": "Invalid (V)",
+                  "color": "dark-red",
+                  "index": 0
+                },
+                "N": {
+                  "text": "No fix (N)",
+                  "color": "dark-red",
+                  "index": 1
+                },
+                "E": {
+                  "text": "Dead reckoning (E)",
+                  "color": "red",
+                  "index": 2
+                },
+                "M": {
+                  "text": "Manual input (M)",
+                  "color": "purple",
+                  "index": 3
+                },
+                "S": {
+                  "text": "Simulator (S)",
+                  "color": "purple",
+                  "index": 4
+                },
+                "A": {
+                  "text": "Autonomous / SPP (A)",
+                  "color": "orange",
+                  "index": 5
+                },
+                "D": {
+                  "text": "Differential (D)",
+                  "color": "yellow",
+                  "index": 6
+                },
+                "F": {
+                  "text": "RTK Float (F)",
+                  "color": "semi-dark-green",
+                  "index": 7
+                },
+                "P": {
+                  "text": "High precision (P)",
+                  "color": "light-green",
+                  "index": 8
+                },
+                "R": {
+                  "text": "RTK Fixed (R)",
+                  "color": "green",
+                  "index": 9
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "no fix reported"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "value",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value",
+        "wideLayout": true,
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "topic": "openlaps/$vehicle/position.fix_quality"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "timeFrom": "1m",
+      "maxDataPoints": 600,
+      "description": "UM980 RMC field 13 (mode indicator). Differential is NOT RTK: D is code-phase DGNSS (sub-metre), F is RTK float, R is RTK fixed (cm). Reads the string field explicitly -- the default numeric-only reducer cannot see it.",
+      "hideTimeOverride": true
+    },
+    {
+      "id": 8,
+      "title": "Timing authority",
+      "type": "text",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 10,
+        "w": 8,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Sector deltas are intentionally not inferred. The pit clocks are **extrapolated** between authoritative vehicle crossings and visibly degrade when their clock/link gates fail."
+      },
+      "targets": []
+    },
+    {
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 9,
+      "title": "Current driver",
+      "gridPos": {
+        "x": 16,
+        "y": 15,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, max(driver) AS \"Driver\" FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Stint clock",
+      "type": "grafana-clock-panel",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 15,
+        "w": 4,
+        "h": 4
+      },
+      "description": "Counts up in this browser from the current stint's first crossing; nothing streams or repaints behind it.",
+      "options": {
+        "mode": "countup",
+        "refresh": "sec",
+        "clockType": "24 hour",
+        "fontMono": true,
+        "bgColor": "",
+        "countupSettings": {
+          "source": "query",
+          "queryCalculation": "lastNotNull",
+          "queryField": "Stint started",
+          "beginCountupTime": "",
+          "beginText": "0:00:00",
+          "noValueText": "no stint yet",
+          "invalidValueText": "invalid timestamp",
+          "customFormat": "h:mm:ss"
+        },
+        "countdownSettings": {
+          "source": "input",
+          "endCountdownTime": "",
+          "queryCalculation": "lastNotNull",
+          "queryField": "",
+          "endText": "00:00:00",
+          "noValueText": "no value found",
+          "invalidValueText": "invalid value"
+        },
+        "descriptionSettings": {
+          "source": "none",
+          "descriptionText": "",
+          "queryField": "",
+          "noValueText": "",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        },
+        "dateSettings": {
+          "showDate": false,
+          "dateFormat": "YYYY-MM-DD",
+          "locale": "",
+          "fontSize": "20px",
+          "fontWeight": "normal"
+        },
+        "timeSettings": {
+          "fontSize": "44px",
+          "fontWeight": "bold"
+        },
+        "timezone": "",
+        "timezoneSettings": {
+          "showTimezone": false,
+          "zoneFormat": "offsetAbbv",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, min(crossed_at) AS \"Stint started\" FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND stint_number = (SELECT max(stint_number) FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session')) AND $__timeFilter(crossed_at)"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Lap clock (browser)",
+      "type": "grafana-clock-panel",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 8,
+        "h": 4
+      },
+      "description": "Counts up in this browser from the last start/finish crossing recorded in the database \u2014 no live stream behind it, 1 s resolution. It is a dumb timer: it keeps counting on a stopped car until the crossing leaves the dashboard window, and it carries none of the extrapolated clock's clock-health gating.",
+      "options": {
+        "mode": "countup",
+        "refresh": "sec",
+        "clockType": "24 hour",
+        "fontMono": true,
+        "bgColor": "",
+        "countupSettings": {
+          "source": "query",
+          "queryCalculation": "lastNotNull",
+          "queryField": "Last lap crossing",
+          "beginCountupTime": "",
+          "beginText": "0:00",
+          "noValueText": "no crossing yet",
+          "invalidValueText": "invalid timestamp",
+          "customFormat": "m:ss"
+        },
+        "countdownSettings": {
+          "source": "input",
+          "endCountdownTime": "",
+          "queryCalculation": "lastNotNull",
+          "queryField": "",
+          "endText": "00:00:00",
+          "noValueText": "no value found",
+          "invalidValueText": "invalid value"
+        },
+        "descriptionSettings": {
+          "source": "none",
+          "descriptionText": "",
+          "queryField": "",
+          "noValueText": "",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        },
+        "dateSettings": {
+          "showDate": false,
+          "dateFormat": "YYYY-MM-DD",
+          "locale": "",
+          "fontSize": "20px",
+          "fontWeight": "normal"
+        },
+        "timeSettings": {
+          "fontSize": "44px",
+          "fontWeight": "bold"
+        },
+        "timezone": "",
+        "timezoneSettings": {
+          "showTimezone": false,
+          "zoneFormat": "offsetAbbv",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, max(crossed_at) AS \"Last lap crossing\" FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at)"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Sector clock (browser)",
+      "type": "grafana-clock-panel",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 15,
+        "w": 8,
+        "h": 4
+      },
+      "description": "Counts up in this browser from the last sector or lap crossing's own timestamp in the recorded lap.event \u2014 no live stream, 1 s resolution, and lags ingest by a flush. Same dumb-timer caveats as the lap clock.",
+      "options": {
+        "mode": "countup",
+        "refresh": "sec",
+        "clockType": "24 hour",
+        "fontMono": true,
+        "bgColor": "",
+        "countupSettings": {
+          "source": "query",
+          "queryCalculation": "lastNotNull",
+          "queryField": "Last sector crossing",
+          "beginCountupTime": "",
+          "beginText": "0:00",
+          "noValueText": "no crossing yet",
+          "invalidValueText": "invalid timestamp",
+          "customFormat": "m:ss"
+        },
+        "countdownSettings": {
+          "source": "input",
+          "endCountdownTime": "",
+          "queryCalculation": "lastNotNull",
+          "queryField": "",
+          "endText": "00:00:00",
+          "noValueText": "no value found",
+          "invalidValueText": "invalid value"
+        },
+        "descriptionSettings": {
+          "source": "none",
+          "descriptionText": "",
+          "queryField": "",
+          "noValueText": "",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        },
+        "dateSettings": {
+          "showDate": false,
+          "dateFormat": "YYYY-MM-DD",
+          "locale": "",
+          "fontSize": "20px",
+          "fontWeight": "normal"
+        },
+        "timeSettings": {
+          "fontSize": "44px",
+          "fontWeight": "bold"
+        },
+        "timezone": "",
+        "timezoneSettings": {
+          "showTimezone": false,
+          "zoneFormat": "offsetAbbv",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, to_timestamp(max((value_text::jsonb ->> 'time')::double precision)) AS \"Last sector crossing\" FROM v_samples_named WHERE vehicle_id = '$vehicle' AND channel = 'lap.event' AND value_text::jsonb ->> 'type' IN ('sector_completed', 'lap_completed') AND $__timeFilter(time)"
+        }
+      ]
+    }
+  ]
+}

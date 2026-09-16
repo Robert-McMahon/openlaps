@@ -26,8 +26,49 @@ from pit.session_control.state import SESSION_TYPES, SessionError, SessionState
 logger = logging.getLogger(__name__)
 
 _MAX_REQUEST_BODY_BYTES = 64 * 1024
+# A Grafana notification carries every alert in the group. Both caps below
+# bound what an unauthenticated caller can write into the log.
+_MAX_LOGGED_ALERTS = 20
+_MAX_ALERT_NAME_CHARS = 120
 _REQUEST_TIMEOUT_S = 5.0
 _MAX_HTTP_WORKERS = 32
+
+
+def _log_grafana_alerts(payload: dict) -> int:
+    """Log a bounded summary of a Grafana webhook notification.
+
+    The pit is deliberately offline at a track, so the endurance rules have
+    nowhere external to notify (``docs/BENCH_RUNBOOK.md`` -> endurance alert
+    firing drill: the contact point "requires no external account"). Landing
+    them in this service's log gives the operator somewhere to read back what
+    fired during a session, without a mail server or a paging account.
+
+    Nothing here is trusted: names are truncated and the count is capped, and
+    a payload that is not shaped like a Grafana notification simply yields 0.
+    """
+    alerts = payload.get("alerts")
+    if not isinstance(alerts, list):
+        return 0
+    logged = 0
+    for alert in alerts[:_MAX_LOGGED_ALERTS]:
+        if not isinstance(alert, dict):
+            continue
+        labels = alert.get("labels")
+        name = labels.get("alertname") if isinstance(labels, dict) else None
+        if not isinstance(name, str) or not name:
+            name = "unnamed"
+        status = alert.get("status")
+        if not isinstance(status, str) or not status:
+            status = "unknown"
+        logger.log(
+            logging.WARNING if status == "firing" else logging.INFO,
+            "session-control: grafana alert %s is %s",
+            name[:_MAX_ALERT_NAME_CHARS],
+            status[:32],
+        )
+        logged += 1
+    return logged
+
 
 # The operator UI (P5.6), served by this process from package data. A strict
 # filename allowlist, never a request path joined to a directory: path
@@ -406,6 +447,28 @@ class _SessionHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", maxsplit=1)[0]
         parts = path.strip("/").split("/")
+        # Grafana's provisioned `openlaps-local` contact point posts here.
+        #
+        # Deliberately outside the bearer gate, for the same reason /health
+        # is. Authenticating it would mean putting the operator API key into
+        # deploy/pit-config/grafana/provisioning/alerting/endurance.yaml --
+        # a committed file -- or handing the key to the grafana container,
+        # which is given an explicit, minimal environment precisely so it
+        # cannot hold credentials it has no business holding
+        # (deploy/README.md -> Secrets). Neither is worth it for a sink.
+        #
+        # It is safe to leave open because it changes nothing: it parses,
+        # logs a bounded summary and returns a count. The body size, the
+        # content type, the number of alerts logged and the length of each
+        # logged name are all capped, and the raw document is never logged.
+        if path == "/grafana-alerts":
+            if not self._origin_permitted():
+                return
+            decoded = self._read_json_body()
+            if decoded is None:
+                return
+            self._send(200, {"received": _log_grafana_alerts(decoded)})
+            return
         if len(parts) != 2 or parts[0] != "session":
             self._send(404, {"error": "not found"})
             return
@@ -419,37 +482,10 @@ class _SessionHandler(BaseHTTPRequestHandler):
         # no Origin at all (curl, the compose healthcheck) keeps working.
         # do_OPTIONS stays 405: a same-origin UI needs no preflight, and not
         # implementing CORS is the point.
-        origin = self.headers.get("Origin")
-        if origin is not None and not self._same_origin(origin):
-            self._send(403, {"error": "cross-origin request denied"})
+        if not self._origin_permitted():
             return
-        if self.headers.get("Transfer-Encoding"):
-            self._send(400, {"error": "Transfer-Encoding is not supported"})
-            return
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length < 0:
-                raise ValueError("negative Content-Length")
-            if length > _MAX_REQUEST_BODY_BYTES:
-                self.close_connection = True
-                self._send(413, {"error": "request body too large"})
-                return
-            content_type = self.headers.get_content_type()
-            if length and content_type != "application/json":
-                self._send(415, {"error": "Content-Type must be application/json"})
-                return
-            decoded = json.loads(self.rfile.read(length) or b"{}")
-            if not isinstance(decoded, dict):
-                raise TypeError
-        except TimeoutError:
-            self.close_connection = True
-            self._send(408, {"error": "request body timeout"})
-            return
-        except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            message = (
-                "invalid Content-Length" if "Content-Length" in str(exc) else "invalid JSON body"
-            )
-            self._send(400, {"error": message})
+        decoded = self._read_json_body()
+        if decoded is None:
             return
         future = asyncio.run_coroutine_threadsafe(self.controller.act(parts[1], decoded), self.loop)
         try:
@@ -476,6 +512,55 @@ class _SessionHandler(BaseHTTPRequestHandler):
     def _same_origin(self, origin: str) -> bool:
         host = self.headers.get("Host", "").strip()
         return bool(host) and origin.strip().lower() == f"http://{host.lower()}"
+
+    def _origin_permitted(self) -> bool:
+        """Browsers send Origin on every non-GET/HEAD request, same-origin included.
+
+        The operator UI this process serves must be let through, and only it.
+        This server speaks plain HTTP and never terminates TLS, so the one
+        acceptable Origin is exactly ``http://<Host header>``. Anything else
+        is refused, and a request with no Origin at all (curl, the compose
+        healthcheck, Grafana's webhook) keeps working. ``do_OPTIONS`` stays
+        405: a same-origin UI needs no preflight, and not implementing CORS
+        is the point.
+        """
+        origin = self.headers.get("Origin")
+        if origin is not None and not self._same_origin(origin):
+            self._send(403, {"error": "cross-origin request denied"})
+            return False
+        return True
+
+    def _read_json_body(self) -> dict | None:
+        """Return the decoded JSON object, or ``None`` having sent the error."""
+        if self.headers.get("Transfer-Encoding"):
+            self._send(400, {"error": "Transfer-Encoding is not supported"})
+            return None
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 0:
+                raise ValueError("negative Content-Length")
+            if length > _MAX_REQUEST_BODY_BYTES:
+                self.close_connection = True
+                self._send(413, {"error": "request body too large"})
+                return None
+            content_type = self.headers.get_content_type()
+            if length and content_type != "application/json":
+                self._send(415, {"error": "Content-Type must be application/json"})
+                return None
+            decoded = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(decoded, dict):
+                raise TypeError
+        except TimeoutError:
+            self.close_connection = True
+            self._send(408, {"error": "request body timeout"})
+            return None
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            message = (
+                "invalid Content-Length" if "Content-Length" in str(exc) else "invalid JSON body"
+            )
+            self._send(400, {"error": message})
+            return None
+        return decoded
 
     def _send_static(self, filename: str, content_type: str) -> None:
         try:

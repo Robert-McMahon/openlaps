@@ -66,3 +66,15 @@ serial:
 host:
   enabled: true
   interval: 5s
+  # Which of the board's thermal sensors stands behind each host:temp.<alias>
+  # the catalog maps. Like `interface` and `port` above, this is the SBC's,
+  # not the car's: the values here are the Radxa X4's (N100 coretemp, the
+  # NVMe's composite reading, the ACPI board zone), and a target's
+  # hardware.yaml replaces the whole mapping for a different board. Sensor
+  # names are `<chip>.<label>` as the collector emits them in
+  # host:temp.<chip>.<label>; the agent logs the board's actual names when
+  # one here does not exist.
+  temperatures:
+    cpu: coretemp.package_id_0
+    nvme: nvme.composite
+    board: acpitz.0

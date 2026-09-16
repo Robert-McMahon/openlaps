@@ -1,0 +1,39 @@
+# Host wiring for a Radxa X4 (Intel N100). See deploy/targets/README.md.
+#
+# Applied over a vehicle profile as OPENLAPS_HARDWARE, or with
+# `openlaps-agent --hardware`. Transports are addressed by the profile's own
+# `name`, so nothing in the catalog moves when these values do.
+#
+# This file is a no-op against profiles/example-club-racer's `can0`, which is
+# what "the defaults are this board's" means. It is written out in full
+# anyway: a target that states its wiring only by omission cannot be read.
+
+target: radxa-x4
+
+buses:
+  can0:
+    interface: can0
+    bitrate: 1000000
+
+serial:
+  serial0:
+    # GNSS *data*, relayed by the onboard RP2040 over its internal USB CDC
+    # (ADR 0009). Not /dev/ttyS4: that is the N100<->RP2040 UART carrying the
+    # timing head's TH1 lines to tools/timing_head_shim.py, and the two paths
+    # are deliberately separate so timing keeps the UART's latency.
+    #
+    # An external USB-serial cable straight to the receiver is the pre-0009
+    # arrangement and remains the fallback; it enumerates as /dev/ttyUSB0 and
+    # can re-enumerate under the same name mid-session, which is what ADR
+    # 0009 moved away from.
+    port: /dev/ttyACM0
+    baud: 115200
+
+host:
+  # The sensors behind the catalog's three temperature channels. The N100's
+  # package sensor, the NVMe's composite reading (nvme hwmon), and the ACPI
+  # thermal zone, which is the nearest thing this board has to a board temp.
+  temperatures:
+    cpu: coretemp.package_id_0
+    nvme: nvme.composite
+    board: acpitz.0

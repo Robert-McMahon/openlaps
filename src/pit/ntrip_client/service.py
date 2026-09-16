@@ -108,7 +108,9 @@ class NtripService:
 
     def __init__(self, settings: NtripSettings) -> None:
         self.settings = settings
-        self.health = HealthState()
+        self.health = HealthState(
+            caster_host=f"{settings.host}:{settings.port}", mountpoint=settings.mountpoint
+        )
         self._last_lat: float | None = None
         self._last_lon: float | None = None
 

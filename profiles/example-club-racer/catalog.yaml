@@ -223,6 +223,67 @@ channels:
   sys.host.clock_stratum: { from: "host:clock_stratum", type: int }
   sys.host.clock_root_dispersion_s: { from: "host:clock_root_dispersion_s", units: "s" }
 
+  # ---- Host: SBC load, memory, storage and thermals ----
+  # The host collector already emitted every one of these; until 2026-08-29
+  # the catalog mapped only the clock block above, so the rest were dropped
+  # as unmapped source refs (visible as a steady sys.agent.unmapped_refs).
+  # `host.interval` is 5 s (vehicle.yaml), so the whole group below offers
+  # roughly 5 samples/s -- negligible against the GNSS and CAN load, and no
+  # rbe policy is needed to make it affordable.
+  sys.host.cpu_percent:     { from: "host:cpu.percent", units: "%" }
+  sys.host.cpu_freq_mhz:    { from: "host:cpu.freq_mhz", units: "MHz" }
+  # psutil's figure above averages every core, which on a big.LITTLE part is
+  # a clock nothing runs at. These are the fastest and slowest cpufreq policy
+  # right now -- the big and little clusters on the Luckfox, the busiest and
+  # idlest core on the X4 -- and read correctly on either without naming a
+  # cluster. The per-policy refs (host:cpu.freq_mhz.cpu4) are emitted too.
+  sys.host.cpu_freq_max_mhz: { from: "host:cpu.freq_mhz.max", units: "MHz" }
+  sys.host.cpu_freq_min_mhz: { from: "host:cpu.freq_mhz.min", units: "MHz" }
+  # Thermal throttling, as the governor's cooling-device state normalised to
+  # 0 (free) .. 100 (fully clamped). `throttle_percent` is the worst of any
+  # device -- the single "is the SBC being held back" number -- and the
+  # classes say by what. A board with no cooling device of a class simply
+  # never emits that channel (the X4 has no gpu or memory device).
+  sys.host.throttle_percent:        { from: "host:throttle.percent", units: "%" }
+  sys.host.throttle_cpu_percent:    { from: "host:throttle.cpu.percent", units: "%" }
+  sys.host.throttle_gpu_percent:    { from: "host:throttle.gpu.percent", units: "%" }
+  sys.host.throttle_memory_percent: { from: "host:throttle.memory.percent", units: "%" }
+  sys.host.load_1m:         { from: "host:load.avg_1m" }
+  sys.host.load_5m:         { from: "host:load.avg_5m" }
+  sys.host.load_15m:        { from: "host:load.avg_15m" }
+
+  sys.host.mem_percent:         { from: "host:mem.percent", units: "%" }
+  sys.host.mem_used_bytes:      { from: "host:mem.used_bytes", units: "B", type: int }
+  sys.host.mem_available_bytes: { from: "host:mem.available_bytes", units: "B", type: int }
+  sys.host.mem_total_bytes:     { from: "host:mem.total_bytes", units: "B", type: int }
+  sys.host.swap_percent:        { from: "host:swap.percent", units: "%" }
+
+  sys.host.disk_percent:     { from: "host:disk.percent", units: "%" }
+  sys.host.disk_used_bytes:  { from: "host:disk.used_bytes", units: "B", type: int }
+  sys.host.disk_free_bytes:  { from: "host:disk.free_bytes", units: "B", type: int }
+  sys.host.disk_read_bytes:  { from: "host:disk.read_bytes", units: "B", type: int }
+  sys.host.disk_write_bytes: { from: "host:disk.write_bytes", units: "B", type: int }
+
+  # psutil reports Celsius here, unlike the Haltech channels above which are
+  # Kelvin as the DBC delivers them. These map the board-neutral aliases
+  # that vehicle.yaml's `host.temperatures` (or the target's hardware.yaml)
+  # resolves to real sensors, so the channel names hold across boards while
+  # the sensor behind each one is the SBC's business. Per-core temps are
+  # deliberately not mapped -- the package figure is the one that says
+  # whether the SBC is throttling in a hot car.
+  sys.host.temp_cpu_package: { from: "host:temp.cpu", units: "degC" }
+  sys.host.temp_nvme:        { from: "host:temp.nvme", units: "degC" }
+  sys.host.temp_board:       { from: "host:temp.board", units: "degC" }
+
+  # Counters, not rates: the dashboard differentiates them. err/drop are the
+  # ones worth an alert -- they climb when the HaLow link is saturated.
+  sys.host.net_bytes_sent:   { from: "host:net.bytes_sent", units: "B", type: int }
+  sys.host.net_bytes_recv:   { from: "host:net.bytes_recv", units: "B", type: int }
+  sys.host.net_err_in:       { from: "host:net.err_in", type: int }
+  sys.host.net_err_out:      { from: "host:net.err_out", type: int }
+  sys.host.net_drop_in:      { from: "host:net.drop_in", type: int }
+  sys.host.net_drop_out:     { from: "host:net.drop_out", type: int }
+
 apps:
   lap_timing:
     position: position.*

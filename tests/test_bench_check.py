@@ -30,14 +30,21 @@ from agent.agent import agent_derived_channels  # noqa: E402
 from core.catalog import build_runtime_catalog  # noqa: E402
 from core.config import load_profile  # noqa: E402
 
-BENCH_PROFILE = Path(__file__).parents[1] / "profiles" / "example-club-racer-bench"
+# The bench rig is the example profile plus a host-wiring overlay (ADR 0010),
+# not a profile of its own -- so "the bench" and "the car" are the same
+# `catalog.yaml` read twice, which is what makes the equivalence assertions
+# below hold by construction rather than by a copy staying in step.
+BENCH_HARDWARE = Path(__file__).parents[1] / "tools" / "bench-hardware.yaml"
 FIXTURES = Path(__file__).parent / "fixtures" / "candump"
 CANDUMPS = [FIXTURES / "candump-sample.log", FIXTURES / "candump-imu-sample.log"]
 STATS = Path(__file__).parent / "fixtures" / "mqtt_payload_stats.json"
 
 
-def _catalog(tmp_path: Path, profile_dir: Path = BENCH_PROFILE):
-    profile = load_profile(profile_dir)
+def _catalog(
+    tmp_path: Path, profile_dir: Path = EXAMPLE_PROFILE, hardware: Path | None = BENCH_HARDWARE
+):
+    """The bench rig by default -- which is what this tool is for."""
+    profile = load_profile(profile_dir, hardware)
     names = [bus.name for bus in profile.vehicle.buses]
     names += [source.name for source in profile.vehicle.serial]
     if profile.vehicle.host.enabled:
@@ -108,13 +115,17 @@ def test_gps_is_predicted_from_a_sentence_the_real_decoder_accepts(tmp_path: Pat
 def test_host_clock_metrics_contribute_at_the_host_poll_rate(tmp_path: Path):
     profile, catalog = _catalog(tmp_path)
 
-    assert bench_check.predict_host(profile, catalog) == pytest.approx(0.8)
+    # 28 mapped `sys.host.*` channels at the 5 s host poll interval. This was
+    # 0.8/s when only the four clock channels were mapped; 2026-08-29 added
+    # the CPU, load, memory, disk, thermal and network group the host
+    # collector had been emitting all along and the catalog was dropping.
+    assert bench_check.predict_host(profile, catalog) == pytest.approx(5.6)
 
 
-def test_the_bench_profile_and_the_example_profile_predict_the_same_mix(tmp_path: Path):
-    """The whole point of the bench profile, seen from the checking tool."""
-    bench_profile, bench_catalog = _catalog(tmp_path / "bench", BENCH_PROFILE)
-    example_profile, example_catalog = _catalog(tmp_path / "example", EXAMPLE_PROFILE)
+def test_the_bench_rig_and_the_car_predict_the_same_mix(tmp_path: Path):
+    """The whole point of the bench overlay, seen from the checking tool."""
+    bench_profile, bench_catalog = _catalog(tmp_path / "bench", EXAMPLE_PROFILE, BENCH_HARDWARE)
+    example_profile, example_catalog = _catalog(tmp_path / "example", EXAMPLE_PROFILE, None)
 
     bench = bench_check.predict_can(bench_profile, bench_catalog, CANDUMPS)
     example = bench_check.predict_can(example_profile, example_catalog, CANDUMPS)
@@ -290,20 +301,33 @@ def test_a_class_the_model_does_not_cover_is_reported_without_gating():
 def test_predict_mode_needs_no_hardware_and_reports_the_model_gap():
     out = io.StringIO()
 
-    status = bench_check.main(["--predict", "--profile", str(BENCH_PROFILE)], out=out)
+    status = bench_check.main(
+        ["--predict", "--profile", str(EXAMPLE_PROFILE), "--hardware", str(BENCH_HARDWARE)],
+        out=out,
+    )
 
     text = out.getvalue()
     assert status == 0
     assert "vcan0" in text
     assert "Predicted bench mix vs. LINK_BUDGET.md §2 model" in text
-    assert "3015.4" in text and "4262.2" in text
+    # 3015.4 before the sys.host.* catalog additions of 2026-08-29 (+4.8/s).
+    assert "3020.2" in text and "4262.2" in text
 
 
 def test_the_model_gap_can_be_made_fatal_for_those_who_want_it():
     out = io.StringIO()
 
     status = bench_check.main(
-        ["--predict", "--profile", str(BENCH_PROFILE), "--model-tolerance", "0.05"], out=out
+        [
+            "--predict",
+            "--profile",
+            str(EXAMPLE_PROFILE),
+            "--hardware",
+            str(BENCH_HARDWARE),
+            "--model-tolerance",
+            "0.05",
+        ],
+        out=out,
     )
 
     assert status == 1
@@ -312,10 +336,13 @@ def test_the_model_gap_can_be_made_fatal_for_those_who_want_it():
 
 def test_predict_mode_leaves_the_profiles_registry_generation_alone(tmp_path: Path):
     """Running the check must never bump the generation of the run after it."""
-    state = BENCH_PROFILE / ".registry-state.json"
+    state = EXAMPLE_PROFILE / ".registry-state.json"
     before = state.read_bytes() if state.exists() else None
 
-    bench_check.main(["--predict", "--profile", str(BENCH_PROFILE)], out=io.StringIO())
+    bench_check.main(
+        ["--predict", "--profile", str(EXAMPLE_PROFILE), "--hardware", str(BENCH_HARDWARE)],
+        out=io.StringIO(),
+    )
 
     after = state.read_bytes() if state.exists() else None
     assert after == before

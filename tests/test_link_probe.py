@@ -369,6 +369,29 @@ def test_pit_health_parsers_take_the_keys_that_matter():
     assert ntrip["ntrip_bytes_per_s"] == 1240.0
     assert ntrip["ntrip_last_byte_age_s"] == 0.0
 
+    timing = link_probe.parse_timing_health(
+        {
+            "mqtt_connected": True,
+            "channels": {
+                "timing.lap_elapsed_pit": {
+                    "published": 40,
+                    "status": "extrapolating",
+                    "reason": None,
+                },
+                "timing.sector_elapsed_pit": {
+                    "published": 2,
+                    "status": "degraded",
+                    "reason": "runaway",
+                },
+            },
+        }
+    )
+    assert timing["timing_ok"] == 1
+    assert timing["timing_mqtt_connected"] == 1
+    assert timing["timing_publishes"] == 42
+    assert timing["timing_degraded_channels"] == 1
+    assert timing["timing_gate_reason"] == "runaway"
+
     session = link_probe.parse_session_health(load_json("health-session.json"))
     assert session["session_db_connected"] == 1
     assert session["session_db_errors"] == 0
@@ -380,6 +403,12 @@ def test_health_parsers_null_missing_keys():
     assert link_probe.parse_ingest_health({})["ingest_lag_ms"] is None
     assert link_probe.parse_ntrip_health({})["ntrip_last_byte_age_s"] is None
     assert link_probe.parse_session_health({})["session_db_connected"] is None
+    assert link_probe.parse_timing_health({})["timing_gate_reason"] is None
+
+
+def test_timing_extrapolator_health_is_a_default_pit_probe_endpoint():
+    assert link_probe.HEALTH_PORTS["timing"] == 8084
+    assert "timing_ok" in link_probe.SAMPLE_COLUMNS
 
 
 # --- counter arithmetic ------------------------------------------------------

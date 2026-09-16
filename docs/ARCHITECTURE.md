@@ -121,6 +121,7 @@ flowchart LR
   DB --> G2[Grafana SQL dashboards]
   NC[ntrip-client] -- "rtcm.vehicle, core NATS" --> LEAF[leafnode to vehicle]
   S[session-control] -- "cmd.vehicle.session" --> LEAF
+  PM[pit-monitor] -- "chrony, psutil, /health, :8222" --> DB
 ```
 
 - **ingest-writer** is a durable JetStream consumer: decode batch → resolve
@@ -139,6 +140,17 @@ flowchart LR
   RTK correction bytes flow vehicle-ward on core NATS (`rtcm.<vehicle>`),
   deliberately fire-and-forget — a stale correction is a useless correction.
   GNSS credentials never exist on the vehicle.
+- **pit-monitor** polls the pit's own chrony, host resources, ntrip-client
+  `/health` and NATS monitoring port, and writes them to the `pit_metrics`
+  table (`docs/PIT_SCHEMA.md`). It is the one pit service that reads nothing
+  off the wire and publishes nothing: the vehicle's equivalents arrive as
+  ordinary telemetry through the catalog, but the pit has no catalog and no
+  agent, and three of these four sources existed only in an HTTP endpoint
+  that shows *now* with no history behind it. It runs on the host network
+  namespace so `chronyc` reaches chronyd and psutil sees the real machine.
+  NATS is scraped only at the pit's own `:8222` — `/leafz` reports the
+  leafnode's remote, so the pit learns the state of both ends without
+  needing the vehicle reachable for monitoring.
 
 ## Link dropout and recovery
 

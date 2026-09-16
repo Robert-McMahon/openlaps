@@ -1,0 +1,19 @@
+# Starts the car camera's go2rtc container. Not enabled: udev pulls it in
+# (deploy/udev/99-openlaps-camera.rules) each time a USB camera enumerates,
+# which is the one moment `docker start` can succeed for a container whose
+# `--device` was absent at boot. In the ordinary case -- camera present when
+# Docker starts -- the container's own `--restart unless-stopped` has already
+# started it and this is a no-op.
+#
+# For a stack run under compose instead of `docker run`, change ExecStart to
+# the compose equivalent; the trigger is the same.
+
+[Unit]
+Description=openlaps car camera (go2rtc container)
+Documentation=https://github.com/Robert-McMahon/openlaps
+Requires=docker.service
+After=docker.service user@1000.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker start openlaps-vehicle-go2rtc

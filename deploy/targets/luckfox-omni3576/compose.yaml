@@ -1,0 +1,36 @@
+# Compose overlay for the Luckfox Omni3576. Merged on top of the base stack:
+#
+#     docker compose -f deploy/vehicle-compose.yaml \
+#       -f deploy/targets/luckfox-omni3576/compose.yaml --profile video up -d
+#
+# Only go2rtc needs anything the base stack does not already give it, and all
+# of it is device access: compose appends these list entries to the ones
+# vehicle-compose.yaml declares rather than replacing them, so /dev/video0
+# and /dev/dri still come through from there.
+#
+# The agent needs no overlay at all — its serial device is mapped by path
+# from OPENLAPS_SERIAL_DEVICE and its host wiring comes from this
+# directory's hardware.yaml, both driven by OPENLAPS_TARGET in .env.
+
+name: openlaps-vehicle
+
+services:
+  go2rtc:
+    devices:
+      # The Rockchip Media Process Platform: the encoder's kernel interface,
+      # and the one device without which `h264_rkmpp` fails at context init
+      # rather than falling back to anything.
+      - /dev/mpp_service:/dev/mpp_service
+      # The 2D raster engine. Not used by the shipped pipeline, which does
+      # its one format conversion on the CPU, but mapped because the
+      # zero-copy `scale_rkrga` variant the config's comments describe needs
+      # it and discovering that at 2am is worse than one extra device line.
+      - /dev/rga:/dev/rga
+    volumes:
+      # Cabin audio. This image's ffmpeg has no ALSA input, so capture goes
+      # through the user session's PulseAudio/PipeWire socket instead; see
+      # go2rtc.yaml. The container path is fixed and the host path is not,
+      # because the socket lives under the session user's /run/user/<uid>.
+      - ${OPENLAPS_PULSE_SOCKET:-/run/user/1000/pulse/native}:/run/pulse/native
+    environment:
+      PULSE_SERVER: unix:/run/pulse/native

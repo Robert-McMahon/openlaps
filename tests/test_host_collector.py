@@ -186,9 +186,18 @@ def _host_config(interval: str = "5s", *, enabled: bool = True) -> HostConfig:
     return HostConfig(enabled=enabled, interval=interval)
 
 
+# The sysfs-derived groups (per-policy clocks, cooling devices) read the
+# real tree by default; the pinned-name tests are about the psutil-derived
+# names, so they point at a tree that does not exist and get none.
+NO_SYSFS = Path("/nonexistent-sysfs")
+
+
 def _reader(fake: FakePsutil | None = None) -> tuple[HostMetricsReader, FakePsutil]:
     fake = FakePsutil() if fake is None else fake
-    return HostMetricsReader(psutil_module=fake, chrony_runner=lambda: CHRONY_TRACKING), fake
+    reader = HostMetricsReader(
+        psutil_module=fake, chrony_runner=lambda: CHRONY_TRACKING, sysfs_root=NO_SYSFS
+    )
+    return reader, fake
 
 
 def test_chrony_tracking_exposes_clock_health():
@@ -293,6 +302,179 @@ def test_sensor_labels_are_normalized_into_source_refs():
 
     assert readings["host:temp.acpi_zone.package_id_0"] == 40.0
     assert readings["host:temp.acpi_zone.1"] == 41.0
+
+
+def test_temperature_aliases_are_emitted_beside_the_raw_sensors():
+    """`host.temperatures` puts a board-neutral name on a board's sensor."""
+    fake = FakePsutil(
+        temperatures={
+            "soc_thermal": [_Temp(label="", current=48.5)],
+            "nvme": [_Temp(label="Composite", current=39.0)],
+        }
+    )
+    reader = HostMetricsReader(
+        psutil_module=fake,
+        chrony_runner=lambda: CHRONY_TRACKING,
+        temperatures={"cpu": "soc_thermal.0", "nvme": "nvme.composite"},
+    )
+
+    readings = dict(reader.read())
+
+    assert readings["host:temp.cpu"] == 48.5
+    assert readings["host:temp.nvme"] == 39.0
+    # The raw refs are still there for a profile that wants a specific sensor.
+    assert readings["host:temp.soc_thermal.0"] == 48.5
+    assert readings["host:temp.nvme.composite"] == 39.0
+
+
+def test_an_alias_for_a_sensor_the_host_lacks_warns_once_with_the_real_names(
+    caplog: pytest.LogCaptureFixture,
+):
+    """The warning is the fix: it lists what this board actually exposes."""
+    fake = FakePsutil(temperatures={"soc_thermal": [_Temp(label="", current=48.5)]})
+    reader = HostMetricsReader(
+        psutil_module=fake,
+        chrony_runner=lambda: CHRONY_TRACKING,
+        temperatures={"cpu": "soc_thermal.0", "nvme": "nvme.composite"},
+    )
+
+    with caplog.at_level(logging.WARNING):
+        first = dict(reader.read())
+        second = dict(reader.read())
+
+    assert first["host:temp.cpu"] == 48.5
+    assert "host:temp.nvme" not in first
+    assert "host:temp.nvme" not in second
+    warnings = [r for r in caplog.records if "does not expose" in r.getMessage()]
+    assert len(warnings) == 1
+    assert "'nvme.composite'" in warnings[0].getMessage()
+    assert "soc_thermal.0" in warnings[0].getMessage()
+    # A mismatch between profile and board is not a probe failure.
+    assert reader.stats.probe_failures == 0
+
+
+def test_the_collector_hands_the_profile_s_aliases_to_its_reader(monkeypatch):
+    config = HostConfig(enabled=True, interval="5s", temperatures={"cpu": "cpu_thermal.0"})
+    fake = FakePsutil()
+    monkeypatch.setattr("collectors.host.psutil", fake)
+    monkeypatch.setattr("collectors.host._run_chronyc_tracking", lambda: CHRONY_TRACKING)
+    emitted: list[Sample] = []
+
+    HostCollector(config, emitted.append).poll()
+
+    assert {s.source_ref: s.value for s in emitted}["host:temp.cpu"] == 48.5
+
+
+def _fake_sysfs(
+    tmp_path: Path,
+    *,
+    policies: dict[str, tuple[str, int]] | None = None,
+    cooling: list[tuple[str, int, int]] | None = None,
+) -> Path:
+    """A sysfs shaped like the RK3576's: cpufreq policies and cooling devices."""
+    root = tmp_path / "sys"
+    for name, (related, khz) in (policies or {}).items():
+        policy = root / "devices/system/cpu/cpufreq" / name
+        policy.mkdir(parents=True)
+        (policy / "related_cpus").write_text(related + "\n")
+        (policy / "scaling_cur_freq").write_text(f"{khz}\n")
+    for index, (kind, current, maximum) in enumerate(cooling or []):
+        device = root / "class/thermal" / f"cooling_device{index}"
+        device.mkdir(parents=True)
+        (device / "type").write_text(kind + "\n")
+        (device / "cur_state").write_text(f"{current}\n")
+        (device / "max_state").write_text(f"{maximum}\n")
+    return root
+
+
+def _sysfs_reader(root: Path) -> HostMetricsReader:
+    return HostMetricsReader(
+        psutil_module=FakePsutil(), chrony_runner=lambda: CHRONY_TRACKING, sysfs_root=root
+    )
+
+
+def test_each_cpufreq_policy_is_a_clock_and_the_spread_is_board_neutral(tmp_path: Path):
+    """big.LITTLE: two policies, named by first CPU, plus max/min across them."""
+    root = _fake_sysfs(
+        tmp_path, policies={"policy0": ("0 1 2 3", 1_008_000), "policy4": ("4 5 6 7", 2_208_000)}
+    )
+
+    readings = dict(_sysfs_reader(root).read())
+
+    assert readings["host:cpu.freq_mhz.cpu0"] == 1008.0
+    assert readings["host:cpu.freq_mhz.cpu4"] == 2208.0
+    assert readings["host:cpu.freq_mhz.max"] == 2208.0
+    assert readings["host:cpu.freq_mhz.min"] == 1008.0
+    # psutil's average is still there, unchanged, for the existing channel.
+    assert readings["host:cpu.freq_mhz"] == 1500.0
+
+
+def test_a_policy_with_no_readable_clock_is_skipped_not_fatal(tmp_path: Path):
+    root = _fake_sysfs(tmp_path, policies={"policy0": ("0", 800_000)})
+    broken = root / "devices/system/cpu/cpufreq/policy4"
+    broken.mkdir()
+    (broken / "related_cpus").write_text("4\n")  # no scaling_cur_freq
+
+    reader = _sysfs_reader(root)
+    readings = dict(reader.read())
+
+    assert readings["host:cpu.freq_mhz.cpu0"] == 800.0
+    assert "host:cpu.freq_mhz.cpu4" not in readings
+    assert readings["host:cpu.freq_mhz.max"] == 800.0
+    assert reader.stats.probe_failures == 0
+
+
+def test_throttling_is_normalised_per_device_per_class_and_overall(tmp_path: Path):
+    """The RK3576's five cooling devices, with the big cluster and GPU held back."""
+    root = _fake_sysfs(
+        tmp_path,
+        cooling=[
+            ("cpufreq-cpu0", 0, 8),
+            ("cpufreq-cpu4", 3, 9),
+            ("devfreq-27800000.gpu", 3, 6),
+            ("devfreq-dmc", 0, 3),
+            ("devfreq-27700000.npu", 0, 7),
+        ],
+    )
+
+    readings = dict(_sysfs_reader(root).read())
+
+    assert readings["host:throttle.cpufreq_cpu4.percent"] == pytest.approx(100 * 3 / 9)
+    assert readings["host:throttle.devfreq_27800000_gpu.percent"] == 50.0
+    assert readings["host:throttle.cpu.percent"] == pytest.approx(100 * 3 / 9)
+    assert readings["host:throttle.gpu.percent"] == 50.0
+    assert readings["host:throttle.memory.percent"] == 0.0
+    assert readings["host:throttle.npu.percent"] == 0.0
+    assert readings["host:throttle.percent"] == 50.0
+
+
+def test_x86_cooling_devices_land_in_the_cpu_class(tmp_path: Path):
+    root = _fake_sysfs(tmp_path, cooling=[("Processor", 1, 4), ("intel_powerclamp", 0, 50)])
+
+    readings = dict(_sysfs_reader(root).read())
+
+    assert readings["host:throttle.cpu.percent"] == 25.0
+    assert readings["host:throttle.percent"] == 25.0
+    assert "host:throttle.gpu.percent" not in readings
+
+
+def test_a_cooling_device_with_no_range_is_ignored(tmp_path: Path):
+    """max_state 0 would divide by zero; it also means the device cannot throttle."""
+    root = _fake_sysfs(tmp_path, cooling=[("cpufreq-cpu0", 0, 0)])
+
+    readings = dict(_sysfs_reader(root).read())
+
+    assert not [ref for ref in readings if ref.startswith("host:throttle.")]
+
+
+def test_a_host_without_cpufreq_or_thermal_sysfs_emits_neither(tmp_path: Path):
+    reader = _sysfs_reader(tmp_path / "empty")
+
+    readings = dict(reader.read())
+
+    assert not [ref for ref in readings if ref.startswith("host:throttle.")]
+    assert "host:cpu.freq_mhz.max" not in readings
+    assert reader.stats.probe_failures == 0
 
 
 def test_poll_stamps_every_sample_from_one_snapshot():

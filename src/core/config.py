@@ -131,8 +131,14 @@ class TimingOutputConfig(StrictModel):
     baud: Literal[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600] = 115200
 
 
-class DriverSettings(StrictModel):
-    """Supported UM980 startup settings."""
+class Um980Settings(StrictModel):
+    """Startup settings for the Unicore UM980, and only for it.
+
+    `pps` and `timing_output` are this receiver's command surface, not a
+    general one: they exist because `CONFIG PPS` and a spare `COMn` are how a
+    UM980 is told to produce a timing signal. A different receiver brings a
+    different model rather than growing optional fields on a shared one.
+    """
 
     rate_hz: Annotated[int, Field(gt=0)]
     sentences: list[_NON_EMPTY] = Field(min_length=1)
@@ -141,11 +147,25 @@ class DriverSettings(StrictModel):
     timing_output: TimingOutputConfig | None = None
 
 
-class DriverConfig(StrictModel):
-    """Optional device-specific serial driver."""
+class Um980DriverConfig(StrictModel):
+    """The `um980` driver and the settings it accepts."""
 
-    name: _NON_EMPTY
-    config: DriverSettings
+    name: Literal["um980"]
+    config: Um980Settings
+
+
+# One receiver is supported today, so this is an alias rather than a union.
+# A second one adds its settings model and config class beside UM980's and
+# makes this a discriminated union:
+#
+#     DriverConfig = Annotated[
+#         Um980DriverConfig | F9pDriverConfig, Field(discriminator="name")
+#     ]
+#
+# `name` is a Literal rather than a free string so an unknown driver fails at
+# profile load, naming the field, instead of at the first port open inside a
+# collector thread that then has to retry it forever.
+DriverConfig = Um980DriverConfig
 
 
 class SerialConfig(StrictModel):
@@ -164,16 +184,45 @@ class SerialConfig(StrictModel):
     raw_log: bool = False
 
 
+_TEMPERATURE_ALIAS_RE = re.compile(r"[a-z0-9_]+")
+_TEMPERATURE_SENSOR_RE = re.compile(r"[a-z0-9_]+\.[a-z0-9_]+")
+
+
 class HostConfig(StrictModel):
-    """Host metrics collector settings."""
+    """Host metrics collector settings.
+
+    `temperatures` names the board's sensors behind stable aliases: each
+    ``<alias>: <chip>.<label>`` entry makes the collector emit
+    ``host:temp.<alias>`` carrying the reading of ``host:temp.<chip>.<label>``,
+    which is how psutil names it after ``collectors.host`` normalizes it.
+    A catalog maps the alias (``host:temp.cpu``), so the channel is the same
+    on every board and only this mapping -- a property of the SBC, overlaid
+    per target by ``hardware.yaml`` (ADR 0010) -- says where it comes from.
+    The raw ``host:temp.<chip>.<label>`` refs are still emitted alongside.
+    """
 
     enabled: bool
     interval: str
+    temperatures: dict[str, str] = Field(default_factory=dict)
     interval_ns: int = Field(init=False, exclude=True, default=0)
 
     @model_validator(mode="after")
     def parse_interval(self) -> HostConfig:
         object.__setattr__(self, "interval_ns", parse_duration_ns(self.interval))
+        return self
+
+    @model_validator(mode="after")
+    def temperature_aliases_are_well_formed(self) -> HostConfig:
+        for alias, sensor in self.temperatures.items():
+            if not _TEMPERATURE_ALIAS_RE.fullmatch(alias):
+                raise ValueError(
+                    f"temperature alias {alias!r} must be lowercase letters, digits and '_'"
+                )
+            if not _TEMPERATURE_SENSOR_RE.fullmatch(sensor):
+                raise ValueError(
+                    f"temperature sensor {sensor!r} for {alias!r} must be '<chip>.<label>', "
+                    "as the collector names it in host:temp.<chip>.<label>"
+                )
         return self
 
 
@@ -296,12 +345,19 @@ class CatalogConfig(StrictModel):
 
 
 class ProfileConfig(StrictModel):
-    """The two validated files that define one vehicle profile."""
+    """The two validated files that define one vehicle profile.
+
+    `hardware_target` names the host-wiring overlay that was applied on top
+    of them, or is None when the profile was loaded as written. It is the
+    overlay's name rather than its parsed contents so this module stays free
+    of an import back from `core.hardware`, which builds on these models.
+    """
 
     path: Path
     vehicle: VehicleConfig
     catalog: CatalogConfig
     catalog_hash: str
+    hardware_target: str | None = None
 
 
 def parse_duration_ns(value: str) -> int:
@@ -317,12 +373,26 @@ def parse_duration_ns(value: str) -> int:
     return round(duration)
 
 
-def load_profile(profile_dir: str | Path) -> ProfileConfig:
-    """Load and cross-validate ``vehicle.yaml`` and ``catalog.yaml``."""
+def load_profile(profile_dir: str | Path, hardware: str | Path | None = None) -> ProfileConfig:
+    """Load and cross-validate ``vehicle.yaml`` and ``catalog.yaml``.
+
+    `hardware`, when given, is a target's host-wiring overlay
+    (``core.hardware``): it substitutes socketCAN interface names and serial
+    device paths into the loaded profile before anything else looks at them,
+    so one profile serves every board the car has ever been bolted to.
+    """
     root = Path(profile_dir).resolve()
     vehicle_path = root / "vehicle.yaml"
     catalog_path = root / "catalog.yaml"
-    vehicle = _load_model(vehicle_path, VehicleConfig)
+    vehicle = load_yaml_model(vehicle_path, VehicleConfig)
+    overlay = None
+    if hardware is not None:
+        # Imported here rather than at module scope: `core.hardware` builds on
+        # this module's models, so a top-level import would be circular.
+        from core.hardware import apply_hardware, load_hardware
+
+        overlay = load_hardware(hardware)
+        vehicle = apply_hardware(vehicle, overlay, path=hardware)
     catalog_bytes = _read_bytes(catalog_path)
     try:
         catalog_text = catalog_bytes.decode("utf-8")
@@ -336,10 +406,12 @@ def load_profile(profile_dir: str | Path) -> ProfileConfig:
         vehicle=vehicle,
         catalog=catalog,
         catalog_hash=hashlib.sha256(catalog_bytes).hexdigest(),
+        hardware_target=overlay.target if overlay is not None else None,
     )
 
 
-def _load_model(path: Path, model: type[ModelT]) -> ModelT:  # noqa: UP047
+def load_yaml_model(path: Path, model: type[ModelT]) -> ModelT:  # noqa: UP047
+    """Read one YAML file into `model`, reporting failures against `path`."""
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
@@ -347,6 +419,13 @@ def _load_model(path: Path, model: type[ModelT]) -> ModelT:  # noqa: UP047
     except OSError as exc:
         raise ConfigError(f"{path}: unable to read file: {exc.strerror or exc}") from exc
     return _load_model_text(path, model, text)
+
+
+def format_validation_error(exc: ValidationError) -> str:
+    """Render the first error as ``<dotted key>: <message>``."""
+    error = exc.errors(include_url=False)[0]
+    key = ".".join(str(part) for part in error["loc"]) or "<root>"
+    return f"{key}: {error['msg']}"
 
 
 def _read_bytes(path: Path) -> bytes:
@@ -365,9 +444,7 @@ def _load_model_text(path: Path, model: type[ModelT], text: str) -> ModelT:  # n
     try:
         return model.model_validate(data)
     except ValidationError as exc:
-        error = exc.errors(include_url=False)[0]
-        key = ".".join(str(part) for part in error["loc"]) or "<root>"
-        raise ConfigError(f"{path}: {key}: {error['msg']}") from exc
+        raise ConfigError(f"{path}: {format_validation_error(exc)}") from exc
 
 
 def _validate_dbc_paths(vehicle: VehicleConfig, root: Path, path: Path) -> None:

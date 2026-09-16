@@ -29,7 +29,7 @@ Sources, per role:
   Falls back to ``/proc/net/dev`` for the interface when no counter is found,
   and records which source it used --- a run must never be silently less
   precise than it looks.
-* **Pit service health** (``--role pit``) --- the four ``/health`` endpoints
+* **Pit service health** (``--role pit``) --- the five ``/health`` endpoints
   ``deploy/README.md`` publishes, reduced to the keys that matter.
 * **Radio**, via a pluggable adapter against the **local** router only. The
   HaLowLink units are OpenWrt boxes; the default adapter shells out to the
@@ -97,7 +97,13 @@ DEFAULT_CONSUMER = "ingest-writer"
 
 DEFAULT_MONITOR = "http://127.0.0.1:8222"
 DEFAULT_HEALTH_HOST = "http://127.0.0.1"
-HEALTH_PORTS = {"session": 8080, "ingest": 8081, "live": 8082, "ntrip": 8083}
+HEALTH_PORTS = {
+    "session": 8080,
+    "ingest": 8081,
+    "live": 8082,
+    "ntrip": 8083,
+    "timing": 8084,
+}
 
 DEFAULT_NFT_COUNTER_OUT = "openlaps_leaf_out"
 DEFAULT_NFT_COUNTER_IN = "openlaps_leaf_in"
@@ -179,6 +185,11 @@ SAMPLE_COLUMNS: tuple[str, ...] = (
     "ntrip_bytes_per_s",
     "ntrip_reconnects",
     "ntrip_last_byte_age_s",
+    "timing_ok",
+    "timing_mqtt_connected",
+    "timing_publishes",
+    "timing_degraded_channels",
+    "timing_gate_reason",
     # Radio, local router only.
     "radio_ok",
     "radio_source",
@@ -565,6 +576,22 @@ def parse_ntrip_health(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def parse_timing_health(payload: dict[str, Any]) -> dict[str, Any]:
+    """The pit timing extrapolator's gate/degradation state."""
+    channels = payload.get("channels") or {}
+    channel_states = [state for state in channels.values() if isinstance(state, dict)]
+    reasons = sorted({str(state["reason"]) for state in channel_states if state.get("reason")})
+    return {
+        "timing_ok": 1,
+        "timing_mqtt_connected": _as_int(payload.get("mqtt_connected")),
+        "timing_publishes": sum(int(state.get("published") or 0) for state in channel_states),
+        "timing_degraded_channels": sum(
+            state.get("status") in {"gated", "degraded"} for state in channel_states
+        ),
+        "timing_gate_reason": ",".join(reasons) or None,
+    }
+
+
 def parse_session_health(payload: dict[str, Any]) -> dict[str, Any]:
     """session-control's ``/health`` (src/pit/session_control/service.py)."""
     database = payload.get("database") or {}
@@ -768,6 +795,7 @@ class Sampler:
             "ingest": parse_ingest_health,
             "live": parse_live_health,
             "ntrip": parse_ntrip_health,
+            "timing": parse_timing_health,
         }
         for name, parser in parsers.items():
             port = self.health_ports.get(name)

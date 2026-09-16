@@ -1,0 +1,368 @@
+{
+  "uid": "fuel",
+  "title": "Fuel and stint strategy",
+  "description": "Fuel and stint strategy \u2014 provisioned openlaps endurance operations dashboard.",
+  "editable": false,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "tags": [
+    "openlaps",
+    "endurance"
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "vehicle",
+        "label": "Vehicle",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
+        "query": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": false,
+        "sort": 1,
+        "current": {
+          "text": "example-club-racer",
+          "value": "example-club-racer"
+        }
+      },
+      {
+        "name": "session",
+        "label": "Session",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "driver",
+        "label": "Driver",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "stint",
+        "label": "Stint",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "lap",
+        "label": "Lap",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Fuel used per lap and rolling five-lap mean",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "litre",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT crossed_at AS time, fuel_used_l AS \"Fuel used per lap\", avg(fuel_used_l) OVER (ORDER BY crossed_at ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) AS \"Rolling five-lap mean\" FROM v_lap_fuel WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND measurement_status = 'clean' ORDER BY crossed_at"
+        }
+      ],
+      "description": "Counter-reset laps are gaps, never negative spikes; uncertainty is visible through the rolling sample count."
+    },
+    {
+      "id": 2,
+      "title": "Fuel level cross-check and counter divergence",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "litre",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT started AS time, level_start_l AS \"Fuel level start cross-check\", level_end_l AS \"Fuel level end cross-check\", level_used_l - COALESCE((SELECT sum(fuel_used_l) FROM v_lap_fuel lf WHERE lf.vehicle_id = sf.vehicle_id AND lf.session_id = sf.session_id AND lf.stint_number = sf.stint_number AND lf.measurement_status = 'clean'), 0.0) AS \"Level vs counter divergence\" FROM v_stint_fuel_level sf WHERE vehicle_id = '$vehicle' AND $__timeFilter(started) AND ('$session' = 'all' OR session_id::text = '$session') ORDER BY started"
+        }
+      ],
+      "description": "The slow-smoothed level sender is a cross-check. It re-bases only after a refuel; fuel temperature correction is not included."
+    },
+    {
+      "id": 3,
+      "title": "Laps and dry-time projection",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT crossed_at AS time, CASE WHEN fuel_used_l > 0 THEN (SELECT level_end_l FROM v_stint_fuel_level sf WHERE sf.session_id = lf.session_id AND sf.stint_number = lf.stint_number) / fuel_used_l END AS \"Laps remaining\", CASE WHEN fuel_used_l > 0 THEN (SELECT level_end_l FROM v_stint_fuel_level sf WHERE sf.session_id = lf.session_id AND sf.stint_number = lf.stint_number) / fuel_used_l * lap_time_s END AS \"Projected dry time\", lap_time_s AS \"Target lap time to window\" FROM v_lap_fuel lf WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND measurement_status = 'clean' ORDER BY crossed_at"
+        }
+      ],
+      "description": "Projected dry time, stint clock, and planned window belong on one time axis; fewer clean laps means lower confidence."
+    },
+    {
+      "id": 4,
+      "title": "Refuelling legal release clock",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT entry_at AS time, duration_s AS \"Refuel elapsed\", greatest(480.0 - duration_s, 0.0) AS \"Time to 8-minute minimum\", extract(epoch FROM entry_at + interval '8 minutes') AS \"Legal release wall time\" FROM v_pit_stops WHERE vehicle_id = '$vehicle' AND stop_type = 'refuel' AND $__timeFilter(entry_at) ORDER BY entry_at"
+        }
+      ],
+      "description": "Refuelling has an 8-minute legal minimum. Elapsed, remaining, and release wall time are deliberately distinct."
+    },
+    {
+      "id": 5,
+      "title": "Strategy interpretation",
+      "type": "text",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Counter reset laps are omitted, not treated as zero burn. `car.fuel_level` is the **cross-check** except at a post-refuel re-base. Compare the fuel window, stint clock, driving-time rules, and in/out-lap cost before radioing a target."
+      },
+      "targets": []
+    }
+  ]
+}

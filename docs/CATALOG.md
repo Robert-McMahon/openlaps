@@ -52,7 +52,55 @@ serial:
 host:
   enabled: <bool>              # collect host/system metrics (cpu, mem, disk, net) as sys.* channels
   interval: <duration>         # polling interval, e.g. "5s"
+  temperatures:                # optional: board-neutral aliases for thermal sensors
+    <alias>: <chip>.<label>    #   emits host:temp.<alias> from host:temp.<chip>.<label>
 ```
+
+### `interface`, `port` and `host.temperatures` belong to the board, not the car
+
+Three things above describe the SBC rather than the vehicle: `interface` is a
+socketCAN device name, `port` is a path under `/dev`, and `host.temperatures`
+names the thermal sensors the kernel happens to expose. Move the same car to
+a different SBC and every DBC, channel and policy is unchanged while those
+are not.
+
+They are still written here, because a profile has to be complete on its own.
+But they can be overlaid per board without touching this file, by a
+`hardware.yaml` under `deploy/targets/` selected with `OPENLAPS_HARDWARE`
+(ADR 0010):
+
+```yaml
+target: luckfox-omni3576
+buses:
+  can0: { interface: can0, bitrate: 1000000 }
+serial:
+  serial0: { port: /dev/ttyS4, baud: 115200 }
+host:
+  temperatures: { cpu: soc_thermal.0 }
+```
+
+The catalog maps temperatures through the aliases (`from: "host:temp.cpu"`),
+never through a sensor name, so a channel like `sys.host.temp_cpu_package`
+is the same channel on every board. The raw `host:temp.<chip>.<label>` refs
+are emitted too, for a profile that wants a specific sensor and accepts that
+it is tied to one board. When an alias names a sensor the host does not
+have, the agent logs the board's actual sensor names once and emits nothing
+for that alias.
+
+The overlay addresses transports by the `name` above -- the same identifier
+catalog `from:` refs resolve against -- and fails at load if it names a
+transport this file does not define. Besides `interface`, `bitrate`, `port`
+and `baud` it may set two things that are about the host rather than the car:
+
+- `buses.<name>.link` (`fd`, `dbitrate`) -- arguments `tools/can_up.py` hands
+  to `ip link`, for a controller that will not come up without them.
+- `serial.<name>.driver.configure_on_start` -- "is a real receiver on the
+  other end of this port?". `tools/bench-hardware.yaml` sets it false because
+  the bench rig's `serial0` is a pty. Nothing else in a driver block is
+  overridable: `rate_hz`, `sentences`, `pps` and `timing_output` describe the
+  receiver the car carries and belong here.
+
+`deploy/targets/README.md` is the operator document.
 
 Buses and serial sources are generic transports: they decode to
 *source-native* signals (`MESSAGE.SIGNAL` for CAN, `SENTENCE.field` for

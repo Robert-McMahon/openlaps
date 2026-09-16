@@ -423,7 +423,7 @@ def test_vcan_roundtrip_emits_samples(tmp_path: Path):
 
     CI has no vcan and will keep skipping this, which is fine: its value is
     on the Phase 4 bench host, where `vcan0` is exactly the interface
-    `profiles/example-club-racer-bench` opens and where a permissions or
+    the bench rig opens (`tools/bench-hardware.yaml`) and where a permissions or
     kernel-module problem would otherwise show up as a bandwidth run that
     quietly measured no CAN at all. Create the interface with
     `sudo modprobe vcan && sudo ip link add dev vcan0 type vcan &&

@@ -5,19 +5,44 @@ from __future__ import annotations
 
 import argparse
 import logging
-import socket
-import struct
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import serial
 
-SOCK_MAGIC = 0x534F434B
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# The chrony wire format is shared with pps_gpio_shim.py, which feeds the same
+# socket from a GPIO instead of from an RP2040. Re-exported here so this
+# module's public surface -- and the install that copies it to
+# /usr/local/libexec/openlaps -- is unchanged; install chrony_sock.py beside
+# it (deploy/README.md).
+from chrony_sock import (  # noqa: E402
+    SOCK_MAGIC,
+    SOCK_SAMPLE,
+    ChronySocket,
+    pack_sock_sample,
+)
+
 MAX_FIRMWARE_DELAY_US = 900_000
 UINT32_MASK = (1 << 32) - 1
-SOCK_SAMPLE = struct.Struct("@lldiiii")
 logger = logging.getLogger("timing-head-shim")
+
+__all__ = [
+    "SOCK_MAGIC",
+    "SOCK_SAMPLE",
+    "ChronySocket",
+    "ShimStats",
+    "TimingHeadShim",
+    "TimingMessage",
+    "main",
+    "pack_sock_sample",
+    "parse_message",
+    "run",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,16 +84,6 @@ def _is_newer_sequence(sequence: int, previous: int) -> bool:
     return 0 < difference < (1 << 31)
 
 
-def pack_sock_sample(utc_second: int, estimated_edge_realtime_ns: int) -> bytes:
-    """Build chrony's native ``struct sock_sample`` as a full time sample."""
-    tv_sec, remainder_ns = divmod(estimated_edge_realtime_ns, 1_000_000_000)
-    tv_usec = remainder_ns // 1000
-    # Subtract as integers before converting: epoch-scale floats otherwise
-    # lose enough precision to add ~0.1 us of avoidable noise.
-    offset_s = (utc_second * 1_000_000_000 - estimated_edge_realtime_ns) / 1_000_000_000.0
-    return SOCK_SAMPLE.pack(tv_sec, tv_usec, offset_s, 0, 0, 0, SOCK_MAGIC)
-
-
 class TimingHeadShim:
     """Validate timing-head lines and send only trustworthy chrony samples."""
 
@@ -102,20 +117,6 @@ class TimingHeadShim:
         self._last_sequence = message.sequence
         self.stats.accepted += 1
         return True
-
-
-class ChronySocket:
-    """Unix datagram sender for a socket owned by chronyd."""
-
-    def __init__(self, path: str) -> None:
-        self.path = path
-        self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-
-    def send(self, sample: bytes) -> None:
-        self._socket.sendto(sample, self.path)
-
-    def close(self) -> None:
-        self._socket.close()
 
 
 def run(device: str, baud: int, chrony_socket: str, *, reconnect_s: float = 1.0) -> None:

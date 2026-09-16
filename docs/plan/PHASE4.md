@@ -279,7 +279,10 @@ interfaces.
 
 **Deliverables:**
 
-- **A bench profile**, `profiles/example-club-racer-bench/`. Its
+- **A bench profile**, `profiles/example-club-racer-bench/`. *(Superseded
+  2026-09-09: this became `tools/bench-hardware.yaml`, an overlay on the
+  example profile, when ADR 0010 landed. The plan below records what was
+  built at the time; the mechanism moved, the reasoning did not.)* Its
   `catalog.yaml`, `dbcs/` and `tracks/` are the example profile's,
   unchanged — the bench must measure the real channel mix or it measures
   nothing. Only `vehicle.yaml` differs:

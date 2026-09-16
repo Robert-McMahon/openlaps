@@ -33,6 +33,10 @@ CONTEXT_CHANNELS = {
     "sys.agent.publish_drops",
     "sys.agent.rbe_suppressed",
 }
+HANDLING_CHANNELS = {
+    "car.accel_x",
+    "car.accel_y",
+}
 TRACE_CHANNELS = LIVE_CHANNELS | {"car.knock_level1", "car.fuel_level"}
 
 
@@ -44,13 +48,14 @@ def _data_panels(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
     return [panel for panel in dashboard["panels"] if panel["type"] != "row"]
 
 
-def test_car_dashboard_has_three_rows_and_operator_link() -> None:
+def test_car_dashboard_has_four_rows_and_operator_link() -> None:
     dashboard = _dashboard()
 
     assert dashboard["uid"] == "car"
     assert [panel["title"] for panel in dashboard["panels"] if panel["type"] == "row"] == [
         "Live",
         "Context",
+        "Handling",
         "Traces",
     ]
     assert any(
@@ -65,7 +70,8 @@ def test_live_and_context_panels_cover_the_required_mqtt_channels() -> None:
     assert all(panel["title"].strip() for panel in mqtt_panels)
     topics = {target["topic"] for panel in mqtt_panels for target in panel["targets"]}
     expected_topics = {
-        f"openlaps/$vehicle/{channel}" for channel in LIVE_CHANNELS | CONTEXT_CHANNELS
+        f"openlaps/$vehicle/{channel}"
+        for channel in LIVE_CHANNELS | CONTEXT_CHANNELS | HANDLING_CHANNELS
     }
     assert topics == expected_topics
 
@@ -99,9 +105,17 @@ def test_trace_panels_use_both_named_views_and_honour_the_time_picker() -> None:
 def test_dashboard_variables_come_from_the_stable_relational_read_surface() -> None:
     variables = {item["name"]: item for item in _dashboard()["templating"]["list"]}
 
-    assert set(variables) == {"vehicle", "session", "trace_source"}
+    assert set(variables) == {"vehicle", "session", "driver", "stint", "lap", "trace_source"}
     assert "v_samples_named" in variables["vehicle"]["query"]
     assert "v_laps" in variables["session"]["query"]
+    assert "v_laps" in variables["driver"]["query"]
+    assert "driver AS __value" in variables["driver"]["query"]
+    assert "FROM v_laps" in variables["stint"]["query"]
+    assert "$session" in variables["stint"]["query"]
+    assert "lap_id" in variables["lap"]["query"]
+    assert "lap_number" in variables["lap"]["query"]
+    assert "COALESCE(driver" in variables["lap"]["query"]
+    assert "$session" in variables["lap"]["query"]
     assert variables["trace_source"]["type"] == "custom"
     assert set(variables["trace_source"]["options"][index]["value"] for index in (0, 1)) == {
         "v_samples_1s_named",
@@ -109,7 +123,16 @@ def test_dashboard_variables_come_from_the_stable_relational_read_surface() -> N
     }
 
 
-def test_temperature_panels_declare_kelvin_and_dashboard_has_no_credentials() -> None:
+def _has_kelvin_to_celsius_conversion(panel: dict[str, Any]) -> bool:
+    return any(
+        transformation["id"] == "calculateField"
+        and transformation["options"]["binary"]["operator"] == "-"
+        and transformation["options"]["binary"]["right"]["fixed"] == "273.1"
+        for transformation in panel.get("transformations", [])
+    )
+
+
+def test_temperature_panels_declare_units_and_dashboard_has_no_credentials() -> None:
     dashboard = _dashboard()
     panels = _data_panels(dashboard)
     temperature_panels = [
@@ -117,7 +140,16 @@ def test_temperature_panels_declare_kelvin_and_dashboard_has_no_credentials() ->
     ]
 
     assert len(temperature_panels) == 4  # live and trace versions of each
-    assert all(panel["fieldConfig"]["defaults"]["unit"] == "kelvin" for panel in temperature_panels)
+    for panel in temperature_panels:
+        unit = panel["fieldConfig"]["defaults"]["unit"]
+        if panel["datasource"]["uid"] == "mqtt-live":
+            # Live gauges convert the Haltech Kelvin feed to Celsius in-panel.
+            assert unit == "celsius"
+            assert _has_kelvin_to_celsius_conversion(panel)
+        else:
+            # Trace panels plot the stored samples as-is, which are Kelvin.
+            assert unit == "kelvin"
+            assert not _has_kelvin_to_celsius_conversion(panel)
 
     serialized = json.dumps(dashboard).lower()
     assert not any(term in serialized for term in ("password", "api_key", "bearer "))

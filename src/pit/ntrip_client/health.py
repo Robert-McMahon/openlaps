@@ -22,7 +22,15 @@ logger = logging.getLogger(__name__)
 class HealthState:
     """Counters the service updates and the health endpoint reports."""
 
-    def __init__(self) -> None:
+    def __init__(self, caster_host: str = "", mountpoint: str = "") -> None:
+        # Which caster and mountpoint, reported so the pit dashboard can show
+        # what this client is *pointed at* and not only whether it is up: a
+        # correction stream that is healthy against the wrong mountpoint looks
+        # identical from every other number here. Neither is a secret -- the
+        # password is the thing this endpoint must never report, and it is not
+        # held on this object at all.
+        self.caster_host = caster_host
+        self.mountpoint = mountpoint
         self.connected = False
         self.bytes_from_caster = 0
         self.publishes = 0
@@ -70,6 +78,8 @@ class HealthState:
         """Everything `/health` reports, and what the 1 Hz log line summarises."""
         return {
             "uptime_s": round(time.monotonic() - self._started, 1),
+            "caster_host": self.caster_host,
+            "mountpoint": self.mountpoint,
             "connected": self.connected,
             "bytes_from_caster": self.bytes_from_caster,
             "bytes_per_s": round(self.bytes_per_s, 1),

@@ -1,0 +1,71 @@
+# The in-car camera on a Radxa X4 (Intel N100), served by go2rtc.
+#
+# One of several per-board pipelines; see deploy/targets/README.md for why
+# this file cannot be shared between targets, and the README beside it for
+# what this board is wired to.
+#
+# Ported from the predecessor stack's config (logger repo,
+# config/go2rtc/go2rtc.yaml) with the stream renamed `linux_usbcam` -> `car`.
+# The pipelines themselves are unchanged: they were tuned on this hardware
+# and the bitrates are what docs/LINK_BUDGET.md §5 budgets against — ~800k
+# video + 64k audio sits inside the ~1.4 Mbit/s the link budget reserves for
+# video at 2 MHz MCS4, with margin for the encoder overshooting `maxrate`.
+#
+# The listeners are stated explicitly rather than left to go2rtc's defaults
+# so that deploy/nft/bench-*.nft can count the same three ports this file
+# names. Change one, change both.
+api:
+    listen: ":1984" # HTTP API, stream.html player, MSE over websocket
+
+rtsp:
+    listen: ":8554" # inter-process handoff (the audio exec publishes here)
+
+webrtc:
+    listen: ":8555" # WebRTC media, TCP and UDP
+
+streams:
+    # `car` is what the pit dashboard embeds (src=car). H.265 on the N100's
+    # iGPU via VAAPI: measured on real camera footage, 500k HEVC matches
+    # 800k H.264 (SSIM 0.9804 vs 0.9800) — a ~40% cut in the link budget's
+    # video share for free, since the encode is hardware either way.
+    #
+    # The explicit exec producer, rather than go2rtc's h265/vaapi template,
+    # is load-bearing: the template omits the scale_vaapi NV12 conversion
+    # the encoder needs for the camera's 4:2:2 MJPEG. CPU encode is not an
+    # option on an SBC that is also running the agent.
+    #
+    # Playback caveats, both learned the hard way on the bench:
+    #   - Browsers will not take H.265 over WebRTC, and a default-mode
+    #     player "succeeds" with an audio-only WebRTC session — black frame,
+    #     engine noise. The dashboard therefore pins `mode=mse` in its URL.
+    #   - HEVC over MSE needs hardware HEVC decode on the *viewing* machine.
+    #     Every Intel pit box has it; a borrowed laptop that doesn't gets
+    #     `car_h264` below.
+    # Do not consume both streams at once — one process holds /dev/video0,
+    # and the loser's viewer sits on "loading" forever with no error.
+    #
+    # **Video and audio are one ffmpeg process, not two producers**, and that
+    # is a hardware constraint rather than a preference. The camera only
+    # delivers audio while its video stream is running: captured on its own
+    # the mic gives `Input/output error`, or — worse — opens and then blocks
+    # forever with no samples. A blocked ffmpeg never exits, so go2rtc cannot
+    # restart it, and it holds the ALSA device until someone kills it by
+    # hand; every player then waits on an audio track that never arrives and
+    # retries, which looks like a browser tab hanging and flashing. Two
+    # independent producers left the ordering to chance. One process with
+    # `-i /dev/video0 -i plughw:0,0` cannot start audio before video, because
+    # ffmpeg opens inputs in order and the v4l2 demuxer streams from
+    # `read_header`.
+    car:
+        - exec:ffmpeg -hide_banner -v error -init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -hwaccel vaapi -hwaccel_output_format vaapi -f v4l2 -input_format mjpeg -video_size 640x360 -i /dev/video0 -f alsa -i plughw:0,0 -map 0:v -map 1:a -filter:v format=vaapi|nv12,hwupload,scale_vaapi=out_color_matrix=bt709:out_range=tv:format=nv12 -c:v hevc_vaapi -g 50 -bf 0 -profile:v main -b:v 500k -maxrate 700k -bufsize 1400k -filter:a afftdn=nr=20:nt=v:nf=-20 -c:a libopus -ar:a 48000 -ac:a 1 -b:a 64k -rtsp_transport tcp -f rtsp {output}
+
+    # H.264 fallback for a viewer without hardware HEVC decode — which now
+    # includes the pit itself: Chromium on Linux has no platform HEVC
+    # decoder, so the dashboard defaults to this stream. Higher rate for the
+    # same quality — this is what `car` replaced, not a second feed to run
+    # alongside it. Spelled out as an exec rather than go2rtc's
+    # `ffmpeg:device` template because a template carries one input and this
+    # needs two; the encoder settings are the template's, with the same
+    # scale_vaapi conversion `car` uses for the camera's 4:2:2 MJPEG.
+    car_h264:
+        - exec:ffmpeg -hide_banner -v error -init_hw_device vaapi=va:/dev/dri/renderD128 -filter_hw_device va -hwaccel vaapi -hwaccel_output_format vaapi -f v4l2 -input_format mjpeg -video_size 640x360 -i /dev/video0 -f alsa -i plughw:0,0 -map 0:v -map 1:a -filter:v format=vaapi|nv12,hwupload,scale_vaapi=out_color_matrix=bt709:out_range=tv:format=nv12 -c:v h264_vaapi -g 50 -bf 0 -profile:v high -b:v 800k -maxrate 1M -bufsize 2M -filter:a afftdn=nr=20:nt=v:nf=-20 -c:a libopus -ar:a 48000 -ac:a 1 -b:a 64k -rtsp_transport tcp -f rtsp {output}

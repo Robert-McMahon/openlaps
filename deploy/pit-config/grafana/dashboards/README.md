@@ -40,5 +40,95 @@ install) and leave `version` alone.
   **Kelvin**, the FDI IMU reports its board temperature in Celsius. A panel
   showing `car.coolant_temp` with no unit set reads ~370 and looks entirely
   plausible. Read `units` from the view; never assume.
+- **IMU axes carry an unrecorded assumption.** Nothing in `catalog.yaml` or
+  `fdi-imu.dbc` says which way the DETA10A is bolted in, so the car
+  dashboard's g-g panels take the conventional nose-forward mounting:
+  `car.accel_y` is lateral (right positive), `car.accel_x` is longitudinal
+  (braking negative). Confirm it once at the track -- a hard stop must plot
+  below the origin -- and swap the two channels in the queries if it does
+  not. Until then it is a convention, not a measurement.
 
-This directory is empty of dashboards until P5.4.
+## Lap and sector times are race-formatted, not Grafana-formatted
+
+Grafana has no race-timing unit — its `s` unit renders 68.5 as
+"1.13 min" — and no way to build `1:08.5` from a numeric field. So the
+format travels with the data:
+
+- **Live MQTT panels** show the publishers' pre-formatted `display`
+  field (`src/pit/timing_display.py`): running clocks and predictions
+  in tenths (`1:08.5`), definitive completed times in milliseconds
+  (`1:08.500`), the delta as signed tenths (`+0.3`), and a gated pit
+  clock as `—`. The numeric `value` stays in the payload untouched;
+  a panel that computes (thresholds, alerts) keeps reading `value`.
+- **SQL panels** showing definitive times format in the query with
+  `to_char(make_interval(secs => ...), 'FMMI:SS.MS')`.
+
+## Browser-local count-up clocks
+
+The pit wall's lap, sector, and stint clocks of the "time since the
+last relevant crossing" kind are `grafana-clock-panel` count-ups: the
+query fetches only the crossing timestamp and the panel ticks locally
+every second, so nothing streams or repaints behind a running clock.
+They are dumb timers — no clock-health gating, 1 s resolution, and
+they keep counting on a stopped car until the crossing leaves the
+dashboard window. The tenths-resolution, gated clock remains the
+extrapolator's streamed `timing.*_pit` panels; the two are labelled
+accordingly and deliberately coexist.
+
+## Two XY Chart traps, both of which render "Err" and nothing else
+
+Both were found the hard way against a real Grafana 12.4.9 with the pinned
+MQTT plugin, and both are silent -- the panel shows `Err`, the query is
+fine, and the browser console says nothing.
+
+- **Series mapping and `pluginVersion` are one decision.** Manual mapping
+  accepts a bare field name (`"x": "Lateral g"`) *only* because the panel
+  migrates it, and the migration runs only when the panel looks older than
+  the current schema. A pinned `pluginVersion` turns the migration off, so
+  a bare name and a pinned version together render `Err`. Write the matcher
+  form -- `"x": {"matcher": {"id": "byName", "options": "Lateral g"}}` --
+  and keep `pluginVersion` set. Configuring the panel through the UI and
+  exporting it produces the correct pair.
+
+- **Two MQTT topics in one panel join on the payload, not on `Time`.** The
+  MQTT datasource gives every frame the same name (`mqtt`) and the same
+  field names (`Time` from message arrival, then `time` and `value` from
+  the JSON payload), so the two are told apart only by position: filter to
+  `time` and `value`, join by field `time`, and the result is `time`,
+  `value 1`, `value 2` in query order. Rename those two, and the panel's
+  query order becomes load-bearing -- reorder the targets and the axes
+  swap silently. Join on the payload's `time`, never on `Time`: the two
+  axes of an IMU reading share one capture timestamp but arrive as two
+  messages, microseconds apart.
+
+## The video dashboard reads no data
+
+`video.json` is one `innius-video-panel` iframe onto the **vehicle's**
+go2rtc player — the browser connects to the car directly
+(`deploy/README.md` → "The car camera"); nothing is queried, streamed or
+stored at the pit. Two consequences worth knowing before editing it:
+
+- The panel still names the `timescale` datasource. That is the dashboard
+  contract (`tests/test_grafana_dashboards.py` requires an explicit
+  provisioned uid on every panel), not a data dependency — the same
+  formality the text panels follow.
+- The `camera` variable is a textbox holding the go2rtc base URL, default
+  the bench vehicle. Change it in the browser at the track; change the
+  *default* here in the JSON only when the bench itself moves.
+
+## Copyable relational variable block
+
+`car.json` is the canonical source for the shared relational template
+variables. New SQL dashboards should copy its `vehicle`, `session`, `driver`,
+`stint`, and `lap` entries together so their chaining does not drift:
+
+- `session` is scoped by `vehicle` and the selected dashboard time range;
+- `driver` is scoped by `vehicle`, `session`, and time range;
+- `stint` is scoped by `session` and uses `stint_number` as its value;
+- `lap` is scoped by `vehicle`, `session`, `driver`, and time range, uses
+  `lap_id` as its value, and labels each option with lap number, driver, and
+  crossing time.
+
+All five queries use the stable views rather than base tables. Keep the
+variable names unchanged: panel SQL and Grafana's chained-variable refresh
+behaviour depend on them.

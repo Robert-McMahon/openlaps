@@ -7,18 +7,56 @@ that.
 
 | | Vehicle | Pit |
 | --- | --- | --- |
-| Compose file | `vehicle-compose.yaml` | `pit-compose.yaml` |
+| Compose file | `vehicle-compose.yaml` (+ the target's overlay) | `pit-compose.yaml` |
 | NATS config | `nats/vehicle.conf` | `nats/pit.conf` |
 | JetStream domain | `veh` | `pit` |
 | Streams | `TELE`, `CMD` (created by the agent) | `TELE_VEHICLE` (created by `provision_pit_streams.py`) |
-| Services | agent | ingest-writer, live-decoder, session-control, ntrip-client |
+| Services | agent, go2rtc (`--profile video`) | ingest-writer, live-decoder, timing-extrapolator, session-control, ntrip-client |
 | Read surface | — | Grafana on `:3000` |
+
+## Which SBC the vehicle stack runs on
+
+One variable, `OPENLAPS_TARGET`, resolved against `targets/`. A **target** is
+a board: the device nodes it exposes, the host wiring the agent needs
+(`hardware.yaml`, ADR 0010), and the encoder pipeline its silicon can
+actually run (`go2rtc.yaml`). Two ship — `radxa-x4` and `luckfox-omni3576` —
+and `targets/README.md` is how to use one or add another.
+
+The profile is never edited to move between boards. A profile describes the
+car; a target describes what the car is bolted to.
+
+### Upgrading an existing vehicle stack to targets
+
+Two coupled changes, and a containerised car needs both applied together.
+
+The compose stack used to map the host's GNSS device to `/dev/ttyUSB0` inside
+the container so that the profile's `port: /dev/ttyUSB0` would find it. It now
+maps the device **at its own path** and tells the agent that path through the
+target's `hardware.yaml`, because a rewrite and an overlay cannot both be the
+answer. So on the car:
+
+1. Set `OPENLAPS_TARGET` in `deploy/.env` (`radxa-x4` is the default if you
+   set nothing, and matches what the compose file did before).
+2. Check that `OPENLAPS_SERIAL_DEVICE` and the target's `serial0.port` name
+   the device the car actually has — `/dev/ttyACM0` for the RP2040 relay
+   (ADR 0009), which is what `example.env` has always documented. If your car
+   is on something else, that is a one-line edit in `hardware.yaml` and the
+   matching line in `.env`.
+
+A stack running the agent **directly** (systemd, not compose) is unaffected
+until you opt in: `OPENLAPS_HARDWARE` is unset in `/etc/openlaps/agent.env`
+unless you put it there, and an unset overlay means the profile is used
+exactly as written.
 
 **The pit dials the vehicle**, never the reverse. The vehicle runs a
 leafnode *listener* on `:7422`; the pit config carries the `remotes:` entry.
 That direction is load-bearing: `docs/ARCHITECTURE.md` requires that the car
 need no inbound reachability from the pit LAN, which is what lets it sit
 behind NAT or a WSL2 host.
+
+The leafnode is the only thing that crosses **for telemetry and control**.
+Video is the one deliberate exception — a second, independent crossing in
+the same pit-dials-vehicle direction; see "The car camera" below.
 
 ## `OPENLAPS_NATS_URL` means different things in the two stacks
 
@@ -51,9 +89,10 @@ each takes it as configuration:
 | --- | --- | --- |
 | ingest-writer | `OPENLAPS_INGEST_STREAM` | `TELE_VEHICLE` |
 | live-decoder | `OPENLAPS_LIVE_STREAM` | `TELE_VEHICLE` |
+| timing-extrapolator | `OPENLAPS_TIMING_STREAM` | `TELE_VEHICLE` |
 | ntrip-client (GGA feed only) | `OPENLAPS_NTRIP_STREAM` | `TELE_VEHICLE` |
 
-All three must name the stream `provision_pit_streams.py` actually created.
+All four must name the stream `provision_pit_streams.py` actually created.
 A service pointed at a stream that does not exist fails loudly at startup,
 which is the desired outcome — the alternative is a service that looks
 healthy and silently receives nothing.
@@ -108,16 +147,36 @@ docker build -f deploy/Dockerfile -t openlaps:local .
 
 ### 1. Vehicle
 
-Bring `can0` up on the host first. The agent configures no bitrate and
-brings no link up; that is host state.
+Pick the target and fill in its deploy variables, once:
 
 ```bash
-sudo ip link set can0 up type can bitrate 1000000
+cat deploy/targets/luckfox-omni3576/target.env >> deploy/.env
 ```
 
+Bring the CAN interfaces up on the host. The agent configures no bitrate and
+brings no link up; that is host state. `can_up.py` reads the same profile and
+target overlay the agent reads, so the bitrate lives in one place:
+
 ```bash
-docker compose -f deploy/vehicle-compose.yaml up -d
+sudo ./.venv/bin/python tools/can_up.py --profile profiles/example-club-racer \
+  --hardware deploy/targets/luckfox-omni3576/hardware.yaml
 ```
+
+(The venv's interpreter, not `uv run`: this runs as root, and `sudo uv run`
+resolves against root's environment rather than yours.)
+
+`deploy/systemd/openlaps-can.service` is the same thing at boot, as root,
+ordered before the agent — which is where it has to run, because configuring
+an interface needs `CAP_NET_ADMIN` and the agent must not have it.
+
+```bash
+docker compose -f deploy/vehicle-compose.yaml \
+  -f deploy/targets/luckfox-omni3576/compose.yaml up -d
+```
+
+Drop the second `-f` for a target with no compose overlay; `radxa-x4` has
+none, which is why the bare `docker compose -f deploy/vehicle-compose.yaml
+up -d` still works there.
 
 Confirm the agent created its streams. Both should be listed, `TELE` with
 subject `tele.<vehicle>.>`:
@@ -159,6 +218,9 @@ id -u openlaps >/dev/null 2>&1 || \
 sudo install -m 0644 deploy/chrony/vehicle.conf /etc/chrony/chrony.conf
 sudo install -D -o root -g root -m 0755 tools/timing_head_shim.py \
   /usr/local/libexec/openlaps/timing_head_shim.py
+# chrony's SOCK wire format lives beside it, shared with the GPIO PPS shim.
+sudo install -D -o root -g root -m 0644 tools/chrony_sock.py \
+  /usr/local/libexec/openlaps/chrony_sock.py
 sudo install -m 0644 deploy/systemd/timing-head-shim.service /etc/systemd/system/
 sudo install -d /etc/systemd/system/chrony.service.d
 sudo install -m 0644 deploy/systemd/chrony-openlaps-sock.conf \
@@ -206,14 +268,15 @@ runbook:
 3. `nats` becomes healthy and connects its leafnode.
 4. **`provision-streams` runs to completion**, creating or converging
    `TELE_VEHICLE`.
-5. The four services start, and Grafana with them.
+5. The five services start, and Grafana with them.
 
-**The first bring-up needs internet.** Grafana installs one plugin —
-`grafana-mqtt-datasource`, the live gauge feed, and the only plugin this
-stack asks for — before it finishes starting. It lands in the `grafana-data`
-volume and is not fetched again, so a pit that will be offline at the track
-only has to have been online once. A fresh volume on a disconnected pit is
-a Grafana that does not come up.
+**The first bring-up needs internet.** Grafana installs its pinned plugins
+— `grafana-mqtt-datasource` (the live gauge feed), `grafana-clock-panel`
+(the count-up clocks) and `innius-video-panel` (the car camera) — before it
+finishes starting. They land in the `grafana-data` volume and are not
+fetched again, so a pit that will be offline at the track only has to have
+been online once. A fresh volume on a disconnected pit is a Grafana that
+does not come up.
 
 ### 3. Verify each hop
 
@@ -258,10 +321,11 @@ docker compose -f deploy/pit-compose.yaml exec timescaledb psql -U openlaps -d o
 | ingest-writer | 8081 | `OPENLAPS_INGEST_HEALTH_PORT` |
 | live-decoder | 8082 | `OPENLAPS_LIVE_HEALTH_PORT` |
 | ntrip-client | 8083 | `OPENLAPS_NTRIP_HEALTH_PORT` |
+| timing-extrapolator | 8084 | `OPENLAPS_TIMING_HEALTH_PORT` |
 | grafana | 3000 | fixed (`GET /api/health`) |
 
 ```bash
-for port in 8080 8081 8082 8083; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
+for port in 8080 8081 8082 8083 8084; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
 ```
 
 **Grafana is up and both datasources are green.** The web UI is on
@@ -297,6 +361,13 @@ bring-up needs no vehicle and no hardware:
 ```bash
 uv run tools/replay.py --server nats://127.0.0.1:4222 --rate 1.0 --loop
 ```
+
+The cycle's sources share one clock, so a CAN capture shorter than the GPS
+trace leaves every CAN-fed gauge frozen for the rest of each cycle. Until a
+full-length event capture exists, `tools/stitch_candump.py` repeats the
+capture we have to span the trace (`--target-seconds 92` for the default
+one) — dashboard-exercising data, not measurement data: totalizers reset at
+every seam.
 
 For a **measurement** bench rather than a bring-up one — the real agent
 reading real interfaces, with load injected below it at the socketCAN and
@@ -353,6 +424,47 @@ fails to load.
 SQL panels read the **views** (`docs/PIT_SCHEMA.md`), which is not a
 convention here but a grant: Grafana's database role has `SELECT` on the
 views and no access at all to `samples` or `laps`.
+
+## The car camera
+
+Video is deliberately **not telemetry**. The vehicle runs
+[go2rtc](https://github.com/AlexxIT/go2rtc) beside the agent — USB camera,
+hardware-encoded on the SBC, cabin audio in Opus — and the pit operator's
+browser plays it *directly from the car*
+(`http://<vehicle-host>:1984/stream.html?src=car_h264&mode=mse`), embedded in
+the `video` Grafana dashboard. No video byte touches NATS, JetStream or the database, so
+a dead camera costs telemetry nothing, and dropping video is the degradation
+plan's cheapest lever: close the browser tab.
+
+This is the one crossing beside the leafnode, in the same direction — the
+pit dials the vehicle on `:1984` (API/MSE), `:8554` (RTSP) and `:8555`
+(WebRTC, TCP and UDP). The stream definitions and encoder bitrates live in
+`targets/<target>/go2rtc.yaml`; they are sized against
+`docs/LINK_BUDGET.md` §5's ~1.4 Mbit/s video reservation, which the
+`openlaps_video_*` counters in `nft/bench-*.nft` exist to test.
+
+**What the encode actually is depends on the board**, and that is the one
+part of this stack that cannot be shared between targets. The X4 encodes
+H.265 (`car`) plus an H.264 fallback (`car_h264`) on its iGPU through VAAPI;
+the Luckfox Omni3576 encodes `car_h264` only, through Rockchip MPP, because
+its VEPU will not give MPP an HEVC context. The dashboard's `stream` variable
+already defaults to `car_h264`, so the default path works against either, and
+`mode=mse` is only required for the H.265 stream. Each target's `go2rtc.yaml`
+carries its own pipelines and its own reasons.
+
+The service is opt-in because a host without a camera cannot start the
+container:
+
+```bash
+docker compose -f deploy/vehicle-compose.yaml \
+  -f deploy/targets/<target>/compose.yaml --profile video up -d
+```
+
+Verify from the pit before burying it in a dashboard: `curl -fsS
+http://<vehicle-host>:1984/api/streams` lists `car`, and the URL above plays
+in a browser. The dashboard's `camera` variable defaults to the bench
+vehicle's address and is overridable in the browser at the track — the
+committed JSON never needs an event-day edit.
 
 ## Tear-down
 

@@ -1,0 +1,551 @@
+{
+  "uid": "reliability",
+  "title": "Reliability watch",
+  "description": "Reliability watch \u2014 provisioned openlaps endurance operations dashboard.",
+  "editable": false,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-36h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "tags": [
+    "openlaps",
+    "endurance"
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "vehicle",
+        "label": "Vehicle",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
+        "query": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": false,
+        "sort": 1,
+        "current": {
+          "text": "example-club-racer",
+          "value": "example-club-racer"
+        }
+      },
+      {
+        "name": "session",
+        "label": "Session",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "driver",
+        "label": "Driver",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "stint",
+        "label": "Stint",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "lap",
+        "label": "Lap",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 1,
+        "allValue": "all",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Oil pressure against RPM envelope",
+      "type": "xychart",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pressurekpa",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "RPM"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "rpm"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Oil pressure minimum"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "pressurekpa"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Oil pressure maximum"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "pressurekpa"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.rpm' THEN avg END) AS \"RPM\", min(CASE WHEN channel = 'car.oil_pressure' THEN min END) AS \"Oil pressure minimum\", max(CASE WHEN channel = 'car.oil_pressure' THEN max END) AS \"Oil pressure maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.oil_pressure','car.rpm') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Coolant temperature",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kelvin",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, avg AS \"Average\", min AS \"Minimum\", max AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.coolant_temp' AND $__timeFilter(time) ORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Oil temperature",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kelvin",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, avg AS \"Average\", min AS \"Minimum\", max AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.oil_temp' AND $__timeFilter(time) ORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Gearbox oil temperature",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kelvin",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, avg AS \"Average\", min AS \"Minimum\", max AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.gearbox_oil_temp' AND $__timeFilter(time) ORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Knock counts and protection events",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, sum(CASE WHEN channel IN ('car.knock_level1','car.knock_level2') AND max > 0 THEN count ELSE 0 END) AS \"Knock count\", max(CASE WHEN channel = 'car.engine_protection_severity' THEN max END) AS \"Protection severity\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.knock_level1','car.knock_level2','car.engine_protection_severity') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "PDM circuit currents",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "amp",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.pd16_total_current' THEN avg END) AS \"PDM total\", max(CASE WHEN channel = 'car.thermo_fan_1_current' THEN avg END) AS \"Thermo fan\", max(CASE WHEN channel = 'car.fuel_pump_current' THEN avg END) AS \"Fuel pump\", max(CASE WHEN channel = 'car.ign_coils_current' THEN avg END) AS \"Ignition coils\", max(CASE WHEN channel = 'car.power_steering_pump_1_current' THEN avg END) AS \"Power steering\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.pd16_total_current','car.thermo_fan_1_current','car.fuel_pump_current','car.ign_coils_current','car.power_steering_pump_1_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Night electrical load and battery",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "amp",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.head_light_current' THEN avg END) AS \"Head lights\", max(CASE WHEN channel = 'car.head_light' THEN max END) AS \"Head light state\", max(CASE WHEN channel = 'car.pd16_total_current' THEN avg END) AS \"PDM total\", max(CASE WHEN channel = 'car.battery_v' THEN min END) AS \"Battery minimum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.head_light_current','car.head_light','car.pd16_total_current','car.battery_v') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Engine protection reason and check-engine events",
+      "type": "state-timeline",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 24,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.engine_protection_severity' THEN max END) AS \"Protection severity\", max(CASE WHEN channel = 'car.engine_protection_reason_number' THEN max END) AS \"Protection reason number\", max(CASE WHEN channel = 'car.engine_protection_reason_letter' THEN max END) AS \"Protection reason letter\", max(CASE WHEN channel = 'car.check_engine_light' THEN max END) AS \"Check engine light\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.engine_protection_severity','car.engine_protection_reason_number','car.engine_protection_reason_letter','car.check_engine_light') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+        }
+      ]
+    }
+  ]
+}

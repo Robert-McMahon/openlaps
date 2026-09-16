@@ -1,0 +1,157 @@
+{
+  "uid": "video",
+  "title": "Car camera",
+  "description": "Live in-car video — the operator's browser connects straight to the vehicle's go2rtc (deploy/targets/<target>/go2rtc.yaml); no video bytes cross NATS or land in the database. The panel's nominal timescale datasource satisfies the dashboard contract; it queries nothing.",
+  "editable": false,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "tags": [
+    "openlaps",
+    "endurance"
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "camera",
+        "label": "Camera (go2rtc) base URL",
+        "description": "http://<vehicle-host>:1984 — the vehicle SBC's go2rtc API listener. Default is the bench vehicle; override here at the track, no dashboard edit needed.",
+        "type": "textbox",
+        "hide": 0,
+        "query": "http://192.168.12.176:1984",
+        "current": {
+          "text": "http://192.168.12.176:1984",
+          "value": "http://192.168.12.176:1984"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "http://192.168.12.176:1984",
+            "value": "http://192.168.12.176:1984"
+          }
+        ]
+      },
+      {
+        "name": "stream",
+        "label": "Stream (go2rtc source)",
+        "description": "car_h264 plays anywhere. car is the H.265 encode -- half the bitrate, but it needs a browser with platform HEVC decode (Windows/macOS; not Chromium on Linux).",
+        "type": "custom",
+        "hide": 0,
+        "query": "car_h264,car",
+        "current": {
+          "text": "car_h264",
+          "value": "car_h264"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "car_h264",
+            "value": "car_h264"
+          },
+          {
+            "selected": false,
+            "text": "car",
+            "value": "car"
+          }
+        ]
+      },
+      {
+        "name": "mode",
+        "label": "Player mode",
+        "description": "mse is required for the H.265 `car` stream. webrtc is lower latency and fine for car_h264.",
+        "type": "custom",
+        "hide": 0,
+        "query": "mse,webrtc",
+        "current": {
+          "text": "mse",
+          "value": "mse"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "mse",
+            "value": "mse"
+          },
+          {
+            "selected": false,
+            "text": "webrtc",
+            "value": "webrtc"
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Car camera",
+      "type": "innius-video-panel",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 18
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "videoType": "iframe",
+        "iframeURL": "${camera}/stream.html?src=${stream}&mode=${mode}",
+        "customBackground": true,
+        "backgroundColor": "#000000",
+        "geolocate": false
+      },
+      "targets": []
+    },
+    {
+      "id": 2,
+      "title": "If the picture is down",
+      "type": "text",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "This frame is the **vehicle's** go2rtc player, reached directly — telemetry does not pass through it and it does not pass through telemetry.\n\n**Blank frame?** Check the two variables above first. `car` is the H.265 encode: it costs half the bitrate, but browsers will only take H.265 through a *platform* decoder — Windows and macOS have one, Chromium on Linux does not, and a Linux pit shows a black frame with no error. **`car_h264` is the default for that reason.** `mode` must stay `mse` for `car`: browsers will not take H.265 over WebRTC at all, and a default-mode player \"succeeds\" with a WebRTC session carrying **audio only**.\n\nStill blank: check `${camera}/` loads at all (go2rtc's own UI). Only one stream can hold the camera at a time — close other viewers before switching between `car` and `car_h264`. Audio is muted by the browser until clicked."
+      },
+      "targets": []
+    }
+  ]
+}

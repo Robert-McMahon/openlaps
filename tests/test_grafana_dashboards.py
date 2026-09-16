@@ -16,11 +16,16 @@ from psycopg.conninfo import make_conninfo
 
 from agent.agent import agent_derived_channels
 from pit.db.migrate import apply_migrations
+from pit.timing_extrapolator.config import load_config as load_timing_config
 
 ROOT = Path(__file__).resolve().parents[1]
 DASHBOARDS = ROOT / "deploy/pit-config/grafana/dashboards"
 DATASOURCES = ROOT / "deploy/pit-config/grafana/provisioning/datasources"
+ALERTING = ROOT / "deploy/pit-config/grafana/provisioning/alerting"
 CATALOG = ROOT / "profiles/example-club-racer/catalog.yaml"
+VEHICLE_YAML = ROOT / "profiles/example-club-racer/vehicle.yaml"
+PIT_COMPOSE = ROOT / "deploy/pit-compose.yaml"
+TIMING_EXTRAPOLATOR = ROOT / "deploy/pit-config/timing-extrapolator.yaml"
 
 CORE_PANEL_TYPES = {
     "alertlist",
@@ -50,7 +55,6 @@ CORE_PANEL_TYPES = {
     "xychart",
 }
 CORE_DATASOURCE_TYPES = {"grafana-postgresql-datasource"}
-ALLOWED_PLUGIN_DATASOURCE_TYPES = {"grafana-mqtt-datasource"}
 SECRET_KEY = re.compile(r"(?:password|passwd|token|api[_-]?key|authorization)", re.IGNORECASE)
 BEARER = re.compile(r"\bbearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
 GRAFANA_MACRO = re.compile(r"\$__[A-Za-z][A-Za-z0-9_]*(?:\([^)]*\))?")
@@ -58,6 +62,28 @@ GRAFANA_VARIABLE = re.compile(r"\$(?!__)(?:[A-Za-z][A-Za-z0-9_]*|\{[^}]+\})")
 MQTT_TOPIC = re.compile(r"openlaps/\$vehicle/([a-z][a-z0-9_.]*)")
 SQL_ALIAS = re.compile(r'\bAS\s+"([^"]+)"', re.IGNORECASE)
 VEHICLE = "example-club-racer"
+
+# Pit health lives in `pit_metrics`, not in `samples`, so the seeding below
+# cannot come from the catalog the way vehicle channels do. Equality-predicate
+# metrics are derived from the SQL itself; these are the two things that
+# cannot be: the metrics the dashboard matches by pattern (a leafnode carries
+# the remote's server name, a stream and consumer their own, a thermal zone
+# whatever the pit machine calls it) and the handful that answer in text.
+PIT_PATTERN_METRICS = (
+    ("nats", "leaf.veh_nats.rtt_s"),
+    ("nats", "leaf.veh_nats.in_bytes"),
+    ("nats", "leaf.veh_nats.out_bytes"),
+    ("nats", "stream.tele_vehicle.messages"),
+    ("nats", "consumer.tele_vehicle.ingest_writer.num_pending"),
+    ("host", "temp.coretemp.package_id_0"),
+)
+PIT_TEXT_METRICS = {
+    ("chrony", "source"),
+    ("ntrip", "caster_host"),
+    ("ntrip", "mountpoint"),
+    ("nats", "server_name"),
+    ("nats", "version"),
+}
 
 
 def _dashboards() -> list[tuple[Path, dict[str, Any]]]:
@@ -84,6 +110,22 @@ def _provisioned_datasources() -> dict[str, str]:
             assert uid not in provisioned, f"duplicate datasource uid {uid!r}"
             provisioned[uid] = datasource["type"]
     return provisioned
+
+
+def _pinned_preinstall_plugins() -> set[str]:
+    compose = yaml.safe_load(PIT_COMPOSE.read_text(encoding="utf-8"))
+    preinstall = compose["services"]["grafana"]["environment"]["GF_PLUGINS_PREINSTALL_SYNC"]
+    plugins: set[str] = set()
+    for entry in preinstall.split(","):
+        plugin_id, separator, version = entry.strip().partition("@")
+        assert separator and plugin_id and version, f"unpinned Grafana plugin {entry!r}"
+        default = re.fullmatch(r"\$\{[A-Z0-9_]+:-([^}]+)\}", version)
+        pinned_version = default.group(1) if default else version
+        assert re.fullmatch(r"\d+\.\d+\.\d+", pinned_version), (
+            f"Grafana plugin {plugin_id!r} does not have an exact version pin"
+        )
+        plugins.add(plugin_id)
+    return plugins
 
 
 def _datasource_references(
@@ -117,10 +159,27 @@ def _credential_findings(value: Any, path: str = "dashboard") -> Iterator[str]:
             yield path
 
 
+def _collector_names() -> list[str]:
+    """Collector names the agent will derive ``sys.agent.drops.*`` from.
+
+    These are per-collector and therefore profile-dependent, so passing an
+    empty list here would silently accept a dashboard naming a drops channel
+    that no collector produces -- which is exactly the class of typo this
+    test exists to catch.
+    """
+    vehicle = yaml.safe_load(VEHICLE_YAML.read_text(encoding="utf-8"))
+    names = [bus["name"] for bus in vehicle.get("buses") or []]
+    names += [port["name"] for port in vehicle.get("serial") or []]
+    if (vehicle.get("host") or {}).get("enabled"):
+        names.append("host")
+    return names
+
+
 def _known_channels() -> set[str]:
     catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
     channels = set(catalog["channels"])
-    channels.update(channel.name for channel in agent_derived_channels([]))
+    channels.update(channel.name for channel in agent_derived_channels(_collector_names()))
+    channels.update(load_timing_config(TIMING_EXTRAPOLATOR).output_channels)
     return channels
 
 
@@ -132,10 +191,35 @@ def _raw_sql_targets() -> Iterator[tuple[Path, dict[str, Any], dict[str, Any]]]:
                     yield path, panel, target
 
 
-def _query_channel(raw_sql: str) -> str:
-    match = re.search(r"channel\s*=\s*'([^']+)'", raw_sql)
-    assert match is not None, "dashboard query does not select one literal channel"
-    return match.group(1)
+def _query_channels(raw_sql: str) -> set[str]:
+    """Return literal telemetry channels used by a SQL target, if any.
+
+    Endurance dashboards also issue relational queries against lap, sector,
+    fuel and stop views, so an empty result is valid.  Both equality and IN
+    predicates are supported because long-range panels pivot several channels.
+    """
+    channels = set(re.findall(r"channel\s*=\s*'([^']+)'", raw_sql))
+    for values in re.findall(r"channel\s+IN\s*\(([^)]+)\)", raw_sql, re.IGNORECASE):
+        channels.update(re.findall(r"'([^']+)'", values))
+    return channels
+
+
+def _query_pit_metrics(raw_sql: str) -> set[tuple[str, str]]:
+    """Return the literal ``(source, metric)`` pairs a pit panel names.
+
+    The pit rows are the only queries against `v_pit_metrics`, and every one
+    of them pins exactly one `source`, so pairing the source in a query with
+    the metrics in the same query is unambiguous. Pattern-matched metrics
+    (`metric LIKE ...`) are seeded from PIT_PATTERN_METRICS instead — there is
+    no literal to extract.
+    """
+    if "v_pit_metrics" not in raw_sql:
+        return set()
+    sources = set(re.findall(r"source\s*=\s*'([^']+)'", raw_sql))
+    metrics = set(re.findall(r"metric\s*=\s*'([^']+)'", raw_sql))
+    for values in re.findall(r"metric\s+IN\s*\(([^)]+)\)", raw_sql, re.IGNORECASE):
+        metrics.update(re.findall(r"'([^']+)'", values))
+    return {(source, metric) for source in sources for metric in metrics}
 
 
 def _render_sql(raw_sql: str, *, start: datetime, end: datetime) -> str:
@@ -155,7 +239,11 @@ def _render_sql(raw_sql: str, *, start: datetime, end: datetime) -> str:
     )
     rendered = rendered.replace("$__interval", "1 second")
     rendered = rendered.replace("$vehicle", VEHICLE)
-    rendered = rendered.replace("$session", "all")
+    rendered = rendered.replace("$session", "s-1")
+    rendered = rendered.replace("$driver", "Driver A")
+    rendered = rendered.replace("$stint", "1")
+    rendered = rendered.replace("$lap_compare", "2")
+    rendered = rendered.replace("$lap", "1")
     rendered = rendered.replace("$trace_source", source)
     unknown = GRAFANA_MACRO.findall(rendered)
     assert not unknown, f"unsupported Grafana macros: {unknown}"
@@ -187,23 +275,33 @@ def test_panels_and_targets_reference_explicit_provisioned_datasource_uids() -> 
             assert datasource.get("type") == provisioned[datasource["uid"]]
 
 
-def test_dashboards_contain_no_credential_shaped_content() -> None:
+def test_dashboards_and_alerting_contain_no_credential_shaped_content() -> None:
     for path, dashboard in _dashboards():
         findings = list(_credential_findings(dashboard))
         assert not findings, f"{path.name} contains credential-shaped content at {findings}"
+    for path in sorted(ALERTING.glob("*.yaml")):
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        findings = list(_credential_findings(document, "alerting"))
+        assert not findings, f"{path.name} contains credential-shaped content at {findings}"
 
 
-def test_dashboards_use_only_core_panels_and_the_single_allowed_plugin() -> None:
+def test_dashboard_plugins_are_derived_from_the_exact_pinned_preinstall_list() -> None:
     provisioned = _provisioned_datasources()
     datasource_types = set(provisioned.values())
-    assert datasource_types <= CORE_DATASOURCE_TYPES | ALLOWED_PLUGIN_DATASOURCE_TYPES
-    assert datasource_types - CORE_DATASOURCE_TYPES == ALLOWED_PLUGIN_DATASOURCE_TYPES
+    pinned_plugins = _pinned_preinstall_plugins()
+    assert datasource_types <= CORE_DATASOURCE_TYPES | pinned_plugins
+    used_plugins = datasource_types - CORE_DATASOURCE_TYPES
 
     for path, dashboard in _dashboards():
         for panel in _panels(dashboard):
-            assert panel.get("type") in CORE_PANEL_TYPES, (
-                f"{path.name} panel {panel.get('id')} uses non-core type {panel.get('type')!r}"
+            panel_type = panel.get("type")
+            assert panel_type in CORE_PANEL_TYPES | pinned_plugins, (
+                f"{path.name} panel {panel.get('id')} uses unpinned type {panel_type!r}"
             )
+            if panel_type not in CORE_PANEL_TYPES:
+                used_plugins.add(panel_type)
+
+    assert used_plugins == pinned_plugins, "pinned plugins must be used by a datasource or panel"
 
 
 def test_mqtt_topics_follow_the_per_channel_contract() -> None:
@@ -229,26 +327,124 @@ def test_every_dashboard_query_executes_and_returns_configured_fields(timescale_
     targets = list(_raw_sql_targets())
     assert targets, "no dashboard rawSql targets found"
     stamp = datetime(2026, 8, 1, 4, 30, tzinfo=UTC)
-    channels = sorted({_query_channel(target["rawSql"]) for _, _, target in targets})
+    channels = sorted(
+        {channel for _, _, target in targets for channel in _query_channels(target["rawSql"])}
+        | {"car.fuel_total_used", "car.fuel_level", "car.battery_v", "car.rpm", "lap.event"}
+    )
 
     with psycopg.connect(timescale_dsn) as conn:
         apply_migrations(conn)
+        driver_id = conn.execute(
+            "INSERT INTO drivers (name) VALUES ('Driver A') RETURNING driver_id"
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO sessions "
+            "(session_id, vehicle_id, session_type, track_name, car, started, status) "
+            "VALUES ('s-1', %s, 'race', 'Wanneroo', 'test-car', %s, 'active')",
+            (VEHICLE, stamp - timedelta(minutes=10)),
+        )
+        stint_id = conn.execute(
+            "INSERT INTO stints (session_id, stint_number, driver_id, started) "
+            "VALUES ('s-1', 1, %s, %s) RETURNING stint_id",
+            (driver_id, stamp - timedelta(minutes=10)),
+        ).fetchone()[0]
+        lap_ids: list[int] = []
+        for lap_number, crossed_at, lap_time in (
+            (1, stamp - timedelta(minutes=2), 110.0),
+            (2, stamp, 108.0),
+        ):
+            lap_id = conn.execute(
+                "INSERT INTO laps "
+                "(vehicle_id, session_id, stint_id, track_name, lap_number, crossed_at, "
+                "lap_time_s, valid, pit_status, direction) "
+                "VALUES (%s, 's-1', %s, 'Wanneroo', %s, %s, %s, true, 'track', 'forward') "
+                "RETURNING lap_id",
+                (VEHICLE, stint_id, lap_number, crossed_at, lap_time),
+            ).fetchone()[0]
+            lap_ids.append(lap_id)
+            for sector in range(1, 4):
+                conn.execute(
+                    "INSERT INTO lap_sectors (lap_id, sector, split_time_s, crossed_at) "
+                    "VALUES (%s, %s, %s, %s)",
+                    (lap_id, sector, lap_time / 3.0, crossed_at - timedelta(seconds=3 - sector)),
+                )
+
+        channel_keys: dict[str, int] = {}
         for index, channel in enumerate(channels, start=1):
             channel_key = conn.execute(
                 "INSERT INTO channels (vehicle_id, name, units, value_type) "
                 "VALUES (%s, %s, '', 1) RETURNING channel_key",
                 (VEHICLE, channel),
             ).fetchone()[0]
+            channel_keys[channel] = channel_key
+            if channel != "lap.event":
+                conn.execute(
+                    "INSERT INTO samples (time, channel_key, value) VALUES (%s, %s, %s)",
+                    (stamp, channel_key, float(index)),
+                )
+        for at, value in (
+            (stamp - timedelta(minutes=4), 1000.0),
+            (stamp - timedelta(minutes=2), 1400.0),
+            (stamp, 1800.0),
+        ):
             conn.execute(
                 "INSERT INTO samples (time, channel_key, value) VALUES (%s, %s, %s)",
-                (stamp, channel_key, float(index)),
+                (at, channel_keys["car.fuel_total_used"], value),
             )
+        for at, value in (
+            (stamp - timedelta(minutes=4), 45.0),
+            (stamp - timedelta(minutes=2), 44.6),
+            (stamp, 44.2),
+        ):
+            conn.execute(
+                "INSERT INTO samples (time, channel_key, value) VALUES (%s, %s, %s)",
+                (at, channel_keys["car.fuel_level"], value),
+            )
+        for at, kind, line in (
+            (stamp - timedelta(minutes=9), "pit_entry", "PitEntryRefuel"),
+            (stamp - timedelta(minutes=1), "pit_exit", "PitExitRefuel"),
+        ):
+            conn.execute(
+                "INSERT INTO samples (time, channel_key, value_text) VALUES (%s, %s, %s)",
+                (
+                    at,
+                    channel_keys["lap.event"],
+                    json.dumps(
+                        {
+                            "type": kind,
+                            "line": line,
+                            "pit_status": "pit" if kind == "pit_entry" else "track",
+                        }
+                    ),
+                ),
+            )
+        pit_metrics = sorted(
+            {pair for _, _, target in targets for pair in _query_pit_metrics(target["rawSql"])}
+            | set(PIT_PATTERN_METRICS)
+        )
+        for index, (source, metric) in enumerate(pit_metrics, start=1):
+            text = f"{source}-{metric}" if (source, metric) in PIT_TEXT_METRICS else None
+            for offset in (timedelta(minutes=1), timedelta(0)):
+                conn.execute(
+                    "INSERT INTO pit_metrics (source, metric, time, value, value_text) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (
+                        source,
+                        metric,
+                        stamp - offset,
+                        None if text else float(index),
+                        text,
+                    ),
+                )
+
         conn.commit()
         conn.autocommit = True
-        conn.execute(
-            "CALL refresh_continuous_aggregate('samples_1s', %s, %s)",
-            (stamp, stamp + timedelta(seconds=1)),
-        )
+        for aggregate in ("samples_1s", "samples_1m"):
+            if conn.execute("SELECT to_regclass(%s)", (aggregate,)).fetchone()[0] is not None:
+                conn.execute(
+                    f"CALL refresh_continuous_aggregate('{aggregate}', %s, %s)",
+                    (stamp - timedelta(minutes=11), stamp + timedelta(minutes=1)),
+                )
         conn.autocommit = False
 
     reader_dsn = make_conninfo(
@@ -262,7 +458,7 @@ def test_every_dashboard_query_executes_and_returns_configured_fields(timescale_
         for path, panel, target in targets:
             sql = _render_sql(
                 target["rawSql"],
-                start=stamp - timedelta(seconds=1),
+                start=stamp - timedelta(minutes=20),
                 end=stamp + timedelta(seconds=1),
             )
             result = reader.execute(cast(LiteralString, sql))

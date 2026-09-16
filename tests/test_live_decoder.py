@@ -286,6 +286,29 @@ def test_topic_and_payload_are_compact_json():
     assert b" " not in payload
 
 
+def test_timing_channels_carry_a_race_format_display_string():
+    # Grafana has no m:ss.t unit, so the display travels in the payload.
+    # Running values read in tenths, definitive completed times in millis,
+    # the delta as signed tenths. The numeric value stays untouched.
+    cases = (
+        ("timing.lap_elapsed", 68.46, "1:08.5"),
+        ("timing.predicted_lap", 58.31, "0:58.3"),
+        ("lap.last_time", 68.4996, "1:08.500"),
+        ("lap.best_time", 59.9996, "1:00.000"),
+        ("timing.delta_best", -0.42, "-0.4"),
+        ("timing.delta_best", 0.35, "+0.3"),
+    )
+    for channel, value, display in cases:
+        _, payload = mqtt_message("car-1", LiveUpdate(channel, 1234.25, value))
+        document = json.loads(payload)
+        assert document["value"] == value
+        assert document["display"] == display
+
+    # Non-timing channels and non-numeric values stay exactly as before.
+    _, payload = mqtt_message("car-1", LiveUpdate("lap.event", 1234.25, "{}"))
+    assert "display" not in json.loads(payload)
+
+
 def test_non_finite_values_are_not_encoded_as_invalid_json():
     for value in (math.nan, math.inf, -math.inf):
         with pytest.raises(ValueError, match="JSON"):
@@ -564,10 +587,33 @@ def test_an_agreeing_vehicle_id_starts_and_an_absent_one_defers_to_the_yaml(tmp_
         config_path=config_path, nats_url="nats://pit:4222", vehicle_id="car-7"
     )
     assert LiveDecoder(agreeing).subject_filter == "tele.car-7.>"
-    # The YAML stays the source of truth; the env var is only a cross-check,
-    # so a deployment that does not set one is unaffected.
+    # A YAML that names a car overrides, so a deployment that sets no env var
+    # is unaffected.
     unset = LiveDecoderSettings(config_path=config_path, nats_url="nats://pit:4222")
     assert LiveDecoder(unset).subject_filter == "tele.car-7.>"
+
+
+def test_the_env_names_the_car_when_the_yaml_does_not(tmp_path):
+    """The normal arrangement: one car, named once, by the pit-wide variable."""
+    config_path = tmp_path / "live.yaml"
+    config_path.write_text("channels:\n  - match: 'position.*'\n", encoding="utf-8")
+    settings = LiveDecoderSettings(
+        config_path=config_path, nats_url="nats://pit:4222", vehicle_id="christine"
+    )
+
+    assert LiveDecoder(settings).subject_filter == "tele.christine.>"
+
+
+def test_naming_the_car_nowhere_is_fatal_rather_than_a_subject_of_none(tmp_path):
+    """With the key optional, "neither" is the new way to get a dead service."""
+    config_path = tmp_path / "live.yaml"
+    config_path.write_text("channels:\n  - match: 'position.*'\n", encoding="utf-8")
+    settings = LiveDecoderSettings(config_path=config_path, nats_url="nats://pit:4222")
+
+    with pytest.raises(ValueError) as excinfo:
+        LiveDecoder(settings)
+
+    assert "OPENLAPS_VEHICLE_ID" in str(excinfo.value)
 
 
 def test_settings_carry_the_pit_wide_vehicle_id(tmp_path):
@@ -592,20 +638,23 @@ def test_health_reports_the_subject_it_decodes(tmp_path):
     assert snapshot["subject_filter"] == "tele.car-7.>"
 
 
-def test_the_shipped_config_names_the_example_profiles_vehicle():
-    """`deploy/pit-config/live-decoder.yaml` must match the profile it decodes.
+def test_the_shipped_config_names_no_vehicle_at_all():
+    """`deploy/pit-config/live-decoder.yaml` must not name anyone's car.
 
-    The service refuses to start on a vehicle-id mismatch, so a wrong id in
-    the shipped file is a pit whose gauges are down from the first boot.
-    This drifted once already: a parity run's throwaway vehicle id
-    (`example-club-racer-parity`) was committed in a conflict resolution,
-    and every fresh checkout inherited a live-decoder that decoded nothing.
+    It used to have to match the example profile's id, and drifted anyway: a
+    parity run's throwaway vehicle id (`example-club-racer-parity`) was
+    committed in a conflict resolution, and every fresh checkout inherited a
+    live-decoder that decoded nothing. The deeper problem was that a file
+    shipped in a public repository -- which carries one example profile and no
+    real vehicle (ADR 0007) -- had to name a car at all, so a deployment
+    either committed its own car's name or carried an uncommitted local edit
+    forever.
+
+    `OPENLAPS_VEHICLE_ID` names it once instead, which every other pit service
+    already reads. The key remains available as a per-service override, and
+    `_resolve_vehicle` still refuses to start when the two disagree.
     """
-    from conftest import EXAMPLE_PROFILE
-
-    from core.config import load_profile
-
     shipped = load_live_config(
         Path(__file__).parents[1] / "deploy" / "pit-config" / "live-decoder.yaml"
     )
-    assert shipped.vehicle == load_profile(EXAMPLE_PROFILE).vehicle.vehicle.id
+    assert shipped.vehicle is None

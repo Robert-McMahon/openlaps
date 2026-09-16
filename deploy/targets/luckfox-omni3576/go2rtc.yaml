@@ -1,0 +1,68 @@
+# The in-car camera on a Luckfox Omni3576, encoded by the RK3576's VEPU.
+#
+# Same contract as deploy/targets/radxa-x4/go2rtc.yaml — same stream name the
+# pit dashboard embeds, same three listeners deploy/nft/bench-*.nft counts,
+# same ~800k video + 64k audio the docs/LINK_BUDGET.md §5 reservation is
+# sized against. Everything below the codec name differs, because none of the
+# X4's pipeline exists on this silicon: no VAAPI, no /dev/dri/renderD128
+# encode context, no ALSA input in the ffmpeg that ships with the image.
+#
+# The listeners are stated explicitly rather than left to go2rtc's defaults
+# so that deploy/nft/bench-*.nft can count the same three ports this file
+# names. Change one, change both.
+api:
+    listen: ":1984" # HTTP API, stream.html player, MSE over websocket
+
+rtsp:
+    listen: ":8554" # inter-process handoff
+
+webrtc:
+    listen: ":8555" # WebRTC media, TCP and UDP
+
+streams:
+    # **H.264 only, and that is a measurement rather than a preference.**
+    # RKVENC2 on this board advertises H.264 and MJPEG; `hevc_rkmpp` opens
+    # and fails at MPP context init:
+    #
+    #     [hevc_rkmpp] Failed to init MPP context: -1
+    #
+    # So this target ships no `car` stream — the X4's H.265 feed has no
+    # equivalent here. The `video` dashboard already defaults to `car_h264`
+    # (its `stream` variable), so the default path works unchanged; selecting
+    # `car` against this vehicle gets "stream not found" from go2rtc, which
+    # is the honest answer rather than a silently different encode.
+    #
+    # Consequences of losing HEVC: ~800k instead of ~500k for the same
+    # quality, which is inside the link budget's ~1.4 Mbit/s video share but
+    # with less margin than the X4 has. If that margin matters more than
+    # frame rate, drop to 480x270 before dropping the bitrate.
+    #
+    # **Video and audio are one ffmpeg process**, exactly as on the X4 and
+    # for a related reason: ffmpeg opens inputs in order and the v4l2 demuxer
+    # streams from `read_header`, so a single process cannot start audio
+    # before video. On a USB camera whose mic only delivers samples while its
+    # video stream runs, two independent producers leave that ordering to
+    # chance and the loser blocks forever holding the device.
+    #
+    # Pipeline notes, each of which was tried on the board:
+    #   - `-f pulse` and not `-f alsa`: this image's ffmpeg is built without
+    #     the ALSA input device (`ffmpeg -devices` lists pulse/oss/openal
+    #     only). compose.yaml mounts the session socket and sets PULSE_SERVER.
+    #   - The source is named, not `default`. This was `-i default` until a
+    #     USB camera with its own microphone (an Insta360 X3) arrived and
+    #     WirePlumber made *it* the default: that mic delivers no samples
+    #     through Pulse -- `-f pulse -i default` alone received nothing until
+    #     killed, and the full pipeline hung at input probing, so go2rtc's
+    #     producer never came up and logged nothing at `-v error`. The
+    #     ES8388 is the board's own codec, the cabin mic this target was
+    #     wired for, and it delivers at once. `ffmpeg -sources pulse` inside
+    #     the container lists the names if the ALSA card ever renames.
+    #   - `format=nv12` is a CPU conversion of the camera's 4:2:2 MJPEG,
+    #     which the encoder needs and which costs little at 640x360. The
+    #     zero-copy alternative is `mjpeg_rkmpp` decode plus `scale_rkrga`;
+    #     it is worth doing if a higher resolution ever lands here, and is
+    #     not worth the extra failure surface at this one.
+    #   - `-rc_mode CBR` rather than the encoder's default VBR: the link
+    #     budget reserves a rate, not an average.
+    car_h264:
+        - exec:ffmpeg -hide_banner -v error -f v4l2 -input_format mjpeg -video_size 640x360 -i /dev/video0 -f pulse -i alsa_input.platform-es8388-sound.HiFi__hw_rockchipes8388__source -map 0:v -map 1:a -filter:v format=nv12 -c:v h264_rkmpp -profile:v high -rc_mode CBR -b:v 800k -g 50 -filter:a afftdn=nr=20:nt=v:nf=-20 -c:a libopus -ar:a 48000 -ac:a 1 -b:a 64k -rtsp_transport tcp -f rtsp {output}

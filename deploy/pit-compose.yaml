@@ -1,4 +1,4 @@
-# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the four pit
+# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the six pit
 # services.
 #
 #     docker compose -f deploy/pit-compose.yaml up -d
@@ -174,6 +174,34 @@ services:
       retries: 4
       start_period: 20s
 
+  timing-extrapolator:
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-timing-extrapolator"]
+    environment:
+      OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://nats:4222}
+      OPENLAPS_TIMING_STREAM: ${OPENLAPS_TIMING_STREAM:-TELE_VEHICLE}
+      OPENLAPS_TIMING_CONFIG: /config/timing-extrapolator.yaml
+      OPENLAPS_TIMING_HEALTH_PORT: "8084"
+      OPENLAPS_MQTT_HOST: mosquitto
+      OPENLAPS_MQTT_PORT: "1883"
+      OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
+    volumes:
+      - ./pit-config:/config:ro
+    ports:
+      - "8084:8084"
+    depends_on:
+      provision-streams:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8084/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
   session-control:
     <<: [*openlaps-image, *pit-env]
     command: ["openlaps-session-control"]
@@ -243,6 +271,65 @@ services:
       retries: 4
       start_period: 20s
 
+  pit-monitor:
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-pit-monitor"]
+    # The one pit service on the host network namespace, and the reason is
+    # its subject: this service reports on *the pit host*, not on the compose
+    # network. Two things need it.
+    #
+    #   chronyc has to reach the host's chronyd on 127.0.0.1:323. The vehicle
+    #   agent already does exactly this (deploy/Dockerfile) -- it is why
+    #   chrony is in the runtime image at all -- and a chronyd bound to
+    #   localhost is not reachable from a bridge network by any other means
+    #   short of mounting its socket.
+    #
+    #   psutil has to see the host's CPU, load, memory, interfaces and
+    #   temperatures. Most of /proc is not namespaced so a bridged container
+    #   would get these right by accident, but the network counters would be
+    #   the container's own and read as a permanently idle pit.
+    #
+    # It also puts the ntrip-client's :8083 and NATS's :8222 on 127.0.0.1 via
+    # the ports those services already publish, so nothing new is exposed.
+    network_mode: host
+    volumes:
+      # Read-only, and only so `disk_usage` measures the pit's real root
+      # filesystem: a container's own `/` is the image overlay, which is
+      # neither the disk Timescale is filling nor one anybody can act on.
+      # Narrow this to a specific mount point (and set the DISK_PATH below to
+      # match) if the pit host keeps its data somewhere other than `/`.
+      - /:/hostfs:ro
+    environment:
+      # Compose DNS does not exist on the host network, so the database is
+      # the address timescaledb publishes rather than the service name every
+      # other service here uses. A TIMESCALE_DSN set in .env would override
+      # this and name `timescaledb`, which resolves nowhere from here, so it
+      # is cleared for this service alone -- TIMESCALE_DB/USER/PASSWORD from
+      # .env still apply. A pit that needs the DSN escape hatch (TLS, a
+      # socket) sets this service's own value here instead of clearing it.
+      TIMESCALE_HOST: ${TIMESCALE_LOCAL_HOST:-127.0.0.1}
+      TIMESCALE_PORT: "5432"
+      TIMESCALE_DSN: ""
+      OPENLAPS_PIT_MONITOR_HEALTH_PORT: "8085"
+      OPENLAPS_PIT_MONITOR_INTERVAL_S: ${OPENLAPS_PIT_MONITOR_INTERVAL_S:-5}
+      OPENLAPS_PIT_MONITOR_DISK_PATH: /hostfs
+      OPENLAPS_PIT_MONITOR_NTRIP_URL: ${OPENLAPS_PIT_MONITOR_NTRIP_URL:-http://127.0.0.1:8083/health}
+      OPENLAPS_PIT_MONITOR_NATS_URL: ${OPENLAPS_PIT_MONITOR_NATS_URL:-http://127.0.0.1:8222}
+    # No `ports:` -- host networking publishes :8085 directly. The ntrip and
+    # NATS probes are best-effort by design (a pit not running RTK stops the
+    # ntrip-client on purpose), so neither is a `depends_on`; only the schema
+    # this service writes into is.
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8085/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
   # --- read surface ---------------------------------------------------------
 
   grafana:
@@ -265,11 +352,12 @@ services:
       # this. Left at localhost they are unusable from any other machine on
       # the pit LAN, which is every machine that matters.
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
-      # Exactly one plugin this stack asks for, and locked decision 4 of
-      # docs/plan/PHASE5.md is the list. Pinned for the same reason the image
-      # is. It downloads at first start and then lives in the named volume,
-      # so a pit that is offline at the track only needs to have been online
-      # once.
+      # Every plugin this stack asks for is listed here with an exact version
+      # pin. Phase 6 lifts the old single-plugin cap but keeps the deployment
+      # discipline: downloads happen at first start and then live in the named
+      # volume, so an offline pit only needs to have been online once before
+      # the event. The dashboard contract derives its plugin allowlist from
+      # this value rather than maintaining a second hard-coded list.
       #
       # _SYNC, not the plain `preinstall`, and not the `GF_INSTALL_PLUGINS`
       # the brief names: that variable is deprecated in Grafana 12 and is now
@@ -283,7 +371,13 @@ services:
       # asynchronously and offers no supported way to decline them without
       # also declining this one. They are part of what the pinned image is,
       # not something this stack asked for.
-      GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.1.0}
+      #
+      # innius-video-panel earns its slot because core Grafana cannot embed
+      # the car camera at all: the text panel strips iframes (HTML
+      # sanitization, a global switch this stack will not flip), and no core
+      # panel plays a live MSE/WebRTC stream. The `video` dashboard is its
+      # only consumer.
+      GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.1.0},grafana-clock-panel@${GRAFANA_CLOCK_PLUGIN_VERSION:-3.2.4},innius-video-panel@${GRAFANA_VIDEO_PLUGIN_VERSION:-1.0.7}
       # Read by the provisioning YAML, which Grafana interpolates at load.
       # No password among them but the read-only one.
       TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}

@@ -1,0 +1,61 @@
+# PPS on a GPIO -> chrony, for a board with no kernel PPS client.
+#
+#     sudo install -D -o root -g root -m 0755 tools/pps_gpio_shim.py \
+#       /usr/local/libexec/openlaps/pps_gpio_shim.py
+#     sudo install -D -o root -g root -m 0644 tools/chrony_sock.py \
+#       /usr/local/libexec/openlaps/chrony_sock.py
+#     sudo install -m 0644 deploy/udev/99-openlaps-gpio.rules /etc/udev/rules.d/
+#     sudo install -m 0644 deploy/systemd/openlaps-pps-gpio.service /etc/systemd/system/
+#     sudo install -d /etc/openlaps
+#     printf '%s\n' 'PPS_GPIO_ARGS=--chip /dev/gpiochip3 --line 2' \
+#       | sudo tee /etc/openlaps/pps-gpio.env
+#     sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=gpio
+#     sudo systemctl daemon-reload && sudo systemctl enable --now openlaps-pps-gpio
+#
+# **Run this or `timing-head-shim.service`, never both.** They feed the same
+# chrony SOCK refclock, and two sources on one socket is not redundancy: it is
+# two opinions about the same second arriving interleaved, which chrony has no
+# way to separate. Pick the one the board is wired for.
+#
+# `--chip`/`--line` are the board's, not this file's: `/dev/gpiochip3 --line 2`
+# is GPIO3_A2, which on a Luckfox Omni3576 is 40-pin header pin 11. See
+# `deploy/targets/luckfox-omni3576/README.md` for how that was chosen and how
+# to confirm a line is free before wiring to it.
+
+[Unit]
+Description=openlaps GPIO PPS to chrony bridge
+Documentation=https://github.com/Robert-McMahon/openlaps
+After=chrony.service
+Requires=chrony.service
+PartOf=chrony.service
+# Refuse to co-exist with the RP2040 bridge rather than quietly double-feeding.
+Conflicts=timing-head-shim.service
+
+[Service]
+Type=simple
+User=openlaps
+Group=openlaps
+EnvironmentFile=/etc/openlaps/pps-gpio.env
+ExecStart=/usr/bin/python3 /usr/local/libexec/openlaps/pps_gpio_shim.py $PPS_GPIO_ARGS
+
+# A GPIO line is not exclusive to us in any way that survives a restart loop:
+# the kernel releases it when the fd closes, so a crash-restart re-requests it
+# cleanly. 1 s is long enough that a mis-wired pin does not spin.
+Restart=always
+RestartSec=1s
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+# No device nodes are created or written; the udev rule above is what grants
+# access to the ones that exist.
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openlaps-pps-gpio
+
+[Install]
+WantedBy=multi-user.target

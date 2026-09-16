@@ -97,33 +97,39 @@ trap named at every temperature. Additions:
   message (`feat: … (P7.x)`, `docs: … (P7.x)`), pre-commit green, never
   `--no-verify`. Work lands through a branch and a PR.
 
-## Decisions proposed for this phase
+## Decisions locked for this phase
 
-Unlike Phase 5 and 6, these were **not** settled with the owner before the
-briefs were written. Each is a recommendation with its reasoning; the
-owner's call on 1, 2 and 6 in particular changes the shape of P7.2, P7.3
-and P7.10. Settle them before P7.1 starts; record the outcome by editing
-this section in place, as PHASE5 → decision 4 was amended.
+Settled with the owner on 2026-09-16. A first draft proposed all of these;
+decisions 1, 4 and 6 were revised in that conversation and 8 was added.
+Do not relitigate.
 
-1. **Grafana stays the alert manager; a pit service does the delivery.**
-   Grafana already owns rule evaluation, state, `for` durations, silences,
-   history and a UI for all of it, and P6.12 put the rules there. Nothing
-   in this phase replaces that. What Grafana does badly — acknowledgement,
-   audible annunciation, retry when the internet is down, and fan-out with
-   per-severity policy — moves to one new pit service, **`notifier`**
-   (P7.2), which becomes the *only* contact point Grafana knows about.
-   Grafana's native Discord/Telegram contact points are not used: they
-   have no acknowledge concept, no offline queue, and they would put the
-   delivery policy in provisioning YAML where it cannot be unit-tested.
+1. **Grafana stays the alert manager; a pit service does the delivery; and
+   the path is tuned to under 10 seconds.** Grafana already owns rule
+   evaluation, state, `for` durations, silences, history and a UI for all
+   of it, and P6.12 put the rules there. What Grafana does badly —
+   acknowledgement, audible annunciation, retry when the internet is down,
+   and fan-out with per-severity policy — moves to one new pit service,
+   **`notifier`** (P7.2), which becomes the *only* contact point Grafana
+   knows about. Grafana's native Discord/Telegram contact points are not
+   used: no acknowledge concept, no offline queue, and the delivery policy
+   would sit in provisioning YAML where it cannot be unit-tested.
 
-   The alternative — a custom alarm engine evaluating limits at sample
-   rate on the live feed — was considered for its latency (Grafana's
-   10-second group interval plus a 15–30 s `for` means 25–40 s from a
-   crossing to a notification). It is rejected for now: the driver has the
-   ECU's engine protection and the oil light for the first ten seconds,
-   the pit alert is for the crew's response, and duplicating Grafana's
-   state machine is a large surface to test. The latency figure goes on
-   the annunciator so nobody assumes it is instant.
+   The owner's concern is latency: as shipped, a crossing takes the
+   evaluation interval (10 s), the rule's `for` (15–30 s) and the policy's
+   `group_wait` (10 s) to reach anyone — up to 50 s, which is a quarter of
+   a lap and the difference between "pit this lap" and a car stopped on
+   the far side of the circuit. None of that is inherent. The evaluation
+   floor is configuration (`min_interval` and `scheduler_tick_interval`
+   under `[unified_alerting]`, both settable from the environment),
+   `group_wait` can be 0, and `for` is per rule. **P7.1 sets a target of
+   under 10 seconds from threshold crossing to phone for a critical
+   alarm**, keeps `for` as the dominant term because it is the thing that
+   stops one bad sample paging the crew, and measures the result at the
+   bench. Only if that measurement misses does the fallback get built:
+   the watch service already reads every sample live and can evaluate
+   the same `alarms.yaml` limits at sample rate and post to the notifier
+   directly, with Grafana kept as the record. Dashboard refresh intervals
+   play no part in any of this.
 
 2. **Phones get `ntfy`, on the pit LAN, with Discord as the
    internet-dependent second channel.** `ntfy` is open source, runs as one
@@ -149,42 +155,96 @@ this section in place, as PHASE5 → decision 4 was amended.
    generator reads `units` from the catalog and refuses a limit whose
    declared unit does not match.
 
-4. **Anomaly detection is explainable or it does not ship.** Every monitor
-   in the `watch` service (P7.5–P7.6) is a residual against a stated
-   expectation — a binned envelope, a per-lap baseline, a physical ratio —
-   and every finding carries the expected value, the observed value and
-   the baseline it was judged against. A crew member at 3 am has to be
-   able to read a finding and decide whether to believe it. Isolation
-   forests and autoencoders can find things these cannot; they also cannot
-   say why, and a finding nobody can argue with is a finding nobody acts
-   on. They are listed under "After Phase 7", gated on evidence that the
-   explainable set misses something real.
+4. **Anomaly detection is explainable, and one monitor needs almost no
+   configuration.** Every monitor in the `watch` service carries the
+   expected value, the observed value and the baseline it was judged
+   against, so a crew member at 3 am can read a finding and decide
+   whether to believe it. Two families ship:
+
+   - **Hand-configured monitors** (P7.5, P7.6) for faults whose shape is
+     known — an envelope of oil pressure against RPM and temperature, a
+     drifting fan current, a wheel speed out of step with the other three.
+   - **One whole-car monitor** (P7.6) configured with nothing but a
+     channel list and a baseline policy. During the baseline it learns
+     each channel's expected value from all the others; afterwards it
+     reports, per channel, how far the observed value sits from that
+     expectation, and an overall score across the vector. A finding names
+     the contributing channels with their expected and observed values
+     ("oil pressure 22 % below expected, oil temperature 7 K above"),
+     which is the owner's requirement: enough for the crew to deduce the
+     cause and what it means for strategy. This is the linear form of an
+     autoencoder, needs only `numpy`, and its explanation is free rather
+     than bolted on. It re-baselines per stint, because a driver change,
+     nightfall or rain legitimately changes the correlations it learned.
+
+   Isolation forests and autoencoders proper are listed under "After
+   Phase 7", gated on a fault the crew found by eye that neither family
+   caught.
 
 5. **Strategy is a service, not a query.** Fuel, stops, driver time and the
    race plan are computed continuously by **`strategy`** (P7.9), written to
    Timescale and published live under `strategy.*`. `fuel.json` becomes a
    consumer of that table rather than the place the arithmetic lives.
-   `watch` and `strategy` are two services, not one: one runs at sample
-   rate and holds sample-level state, the other runs per lap and reads
-   views; they fail differently and they restart differently.
+   Scenarios are first-class: P7.9 compares alternative plans on fuel and
+   stops alone, and P7.11 adds where each one finishes once field data
+   exists. `watch` and `strategy` are two services, not one: one runs at
+   sample rate and holds sample-level state, the other runs per lap and
+   reads views; they fail differently and they restart differently.
 
-6. **The field timing feed is an adapter with a fixed internal schema, and
-   the first adapter is the one that needs nobody's cooperation.** P7.10
-   defines `field.*` tables shaped like Timing71's Common Timing Format
-   (cars as rows against a column spec, a session block with flag state
-   and time remaining) and builds sources behind one interface. The order
-   is: a **replay/file source** (so everything downstream is testable), a
-   **Natsoft results-page poller** (public HTML, needs internet, needs no
-   one's permission), a **Timing71 relay** (the extension exposes no
-   outbound API — this is a spike, see P7.10), and a **Natsoft TCP
-   capture mode** (the timekeepers' live broadcast is a host and port on
-   request and an undocumented protocol; capture first, decode after the
-   event). Race prediction (P7.11) consumes the schema and does not care
-   which source filled it.
+6. **The field timing feed is an adapter with a fixed internal schema,
+   and the first live source is a browser relay.** The Natsoft live
+   timing page is not HTML that can be polled: it loads a 470 KB
+   obfuscated client that opens a **binary WebSocket** to the same host,
+   sends a binary request, and renders the standings itself, which is why
+   it updates faster than any poll. Timing71's provider plugins are a
+   private package, and its core library states that provider code is
+   reverse-engineered and cannot be published. So P7.10 defines `field.*`
+   tables shaped like Timing71's Common Timing Data format and builds
+   sources behind one interface, in this order:
 
-7. **`numpy` is added as a dependency**, for P7.6's regressions and
-   P7.11's Monte Carlo. Recorded in P7.0's ADR so the next person knows it
-   was a decision and not an accident of `uv add`.
+   1. a **replay/file source**, so everything downstream is testable;
+   2. a **browser relay** — a userscript on the pit's own browser that
+      reads the rendered standings table from the Natsoft live page *or*
+      the Timing71 page and posts a snapshot to `timing-feed` about once a
+      second. No protocol work, works with either site, needs internet,
+      breaks only when a page layout changes;
+   3. a **WebSocket frame capture** (Playwright, both directions) of the
+      Natsoft feed during the first live session, so the question of
+      decoding it is answered against real bytes rather than argued;
+   4. the **timekeepers' TCP feed**, with permission — the only source
+      that works with no internet, since it is local at the track.
+      Capture first; decode after the event.
+
+   **Reverse-engineering the binary WebSocket is deferred, not
+   rejected.** No terms of use were found on the Natsoft site, but the
+   obfuscation is a signal of intent, the client changes without notice,
+   and Natsoft already supplies a live feed specification to third
+   parties (HH Timing users obtain a host and port from the timekeepers).
+   **Ask Natsoft for that specification before anyone opens the
+   obfuscated client.** If decoding does go ahead, the decoder lives in
+   the private companion repository (ADR 0007), which is how Timing71
+   handles the same problem. Race prediction (P7.11) consumes the schema
+   and does not care which source filled it.
+
+7. **`numpy` is added as a dependency**, for P7.6's whole-car monitor and
+   regressions and P7.11's Monte Carlo. Recorded in P7.0's ADR so the
+   next person knows it was a decision and not an accident of `uv add`.
+   `scikit-learn` enters only if isolation forests are later chosen.
+
+8. **Timing71 is a format, not a dependency.** Its reusable libraries
+   (`@timing71/common`, `livetiming-analysis`) are JavaScript on
+   mobx-state-tree under AGPL-3.0; this is a Python repository under
+   Apache-2.0 with a no-frontend-toolchain rule, and a combined work
+   served over a network would carry AGPL obligations. The part that
+   would actually save work — the Natsoft provider plugin — is private
+   anyway. What is adopted is free: the **Common Timing Data state
+   shape and column vocabulary** as the `field_*` schema; Timing71's
+   **standalone WebSocket message protocol** (`MANIFEST_UPDATE` /
+   `STATE_UPDATE` JSON, default port 24771) as an accepted ingest format,
+   so a Timing71 service run locally could push to `timing-feed`
+   unchanged; and the analysis library's stint and pit-stop prediction
+   logic as a reference for P7.11. Nothing from those repositories is
+   vendored or imported.
 
 ## Dependency graph
 
@@ -237,7 +297,7 @@ section, `docs/CATALOG.md` → naming, `docs/PIT_SCHEMA.md`,
    never appear in a catalog or on the wire; pit services writing their
    derived tables to Timescale directly in the `pit-monitor` pattern rather
    than through the ingest-writer; and Grafana as the alert manager with
-   `notifier` as its only contact point (proposed decisions 1 and 3 above).
+   `notifier` as its only contact point (locked decisions 1 and 3 above), and Timing71 as a format rather than a dependency (locked decision 8).
    Record `numpy` as a dependency decision in the same ADR. Follow ADR
    0010's form.
 
@@ -337,6 +397,19 @@ in a clearly-marked "planned" section).
   (the `math` expression path is the usual answer), and demonstrate in
   the test that a value oscillating between the two does not flap.
 
+- **The latency budget** (locked decision 1). Lower Grafana's
+  evaluation floor to 2 s (`GF_UNIFIED_ALERTING_MIN_INTERVAL` and
+  `GF_UNIFIED_ALERTING_SCHEDULER_TICK_INTERVAL`, verified against the
+  pinned Grafana version at the bench, since the second is thinly
+  documented), set the rule group interval to match, set `group_wait` to
+  0 in the policy, and give every alarm a `for` chosen from the physics —
+  oil pressure 3 s, coolant 15 s — rather than one value for all. Then
+  **measure**: a bench sample crossing a critical limit must reach the
+  notifier in under 10 s, and the number goes in the runbook. If the
+  measurement misses, P7.5's scope grows a sample-rate evaluation of
+  `severity: critical` limits posting straight to the notifier; do not
+  build that pre-emptively.
+
 - **A sync test.** `tests/test_grafana_alerts.py` gains a contract that
   the committed rendered file equals a fresh render of the profile —
   the same discipline as dashboards-as-code, applied to the generator's
@@ -357,7 +430,9 @@ The `runbook_url` annotations point at `reliability` panels by id; the
 generator must keep them and P7.4 must keep the ids.
 
 **Acceptance:** the rendered file for the example profile is committed
-and matches a fresh render; a limit declared in `°C` renders in K with
+and matches a fresh render; a critical limit crossed at the bench reaches
+the notifier in under 10 s and the measured figure is recorded in
+`BENCH_RUNBOOK.md`; a limit declared in `°C` renders in K with
 both values visible; a limit with a mismatched or missing unit fails the
 generator; the firing drill in `BENCH_RUNBOOK.md` still passes for every
 rule; a value oscillating across the clear threshold does not resolve and
@@ -622,14 +697,15 @@ and bin; a restart reloads the stored baseline and does not re-learn;
 
 ---
 
-## P7.6 — Drift and consistency monitors
+## P7.6 — Drift, consistency and the whole-car monitor
 
 **Specs:** P7.5, `docs/PIT_SCHEMA.md` → `v_laps`, `v_samples_1s_named`,
 `profiles/example-club-racer/catalog.yaml` → the wheel-speed, driveshaft,
-gear and trigger channels.
+gear and trigger channels, `numpy`.
 
-Three more monitor kinds, each catching a failure shape the envelope
-cannot.
+Four more monitor kinds, each catching a failure shape the envelope
+cannot. The first three are hand-configured; the fourth is the
+low-configuration catch-all of locked decision 4.
 
 - **`drift`** — per-lap, not per-sample. For each completed clean lap
   (`v_laps.valid`, on track, not in/out), the lap's mean of a target
@@ -657,6 +733,42 @@ cannot.
   `car.trigger_error_count` rising at any rate on track is a crank or cam
   sensor going; the finding is the rate.
 
+- **`whole_car`** — one monitor, a channel list, a baseline policy, and
+  nothing else to configure:
+
+  ```yaml
+  whole_car:
+    kind: whole_car
+    channels: [car.rpm, car.map, car.throttle_pos, car.oil_pressure,
+               car.oil_temp, car.coolant_temp, car.fuel_pressure,
+               car.battery_v, car.lambda1, car.thermo_fan_1_current, ...]
+    baseline: stint_start        # re-learn at every driver change
+    baseline_minutes: 15
+    open_finding_above: 4.0      # overall score, in sigma
+    severity: warning
+    gate: on_track
+  ```
+
+  During the baseline window it standardises every channel and fits, for
+  each channel, a ridge regression predicting it from all the others
+  (`numpy` least squares; no iterative training, no hyperparameters a
+  crew would have to understand). Afterwards each sample yields a
+  residual per channel — observed minus expected — and an overall score
+  as the Mahalanobis distance of the residual vector against the
+  baseline's residual covariance, smoothed over `score_window`. A finding
+  opens on the overall score and its summary lists the channels ranked
+  by residual with expected and observed values and the direction, in
+  catalog units, so it reads as "oil pressure 22 % below expected from
+  rpm and oil temperature; oil temperature 7 K above expected". This is
+  the linear form of an autoencoder and it ships the explanation an
+  autoencoder would need extra work to give.
+
+  It will fire on legitimate change — nightfall, rain, a driver with a
+  different throttle habit — which is why `baseline: stint_start` is the
+  default and why the finding names its baseline. Its false-positive
+  budget (P7.7) is the one most likely to need a recorded decision
+  rather than a zero.
+
 Each kind is a class with the same interface as `envelope`; `watch.yaml`
 declares them alongside. The finding summary for every kind carries the
 same three fields — expected, observed, baseline — so P7.4's findings
@@ -665,7 +777,10 @@ table needs no per-kind rendering.
 **Acceptance:** for each kind, a replay with an injected fault (P7.7)
 opens a finding and the clean replay does not; the wheel-speed monitor
 does not fire during a braking zone or a pit stop; the ratio monitor
-learns per-gear baselines and reports a slip in the gear it happened in.
+learns per-gear baselines and reports a slip in the gear it happened in;
+the whole-car monitor, given a scaled oil-pressure fault it was never
+configured for, opens a finding whose top-ranked channel is
+`car.oil_pressure` with the expected and observed values stated.
 
 **Suggested model:** strong.
 
@@ -826,21 +941,32 @@ the new views.
 ## P7.10 — `timing-feed`: the field timing adapter
 
 **Specs:** P7.0's declared `field_*` tables; Timing71's Common Timing
-Format and service-manifest documentation (external, at timing71.org —
-read it before fixing the schema); the Natsoft live results pages
-(`racing.natsoft.com.au/results/`); `tools/replay.py` for the shape of a
-replayable source.
+Data format documentation (`info.timing71.org` → reference: service
+manifest, service state — read it before fixing the schema) and the
+`@timing71/common` `Stat` column vocabulary; the Natsoft live timing
+pages (`racing.natsoft.com.au`); `tools/replay.py` for the shape of a
+replayable source; ADR 0007 for where a proprietary decoder would live.
 
 **The stable part: the schema.** `field_session` — `(time, source,
 session_name, flag_state, time_remaining_s, laps_remaining, time_elapsed_s)`
 — and `field_cars` — `(time, source, car_number, class, position,
 class_position, laps, last_lap_s, best_lap_s, gap_s, interval_s,
-pit_count, in_pit, driver, state)` — as snapshot rows per poll, plus
+pit_count, in_pit, driver, state)` — as snapshot rows per update, plus
 `field_laps` derived in the service when a car's lap count increments.
 Views `v_field_standings` (latest snapshot), `v_field_laps`, `v_field_gaps`
 (gap-to-us per car per lap, joined on the car number in the race plan).
-Shaped after the Common Timing Format so a Timing71 state maps onto it
-with no loss; a Natsoft page maps onto it with some columns NULL.
+Shaped after the Common Timing Data format so a Timing71 state maps onto
+it with no loss; a scraped standings table maps onto it with some columns
+NULL.
+
+**Two ingest endpoints, both simple.** `POST /ingest/snapshot` takes one
+standings snapshot in the `field_*` shape as JSON — what the browser
+relay sends. `WS /ingest/t71` accepts Timing71's standalone message
+protocol (`MANIFEST_UPDATE` carrying a column spec, `STATE_UPDATE`
+carrying cars as rows against it) so a Timing71 service run locally could
+push to this service unchanged (locked decision 8). Both are
+unauthenticated on the compose network and bounded the way
+`session-control`'s webhook is.
 
 **The sources, in order, behind one `Source` interface (`async for
 snapshot in source`):**
@@ -848,33 +974,43 @@ snapshot in source`):**
 1. **Replay** from a recorded snapshot file. Built first so P7.11 and
    every test have data before any live source works.
 
-2. **Natsoft results poller.** The public live results pages are HTML,
-   refreshed by the timekeepers during a session. Poll at a polite
-   interval (no faster than 10 s, and back off on errors), parse the
-   standings table, emit snapshots. Needs internet; needs nobody's
-   permission; **a captured set of pages from a real event is the
-   fixture, and getting one is the first task** — the parser is written
-   against real pages, not a guessed layout.
+2. **Browser relay.** `tools/timing_relay/` holds a userscript (Tampermonkey
+   or equivalent; hand-written, dependency-free, per the repository's
+   no-toolchain rule) that runs on the pit's own browser against the
+   Natsoft live timing page or the Timing71 page, reads the rendered
+   standings table, normalises it to the snapshot shape, and posts it to
+   `POST /ingest/snapshot` about once a second, with a visible indicator
+   on the page that it is relaying and when it last succeeded. It needs
+   internet and it breaks when a page layout changes — say both on the
+   indicator. **A captured set of real page states is the fixture** for
+   the normaliser; the first task is to save some during a live session.
+   The `woodmaniac13/VisualiseRaceResults-natsoft` repository is reading
+   material here: its lesson that Natsoft links carry dynamic object
+   paths (navigate by clicking, never by URL) applies, and its
+   `natsoft-parser.js` shows the Result/Times page columns.
 
-3. **Timing71 relay — a spike, not a build.** The extension keeps every
-   timing state in the browser (IndexedDB `service_states`, in Common
-   Timing Format) and generates replay files, and it exposes **no
-   outbound API**. The candidates are: a small companion userscript that
-   reads the live state from the timing71.org page and POSTs it to
-   `timing-feed`'s `POST /ingest/ctf`; a periodic import of the
-   extension's replay export; or a patched build of the open-source
-   extension. The spike's deliverable is a page in `docs/` saying which
-   is viable, how fragile it is, and whether Timing71's terms permit it.
-   If none is viable, the ingest endpoint still ships — it is the
-   contract any future relay targets.
+3. **WebSocket frame capture.** `tools/timing_relay/capture.py` drives a
+   Playwright browser to the Natsoft live page and records every
+   WebSocket frame in both directions, timestamped, to a file — the
+   client's binary request on connect included. Run it for a whole live
+   session at the first opportunity. It decodes nothing. Its purpose is
+   to make the decode-or-not decision on evidence and, if the answer is
+   yes, to give the companion repository something to test against.
+   **Before running it, ask Natsoft for the feed specification** they
+   already supply to timing-software vendors; a spec makes the capture a
+   validation set rather than a reverse-engineering target.
 
-4. **Natsoft TCP capture mode.** The timekeepers' live broadcast is a
-   host and port on request and an undocumented protocol. `timing-feed
-   --capture host:port file` tees the raw byte stream to a timestamped
-   file and does nothing else. **Do this at the first event where the
-   port is offered**, so the protocol can be decoded afterwards against a
-   real session. A decoder is "After Phase 7" and cannot be briefed until
-   a capture exists.
+4. **Timekeepers' TCP feed.** `timing-feed --capture host:port file` tees
+   the raw byte stream to a timestamped file and does nothing else. Do
+   this at the first event where the port is offered, with the
+   timekeepers' permission. A decoder is "After Phase 7" and cannot be
+   briefed until a capture exists.
+
+**Not built here, and why:** a decoder for either binary feed. It is a
+reverse-engineering task against a deliberately obfuscated client, it
+would live in the private companion repository (ADR 0007) rather than
+here, and locked decision 6 defers it until a capture and Natsoft's
+answer both exist.
 
 **Our own car, reconciled.** The car number from the race plan (P7.8)
 identifies us in the feed. The service compares the feed's lap count and
@@ -884,15 +1020,15 @@ the vehicle and a transponder problem at the track, and says which is
 which by whose count is higher.
 
 **Acceptance:** the replay source drives the schema end to end; the
-Natsoft parser is tested against captured real pages and survives a
-column being absent; `POST /ingest/ctf` accepts a Common Timing Format
-state and lands it in the schema; the spike page exists with a decision;
-capture mode writes a file that replay mode can read back (as raw bytes
-with timestamps, undecoded); `v_field_standings` is readable by
-`grafana_ro`.
+relay's normaliser is tested against captured real page states and
+survives a column being absent; `POST /ingest/snapshot` and
+`WS /ingest/t71` both land data in the schema, the latter tested with a
+hand-built `MANIFEST_UPDATE`/`STATE_UPDATE` pair; the capture tools write
+files that replay mode can read back as raw, undecoded bytes with
+timestamps; `v_field_standings` is readable by `grafana_ro`.
 
-**Suggested model:** strong for the schema and the spike; mid-tier for
-the poller once real pages exist.
+**Suggested model:** strong for the schema and the ingest protocol;
+mid-tier for the relay once real page states exist.
 
 ---
 
@@ -960,13 +1096,17 @@ Not work packages. Load-bearing for the phase.
   before the car leaves the trailer — is the single most important line
   in this document. A notifier that worked on the bench and has never
   been seen to reach a phone in the garage is decoration.
+- **Ask Natsoft for the live feed specification** before the event. They
+  supply one to timing-software vendors; a reply either way decides
+  whether any reverse-engineering happens at all.
 - **The Natsoft port.** Ask the timekeepers for the live broadcast host
-  and port before the event and run P7.10's capture mode for the whole
-  of it. Nothing decodes it yet; the capture is what makes decoding
-  possible later.
-- **Save the Natsoft pages.** If the live results pages are used, keep a
-  copy of every poll for the fixture set. A parser tested against one
-  event's layout is a parser that breaks at the next.
+  and port before the event and run P7.10's TCP capture for the whole of
+  it. Nothing decodes it yet; the capture is what makes decoding possible
+  later.
+- **Capture the WebSocket and the page states.** Run P7.10's frame
+  capture for a whole live session, and keep the relay's saved page
+  states as the fixture set. A normaliser tested against one event's
+  layout is one that breaks at the next.
 - **Baselines are learned from the first clean window of the session.**
   If the car goes out with a known fault, the watch service learns the
   fault as normal. The operator UI should offer "re-learn baselines"
@@ -977,7 +1117,13 @@ Not work packages. Load-bearing for the phase.
 
 ## After Phase 7
 
-- **A Natsoft TCP decoder**, once a capture exists.
+- **A Natsoft decoder** — WebSocket or TCP — once a capture exists and
+  Natsoft has answered. In the private companion repository (ADR 0007),
+  not here.
+- **Official results import.** Parsing Natsoft's post-session Result and
+  Times pages into the schema, so the stint report (P6.11) can be
+  reconciled against the official classification. The
+  `VisualiseRaceResults-natsoft` parser is the reference.
 - **Multivariate anomaly detection** — a Mahalanobis distance over the
   vector of monitor residuals, or an isolation forest — if the explainable
   set is shown to miss something at an event. The evidence is a fault the

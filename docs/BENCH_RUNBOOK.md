@@ -658,7 +658,16 @@ before running P4.3 — the usual causes are an incomplete clean slate, a
 `canplayer` that died and was not noticed, and counters left loaded from a
 previous session.
 
-# Endurance alert firing drill (P6.12)
+# Endurance alert firing drill (P6.12, P7.1)
+
+The rules exercised here are rendered from
+`profiles/example-club-racer/alarms.yaml` by `tools/gen_alert_rules.py`
+(`docs/CATALOG.md` → `alarms.yaml` schema).  Change a limit there, re-run the
+generator, and commit both files together; `tests/test_gen_alert_rules.py`
+fails when the provisioning file is stale.  The thresholds in the table
+below are the *rendered* values in catalog units -- temperatures are Kelvin
+because the ECU reports Kelvin, even though `alarms.yaml` declares them in
+Celsius.
 
 Run this drill against a disposable bench database, never against the race
 archive.  Open Grafana's **Reliability watch** dashboard (`uid=reliability`)

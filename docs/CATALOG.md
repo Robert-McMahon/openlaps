@@ -152,6 +152,58 @@ what it watches must never mean editing the file that describes the car.
 The catalog once carried a `live_hz` decimation hint for that purpose; it
 was never consumed and has been removed.
 
+## `alarms.yaml` schema
+
+Alarm limits for the car, rendered into Grafana alert rules by
+`tools/gen_alert_rules.py` (docs/plan/PHASE7.md P7.1, ADR 0011). They live
+in the profile because they are facts about the car -- what oil pressure
+*this* engine needs at *this* RPM -- and because the catalog beside them is
+what gives each limit its unit. The rendered provisioning file under
+`deploy/pit-config/grafana/provisioning/alerting/` is output; a test fails
+when it is stale.
+
+```yaml
+group: <string>                  # rendered file and rule-group name
+
+alarms:
+  <rule-uid>:                    # stable; alert history is keyed on it
+    kind: threshold|stale|watch|heartbeat   # optional, default threshold
+    channel: <canonical.name>
+    units: <string>|none         # the unit the numbers below are in -- required
+    above: <number>              # firing threshold (threshold kind: exactly one
+    below: <number>              #   of above / below)
+    clear_below: <number>        # optional hysteresis for an `above` alarm
+    clear_above: <number>        # optional hysteresis for a `below` alarm
+    older_than_s: <number>       # stale kind: seconds without a sample
+    severity_at_least: critical|warning     # watch kind: open findings to count
+    for: <duration>              # how long the condition holds before firing
+    severity: critical|warning|none         # optional, default critical
+    gate: on_track|always|engine_running    # optional, default on_track
+    resting: <number>            # value evaluated while gated off / no sample
+    when: { channel: <name>, at_least: <n> }   # optional second-channel condition
+    summary: <string>            # the alert title
+    panel: <int>                 # reliability-dashboard panel that explains it
+```
+
+**Units are declared, converted, and checked.** The generator reads the
+channel's `units` from `catalog.yaml` and converts the declared limit into
+it -- `110 °C` on a channel the catalog reports in `K` renders as `383.15`,
+with both spellings written into the query as a comment. Temperature and
+pressure families convert; spelling aliases (`V`/`Volts`, `degC`/`°C`)
+reconcile; anything else must match the catalog exactly or the generator
+refuses. A channel outside the catalog (`sys.*`, `lap.*`, `timing.*`) must
+still declare `units` and is never converted. An alarm with no `units` is
+an error, not a default, because that is the mistake that once put a
+Celsius limit on a Kelvin channel.
+
+**`resting` is the value the rule sees when it should not be judging.** An
+`on_track` alarm evaluates as `resting` while the last `lap.event` says the
+car is in the pits, and when no sample exists yet; it must sit on the
+non-firing side of the threshold. A refuelling stop looks exactly like a
+CAN failure -- the ECU is powered down while the logger keeps publishing --
+so every car-channel alarm is gated, and `live-feed-stale` is the one alarm
+whose whole job is to notice the difference while the car is on track.
+
 ## Wire encoding (`encode:`)
 
 Every channel's samples are encoded as one of four protobuf value arms:

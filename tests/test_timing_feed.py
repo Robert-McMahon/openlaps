@@ -731,7 +731,9 @@ def _ws_connect(port: int) -> socket.socket:
     sock = socket.create_connection(("127.0.0.1", port), timeout=5)
     sock.sendall(
         b"GET /ingest/t71 HTTP/1.1\r\nHost: pit\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-        b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+        # The handshake nonce from RFC 6455 section 1.3, not a credential.
+        b"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"  # gitleaks:allow
+        b"Sec-WebSocket-Version: 13\r\n\r\n"
     )
     response = b""
     while b"\r\n\r\n" not in response:

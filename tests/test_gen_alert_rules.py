@@ -44,6 +44,9 @@ SHIPPED_LIMITS: dict[str, tuple[str | None, str, float, str]] = {
     # P7.9: the strategy service's findings, by severity.
     "strategy-warning": (None, "gt", 0.0, "0s"),
     "strategy-critical": (None, "gt", 0.0, "0s"),
+    # P7.10: the timing feed's findings, by severity.
+    "field-warning": (None, "gt", 0.0, "0s"),
+    "field-critical": (None, "gt", 0.0, "0s"),
 }
 
 
@@ -386,6 +389,8 @@ def test_every_continuous_shipped_alarm_has_hysteresis() -> None:
         "notifier-heartbeat",
         "strategy-warning",
         "strategy-critical",
+        "field-warning",
+        "field-critical",
     }
     for uid, rule in _rules(_rendered()).items():
         condition = _condition(rule)

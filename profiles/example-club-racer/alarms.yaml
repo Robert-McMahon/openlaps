@@ -188,3 +188,30 @@ alarms:
     dashboard: fuel
     summary: Strategy critical (driver over a limit, pit window closed)
     panel: 3
+
+  # The timing feed's findings (P7.10): our car's lap count in the timing
+  # provider's feed against the vehicle's own count in v_laps. Beyond a lap
+  # apart, one of the two systems missed something, and the finding's
+  # summary says whose count is higher -- the feed ahead means the vehicle
+  # missed a line crossing (a GPS dropout, the start line in the wrong
+  # place), the vehicle ahead means the transponder was not seen. Judged
+  # every few seconds by the timing-feed service, only while a session with
+  # a race plan car number is open, so no gate and no hold of their own.
+  field-warning:
+    kind: watch
+    monitor_prefix: field.
+    severity_at_least: warning
+    severity_at_most: warning    # a critical finding fires the rule below, not both
+    for: 0s
+    severity: warning
+    gate: always
+    summary: Timing feed disagrees with the vehicle (lap count a few laps apart)
+
+  field-critical:
+    kind: watch
+    monitor_prefix: field.
+    severity_at_least: critical
+    for: 0s
+    severity: critical
+    gate: always
+    summary: Timing feed disagrees with the vehicle (lap count far apart)

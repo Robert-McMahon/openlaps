@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import psycopg
 import pytest
+import yaml
 from natsoft_docs import FIXTURE, OUR_CAR, T0, our_main_line_passings
 from psycopg.conninfo import make_conninfo
 
@@ -25,6 +27,24 @@ from pit.timing_feed.service import TimingFeedService, TimingFeedSettings
 from pit.timing_feed.shapes import snapshot_from_json
 
 VEHICLE = "example-club-racer"
+REPO = Path(__file__).resolve().parents[1]
+ALERTING = REPO / "deploy/pit-config/grafana/provisioning/alerting/endurance.yaml"
+
+
+def _rule_sql(uid: str) -> str:
+    document = yaml.safe_load(ALERTING.read_text(encoding="utf-8"))
+    for group in document["groups"]:
+        for rule in group["rules"]:
+            if rule["uid"] == uid:
+                return rule["data"][0]["model"]["rawSql"]
+    raise KeyError(uid)
+
+
+def _rule_value(dsn: str, uid: str) -> float:
+    """What Grafana's read-only role sees when it evaluates the rule now."""
+    grafana = make_conninfo(dsn, user="grafana_ro", password="openlaps-grafana-test")
+    with psycopg.connect(grafana) as reader:
+        return float(reader.execute(_rule_sql(uid)).fetchone()[1])
 
 
 @pytest.fixture
@@ -171,6 +191,11 @@ def test_a_named_car_gets_gaps_a_lap_count_finding_and_a_clock_offset(migrated):
             conn.execute("SELECT count(DISTINCT lap_number) FROM v_field_gaps").fetchone()[0] == 4
         )
 
+    # The rendered rule fires on it as the Grafana role -- two laps apart is
+    # the warning rule's, not the critical one's.
+    assert _rule_value(migrated, "field-warning") == 1.0
+    assert _rule_value(migrated, "field-critical") == 0.0
+
     # The vehicle catches up: the finding closes on the next reconciliation.
     with psycopg.connect(migrated) as conn:
         for number, crossed_at in enumerate(vehicle_stamps[2:], start=3):
@@ -193,6 +218,7 @@ def test_a_named_car_gets_gaps_a_lap_count_finding_and_a_clock_offset(migrated):
             "SELECT count(*) FROM v_watch_findings WHERE closed_at IS NOT NULL"
         ).fetchone()
         assert closed == 1
+    assert _rule_value(migrated, "field-warning") == 0.0, "resting once the finding closes"
 
 
 def test_a_relay_snapshot_lands_in_the_same_schema(migrated):

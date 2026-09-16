@@ -426,7 +426,9 @@ disagreement beyond a lap is a `field.lap_count` finding in
 `watch_findings` whose summary says whose count is higher and therefore
 which is the likely fault -- the feed ahead means the vehicle missed a line
 crossing, the vehicle ahead means the transponder was not seen -- and it
-closes when the counts agree again. Our main-line passings make the same
+closes when the counts agree again. The `field-warning` and
+`field-critical` rules in the profile's `alarms.yaml` alert on it by
+severity, the way the `strategy-*` rules alert on the strategy findings. Our main-line passings make the same
 comparison sharper: the offset between the timekeepers' `tod` and the
 nearest `v_laps.crossed_at` is the vehicle clock measured against theirs,
 written as `clock_offset_s` under source `timing-feed` in `pit_metrics`,

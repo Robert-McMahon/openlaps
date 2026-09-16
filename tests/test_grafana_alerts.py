@@ -23,6 +23,8 @@ REQUIRED_RULES = {
     "notifier-heartbeat",
     "strategy-warning",
     "strategy-critical",
+    "field-warning",
+    "field-critical",
 }
 
 

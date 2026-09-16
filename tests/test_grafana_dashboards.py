@@ -325,6 +325,70 @@ def test_mqtt_topics_follow_the_per_channel_contract() -> None:
                 )
 
 
+def test_vehicle_clock_stats_show_only_fresh_persisted_values(timescale_dsn) -> None:
+    dashboard = json.loads((DASHBOARDS / "system.json").read_text(encoding="utf-8"))
+    panels = {panel["id"]: panel for panel in _panels(dashboard)}
+    clock_channels = {
+        110: ("sys.host.clock_source", "GPS"),
+        111: ("sys.host.clock_stratum", 1.0),
+        112: ("sys.host.clock_offset_s", 0.001),
+        113: ("sys.host.clock_root_dispersion_s", 0.002),
+    }
+    channel_keys: dict[int, int] = {}
+
+    with psycopg.connect(timescale_dsn) as conn:
+        apply_migrations(conn)
+        for panel_id, (channel, fresh_value) in clock_channels.items():
+            panel = panels[panel_id]
+            assert panel["datasource"]["uid"] == "timescale"
+            assert len(panel["targets"]) == 1
+            target = panel["targets"][0]
+            assert target["datasource"]["uid"] == "timescale"
+            assert target["format"] == "table"
+
+            channel_key = conn.execute(
+                "INSERT INTO channels (vehicle_id, name, units, value_type) "
+                "VALUES (%s, %s, '', %s) RETURNING channel_key",
+                (VEHICLE, channel, 4 if isinstance(fresh_value, str) else 1),
+            ).fetchone()[0]
+            channel_keys[panel_id] = channel_key
+            values = (
+                (timedelta(minutes=-1), "STALE" if isinstance(fresh_value, str) else -1.0),
+                (timedelta(0), fresh_value),
+                (timedelta(hours=1), "FUTURE" if isinstance(fresh_value, str) else 999.0),
+            )
+            for offset, value in values:
+                column = "value_text" if isinstance(value, str) else "value"
+                conn.execute(
+                    f"INSERT INTO samples (time, channel_key, {column}) "
+                    "VALUES (now() + %s, %s, %s)",
+                    (offset, channel_key, value),
+                )
+
+            sql = target["rawSql"].replace("$vehicle", VEHICLE)
+            assert not GRAFANA_VARIABLE.findall(sql)
+            result = conn.execute(cast(LiteralString, sql))
+            assert [column.name for column in result.description or []] == ["time", "value"]
+            assert result.fetchone()[1] == fresh_value
+
+        conn.execute("DELETE FROM samples WHERE time >= now() - interval '30 seconds'")
+        for panel_id in clock_channels:
+            sql = panels[panel_id]["targets"][0]["rawSql"].replace("$vehicle", VEHICLE)
+            assert conn.execute(cast(LiteralString, sql)).fetchone()[1] is None
+
+        conn.execute("DELETE FROM samples")
+        for panel_id, (_, fresh_value) in clock_channels.items():
+            future_value = "FUTURE" if isinstance(fresh_value, str) else 999.0
+            column = "value_text" if isinstance(future_value, str) else "value"
+            conn.execute(
+                f"INSERT INTO samples (time, channel_key, {column}) "
+                "VALUES (now() + interval '1 hour', %s, %s)",
+                (channel_keys[panel_id], future_value),
+            )
+            sql = panels[panel_id]["targets"][0]["rawSql"].replace("$vehicle", VEHICLE)
+            assert conn.execute(cast(LiteralString, sql)).fetchone()[1] is None
+
+
 def test_every_dashboard_query_executes_and_returns_configured_fields(timescale_dsn) -> None:
     targets = list(_raw_sql_targets())
     assert targets, "no dashboard rawSql targets found"

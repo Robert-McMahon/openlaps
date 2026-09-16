@@ -90,6 +90,7 @@ each takes it as configuration:
 | ingest-writer | `OPENLAPS_INGEST_STREAM` | `TELE_VEHICLE` |
 | live-decoder | `OPENLAPS_LIVE_STREAM` | `TELE_VEHICLE` |
 | timing-extrapolator | `OPENLAPS_TIMING_STREAM` | `TELE_VEHICLE` |
+| watch | `OPENLAPS_WATCH_STREAM` | `TELE_VEHICLE` |
 | ntrip-client (GGA feed only) | `OPENLAPS_NTRIP_STREAM` | `TELE_VEHICLE` |
 
 All four must name the stream `provision_pit_streams.py` actually created.
@@ -325,10 +326,11 @@ docker compose -f deploy/pit-compose.yaml exec timescaledb psql -U openlaps -d o
 | notifier | 8086 | `OPENLAPS_NOTIFIER_PORT` (annunciator UI at `/`, Grafana webhook, `/health`) |
 | ntfy | 8087 | fixed (`GET /v1/health`); phones subscribe here |
 | strategy | 8088 | `OPENLAPS_STRATEGY_HEALTH_PORT` |
+| watch | 8089 | `OPENLAPS_WATCH_HEALTH_PORT` |
 | grafana | 3000 | fixed (`GET /api/health`) |
 
 ```bash
-for port in 8080 8081 8082 8083 8084 8086 8088; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
+for port in 8080 8081 8082 8083 8084 8086 8088 8089; do echo "--- $port"; curl -fsS "http://127.0.0.1:$port/health"; echo; done
 ```
 
 **Grafana is up and both datasources are green.** The web UI is on
@@ -495,3 +497,7 @@ because `channel_key` is resolved per generation and stable across them
 `systemd/openlaps-agent.service` is the alternative for an SBC running the
 agent directly, which is what the bench does today. Run one or the other,
 not both — they would fight over the serial port.
+
+`watch` consumes the sourced stream, writes envelope scores, findings and baseline
+checkpoints directly to Timescale, and publishes `watch.*.score` to MQTT. See
+[WATCH.md](../docs/WATCH.md) for baseline fitting and the firing drill.

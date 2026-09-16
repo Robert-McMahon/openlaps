@@ -51,6 +51,7 @@ import itertools
 import sys
 import time
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import can
@@ -72,6 +73,7 @@ from collectors.clock import MonotonicWallClock, WallClock
 from collectors.serial.transport import SerialCollector
 from core.catalog import RuntimeCatalog
 from core.config import ProfileConfig
+from pit.watch.replay import ScaleFault
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CANDUMP = REPO_ROOT / "tests" / "fixtures" / "candump" / "candump-sample.log"
@@ -87,8 +89,16 @@ TICK_MS = 20
 FLUSH_EVERY_FIXES = 5_000
 
 
-def _emit(pipeline: Pipeline, source_class: str):
+def _emit(pipeline: Pipeline, source_class: str, fault=None, fault_ref=None):
+    first = None
+
     def emit(sample) -> None:
+        nonlocal first
+        if first is None:
+            first = sample.t_mono_ns
+        if fault is not None and sample.source_ref == fault_ref:
+            value = fault.apply(fault.channel, sample.value, (sample.t_mono_ns - first) / 1e9)
+            sample = replace(sample, value=value)
         pipeline.ingest(source_class, sample)
 
     return emit
@@ -138,6 +148,7 @@ def replay_cycle(
     candump_frames: list[can.Message],
     nmea_lines: list[tuple[float, bytes]],
     gps_rows: list[tuple[float, float, float, float, float]],
+    oil_pressure_fault: ScaleFault | None = None,
 ) -> Iterator[TickBatch]:
     """One full pass over every loaded source, yielded as ordered batches.
 
@@ -156,7 +167,20 @@ def replay_cycle(
 
     if candump_frames and profile.vehicle.buses:
         bus = profile.vehicle.buses[0]
-        collector = CanCollector(bus, profile.path, _emit(pipeline, bus.name), wall_clock=clock)
+        fault_ref = next(
+            (
+                ref
+                for ref, (_, policy) in catalog.source_map.items()
+                if policy.name == "car.oil_pressure"
+            ),
+            None,
+        )
+        collector = CanCollector(
+            bus,
+            profile.path,
+            _emit(pipeline, bus.name, oil_pressure_fault, fault_ref),
+            wall_clock=clock,
+        )
         collector.replay(candump_frames)
 
     if (nmea_lines or gps_rows) and profile.vehicle.serial:
@@ -235,6 +259,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_TELE_MAX_BYTES,
         help="TELE's JetStream reservation; lower it for a small throwaway server",
     )
+    parser.add_argument(
+        "--oil-pressure-fault-after",
+        type=float,
+        default=None,
+        help="scale oil pressure by 0.7 after N replay seconds (P7.5 drill)",
+    )
     return parser
 
 
@@ -276,6 +306,11 @@ def main(argv: list[str] | None = None) -> int:
                 candump_frames=candump_frames,
                 nmea_lines=nmea_lines,
                 gps_rows=gps_rows,
+                oil_pressure_fault=(
+                    ScaleFault(after_s=args.oil_pressure_fault_after)
+                    if args.oil_pressure_fault_after is not None
+                    else None
+                ),
             )
             submitted = publish_paced(publisher, batches, args.rate)
             print(

@@ -774,3 +774,15 @@ restore `"track"`, `UPDATE sessions SET status = 'ended' WHERE session_id =
 'bench-drill'`, repeat the firing samples again, and verify the same seven
 stay Normal: that is the overnight case.  The `publish-lag-high` pipeline
 rule deliberately remains active in both.
+
+### Envelope findings (P7.5)
+
+`watch-critical` and `watch-warning` are generated from the profile and select
+open findings of their respective severity. Follow [the watch firing and clean
+replay drill](WATCH.md#firing-and-clean-replay-checks): clean on-track replay
+must leave both non-firing; a 0.7 oil-pressure injection after learning must
+open the critical rule, and an equivalent sustained coolant-temperature
+change outside its learned envelope must open the warning rule. Healthy
+samples must close the findings and resolve the rules. The short engine-start
+fixture alone cannot learn these on-track baselines. Check `/health` on 8089
+and both `v_watch_*` views before attributing a non-firing rule to a healthy car.

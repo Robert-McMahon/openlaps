@@ -82,7 +82,7 @@ def test_the_committed_file_is_a_fresh_render_of_the_profile() -> None:
 
 def test_the_rendered_limits_are_the_phase_6_thresholds_with_retuned_holds() -> None:
     rules = _rules(_rendered())
-    assert rules.keys() == SHIPPED_LIMITS.keys()
+    assert rules.keys() == SHIPPED_LIMITS.keys() | {"watch-critical", "watch-warning"}
     for uid, (channel, comparison, threshold, hold) in SHIPPED_LIMITS.items():
         rule = rules[uid]
         evaluator = _condition(rule)["evaluator"]
@@ -386,6 +386,8 @@ def test_every_continuous_shipped_alarm_has_hysteresis() -> None:
         "notifier-heartbeat",
         "strategy-warning",
         "strategy-critical",
+        "watch-critical",
+        "watch-warning",
     }
     for uid, rule in _rules(_rendered()).items():
         condition = _condition(rule)

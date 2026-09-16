@@ -188,3 +188,20 @@ alarms:
     dashboard: fuel
     summary: Strategy critical (driver over a limit, pit window closed)
     panel: 3
+
+  watch-critical:
+    kind: watch
+    severity_at_least: critical
+    for: 0s
+    severity: critical
+    gate: always
+    summary: Critical envelope finding — inspect v_watch_findings for expected and observed values
+
+  watch-warning:
+    kind: watch
+    severity_at_least: warning
+    severity_at_most: warning
+    for: 0s
+    severity: warning
+    gate: always
+    summary: Envelope warning — inspect v_watch_findings for expected and observed values

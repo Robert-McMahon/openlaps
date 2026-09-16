@@ -40,7 +40,7 @@ class Settings:
     mqtt_port: int = 1883
     mqtt_username: str | None = None
     mqtt_password: str | None = None
-    health_port: int = 8089
+    health_port: int = 8090
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -59,7 +59,7 @@ class Settings:
             mqtt_port=int(env.get("OPENLAPS_MQTT_PORT", "1883")),
             mqtt_username=env.get("OPENLAPS_MQTT_USERNAME") or None,
             mqtt_password=env.get("OPENLAPS_MQTT_PASSWORD") or None,
-            health_port=int(env.get("OPENLAPS_WATCH_HEALTH_PORT", "8089")),
+            health_port=int(env.get("OPENLAPS_WATCH_HEALTH_PORT", "8090")),
         )
 
 

@@ -40,7 +40,7 @@ flowchart LR
     SC[session-control] --> PNATS
     NTRIP[ntrip-client] --> PNATS
     PNATS -.-> WATCH[watch, strategy<br/>Phase 7] -.-> TSDB
-    FEED[timing-feed<br/>Phase 7] -.-> TSDB
+    FEED[timing-feed] -- "field_* tables" --> TSDB
     GSQL -- "alerts" --> NOTIF[notifier] --> NTFY[ntfy, phones]
   end
 ```
@@ -127,7 +127,7 @@ flowchart LR
   PM[pit-monitor] -- "chrony, psutil, /health, :8222" --> DB
   SRC -.-> WT[watch<br/>Phase 7] -. "watch_* tables, watch.* live" .-> DB
   DB -- "views, per lap" --> ST[strategy] -- "strategy_state, strategy.* live" --> DB
-  TF[timing-feed<br/>Phase 7] -. "field_* tables" .-> DB
+  TF[timing-feed] -- "field_* tables, our car reconciled" --> DB
   G2 -- "alert webhook" --> NF[notifier] -- "annunciator" --> PH[pit wall]
   NF -- "ntfy on the pit LAN, Discord" --> PHONES[phones]
 ```
@@ -182,9 +182,17 @@ namespace (`watch.*`, `strategy.*`, `field.*`).
   threshold; the radio numbers go out retained under `strategy.*` on the
   pit-local broker. `fuel.json` reads its views rather than computing in a
   panel. The race forecast joins it once field data exists (P7.11).
-- **timing-feed** ingests the other cars from a timing provider — the
-  Natsoft TCP feed first, a browser relay as fallback — into `field_*`
-  tables, and reconciles our own car's count against `v_laps`.
+- **timing-feed** (landed, P7.10) ingests the other cars from a timing
+  provider into the `field_*` tables: the Natsoft TCP feed first (the
+  public endpoint, or the timekeepers' local feed at a LAN address, same
+  client), a capture file replayed, a browser relay's snapshots at
+  `POST /ingest/snapshot`, or a Timing71 service's standalone messages at
+  `WS /ingest/t71` -- one schema whichever filled it. Every live document
+  is captured so a session leaves its own replay fixture. It reconciles
+  our own car -- the race plan's number -- against `v_laps`: a lap-count
+  disagreement is a `field.lap_count` finding that says whose count is
+  higher, and our main-line passings against our crossings measure the
+  vehicle clock against the timekeepers'.
 - **notifier** (landed, P7.2–P7.3) is Grafana's only contact point. It
   records every alert in the `alert_events` ledger, serves the annunciator
   at `:8086` (sound, acknowledge buttons, a heartbeat that proves the path

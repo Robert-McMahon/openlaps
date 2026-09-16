@@ -31,6 +31,7 @@ openlaps-watch = "pit.watch.__main__:main"
 openlaps-pit-monitor = "pit.pit_monitor.__main__:main"
 openlaps-notifier = "pit.notifier.__main__:main"
 openlaps-strategy = "pit.strategy.__main__:main"
+openlaps-timing-feed = "pit.timing_feed.__main__:main"
 
 [project.optional-dependencies]
 dev = [

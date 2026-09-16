@@ -763,10 +763,13 @@ the measurement below each time the Grafana pin or the path changes.
 | `strategy-warning` | `INSERT INTO watch_findings (finding_id, vehicle_id, monitor, opened_at, severity, peak_score, summary) VALUES (gen_random_uuid(), 'example-club-racer', 'strategy.bench_drill', now(), 'warning', 1.0, '{"message": "bench drill"}');` | `UPDATE watch_findings SET closed_at = now() WHERE monitor = 'strategy.bench_drill' AND closed_at IS NULL;` |
 | `strategy-critical` | As above with `'critical'`. The real path: a race plan with `max continuous` a few minutes ahead of the current stint's elapsed time raises `strategy.driver_time` from the strategy service within its poll interval; the dashboard's *Open strategy findings* table shows it. | Close the row as above, or end the session: the service closes every strategy finding when no session is open. |
 
-The two `strategy-*` rules watch `v_watch_findings` rows whose monitor
-starts with `strategy.`; the drill monitor name above is one the strategy
-service does not own, so a running service leaves the drill row alone (it
-adopts and closes only the monitors it judges).
+| `field-warning` | `INSERT INTO watch_findings (finding_id, vehicle_id, monitor, opened_at, severity, peak_score, summary) VALUES (gen_random_uuid(), 'example-club-racer', 'field.bench_drill', now(), 'warning', 2.0, '{"message": "bench drill"}');` | `UPDATE watch_findings SET closed_at = now() WHERE monitor = 'field.bench_drill' AND closed_at IS NULL;` |
+| `field-critical` | As above with `'critical'`. The real path: with the session open, a race plan whose *car number* is `27`, and the timing feed replaying its fixture (`OPENLAPS_TIMING_FEED_SOURCE=replay`, `OPENLAPS_TIMING_FEED_REPLAY_FILE=tests/fixtures/natsoft/hand-built.jsonl`), the feed counts four laps for car 27 against however many the bench has written to `laps`; more than a lap apart raises `field.lap_count` within `OPENLAPS_TIMING_FEED_RECONCILE_S`, warning up to three laps apart and critical beyond. `GET :8089/health` shows `feed_laps` beside `vehicle_laps`. | Close the row as above, bring the two counts within a lap of each other, or end the session: the service closes the finding when no session is open. |
+
+The `strategy-*` and `field-*` rules watch `v_watch_findings` rows whose
+monitor starts with `strategy.` and `field.`; the drill monitor names above
+are ones neither service owns, so a running service leaves the drill row
+alone (it adopts and closes only the monitors it judges).
 
 Finally write a `lap.event` with `"pit_status":"pit"`, repeat each car-channel
 firing sample, and verify the seven on-track-gated rules remain Normal.  Then
@@ -784,5 +787,5 @@ must leave both non-firing; a 0.7 oil-pressure injection after learning must
 open the critical rule, and an equivalent sustained coolant-temperature
 change outside its learned envelope must open the warning rule. Healthy
 samples must close the findings and resolve the rules. The short engine-start
-fixture alone cannot learn these on-track baselines. Check `/health` on 8089
+fixture alone cannot learn these on-track baselines. Check `/health` on 8090
 and both `v_watch_*` views before attributing a non-firing rule to a healthy car.

@@ -443,13 +443,16 @@ services:
       start_period: 20s
 
   watch:
+    # Envelope monitors (P7.5, ADR 0011): scores every sample against a
+    # baseline learned from the session's first clean window, writes
+    # watch_scores and watch_findings, and publishes watch.* live.
     <<: [*openlaps-image, *pit-env]
     command: ["openlaps-watch"]
     environment:
       OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://nats:4222}
       OPENLAPS_WATCH_STREAM: ${OPENLAPS_WATCH_STREAM:-TELE_VEHICLE}
       OPENLAPS_WATCH_CONFIG: /config/watch.yaml
-      OPENLAPS_WATCH_HEALTH_PORT: "8089"
+      OPENLAPS_WATCH_HEALTH_PORT: "8090"
       OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
       OPENLAPS_MQTT_HOST: mosquitto
       OPENLAPS_MQTT_PORT: "1883"
@@ -458,7 +461,7 @@ services:
     volumes:
       - ${OPENLAPS_WATCH_PROFILE:-../profiles/example-club-racer}:/config:ro
     ports:
-      - "8089:8089"
+      - "8090:8090"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -466,6 +469,46 @@ services:
         condition: service_completed_successfully
       mosquitto:
         condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+  timing-feed:
+    # The other cars (P7.10, ADR 0011): standings, laps, transponder
+    # passings and the flag state from a timing provider, into the field_*
+    # tables. The Natsoft TCP feed by default -- the public one needs
+    # internet at the pit; the timekeepers' local feed is the same client
+    # pointed at a LAN address -- with two ingest endpoints for the other
+    # shapes: a snapshot posted by the browser relay (tools/timing_relay)
+    # and Timing71's standalone WebSocket protocol. Every live document is
+    # appended to a capture file in the volume, so a session leaves a
+    # replayable fixture behind. Reconciles our own car's lap count and
+    # clock against the feed as field.* findings and pit_metrics.
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-timing-feed"]
+    environment:
+      OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
+      # natsoft (dial the feed) | replay (a capture file) | none (ingest only)
+      OPENLAPS_TIMING_FEED_SOURCE: ${OPENLAPS_TIMING_FEED_SOURCE:-natsoft}
+      OPENLAPS_TIMING_FEED_HOST: ${OPENLAPS_TIMING_FEED_HOST:-natsoft.com.au}
+      OPENLAPS_TIMING_FEED_HOST_PORT: ${OPENLAPS_TIMING_FEED_HOST_PORT:-8889}
+      OPENLAPS_TIMING_FEED_REPLAY_FILE: ${OPENLAPS_TIMING_FEED_REPLAY_FILE:-}
+      OPENLAPS_TIMING_FEED_CAPTURE_DIR: /data/captures
+      OPENLAPS_TIMING_FEED_HTTP_HOST: 0.0.0.0
+      OPENLAPS_TIMING_FEED_PORT: "8089"
+      TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
+      TIMESCALE_PORT: "5432"
+    volumes:
+      - timing-feed-data:/data
+    ports:
+      - "8089:8089"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8089/health"]
@@ -584,5 +627,6 @@ volumes:
   nats-data:
   timescale-data:
   session-data:
+  timing-feed-data:
   grafana-data:
   ntfy-cache:

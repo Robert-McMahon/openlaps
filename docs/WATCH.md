@@ -98,7 +98,7 @@ measured false-positive rate.
 For that drill, open a test session, start the pit stack including `watch`,
 and replay a clean on-track CAN/GPS recording at rate 1. Verify populated
 scores in `v_watch_scores`, no open `v_watch_findings`, and healthy dependencies
-at `http://localhost:8089/health`. Repeat into a new test session with
+at `http://localhost:8090/health`. Repeat into a new test session with
 `tools/replay.py --oil-pressure-fault-after 180` (plus the same input options).
 The injector changes only replayed oil pressure, before mapping/RBE, by 0.7;
 it never edits the recording. It applies per replay cycle.

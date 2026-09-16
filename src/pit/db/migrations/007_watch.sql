@@ -1,4 +1,10 @@
 -- P7.5. 006 is reserved for the parallel notifier work package.
+--
+-- watch_findings is shared with the strategy service (P7.9), whose migration
+-- 010 landed first on a parallel branch and creates the same table with
+-- IF NOT EXISTS (docs/PIT_SCHEMA.md declared one shape for both). A pit that
+-- already applied 010 applies this file afterwards, so every statement on
+-- the shared table must be idempotent.
 CREATE TABLE watch_scores (
     time TIMESTAMPTZ NOT NULL,
     vehicle_id TEXT NOT NULL,
@@ -19,7 +25,7 @@ ALTER TABLE watch_scores SET (
 );
 SELECT add_compression_policy('watch_scores', INTERVAL '7 days', if_not_exists => TRUE);
 
-CREATE TABLE watch_findings (
+CREATE TABLE IF NOT EXISTS watch_findings (
     finding_id UUID PRIMARY KEY,
     vehicle_id TEXT NOT NULL,
     monitor TEXT NOT NULL,
@@ -29,7 +35,8 @@ CREATE TABLE watch_findings (
     peak_score DOUBLE PRECISION NOT NULL,
     summary JSONB NOT NULL
 );
-CREATE INDEX ON watch_findings (vehicle_id, severity) WHERE closed_at IS NULL;
+CREATE INDEX IF NOT EXISTS watch_findings_open_idx
+    ON watch_findings (vehicle_id, severity) WHERE closed_at IS NULL;
 CREATE TABLE watch_baselines (
     vehicle_id TEXT NOT NULL,
     monitor TEXT NOT NULL,
@@ -41,7 +48,7 @@ CREATE TABLE watch_baselines (
     PRIMARY KEY (vehicle_id, monitor, session_id, stint_number)
 );
 CREATE VIEW v_watch_scores AS SELECT * FROM watch_scores;
-CREATE VIEW v_watch_findings AS SELECT * FROM watch_findings;
+CREATE OR REPLACE VIEW v_watch_findings AS SELECT * FROM watch_findings;
 DO $role$
 DECLARE
     role_name TEXT := current_setting('openlaps.grafana_db_user', true);

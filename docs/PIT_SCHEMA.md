@@ -374,6 +374,70 @@ first, in the shape declared below for both. `v_watch_findings` is the read
 surface, and the generated alert rules count its open rows by severity and
 monitor prefix.
 
+### Field timing
+
+```
+field_session(time, source, session_name, event_type, flag_state, sub_status,
+              time_remaining_s, laps_remaining, time_elapsed_s, track_temp)
+field_cars(time, source, epoch, car_number, competitor_id, class, position, class_position, laps,
+           last_lap_s, best_lap_s, gap_lead_s, gap_next_s, sec1_s, sec2_s, sec3_s,
+           pit_count, in_pit, pit_flag, driver, state)
+field_laps(time, source, car_number, competitor_id, lap_number, lap_time_s, position, class_position,
+           gap_lead_s, gap_next_s, pit_count, sec1_s, sec2_s, sec3_s, flag_state, sub_status)
+field_passings(time, source, competitor_id, line, passing_type, active, tod, car_number)
+```
+
+The other cars, from a timing provider (`src/pit/timing_feed/`, migration
+011, P7.10): four daily-chunked hypertables in the `pit_metrics` pattern,
+written directly by the timing-feed service as the owner role, one
+transaction per document. `source` names where the rows came from --
+`natsoft` (the TCP feed, public or the timekeepers' local one), `replay` (a
+capture file), `relay` (the browser relay's snapshots) or `t71` (a Timing71
+service) -- and the column vocabulary is a superset of Timing71's Common
+Timing Data columns (ADR 0011 decision 5), so every source lands in one
+shape and the race forecast (P7.11) reads one shape.
+
+Rows land **on change, not on every update**. A `field_cars` row is written
+when anything the timing screen shows for that car changes; a
+`field_session` row when the flag, the sub-status, the clock or the track
+temperature changes. `epoch` on `field_cars` is when the *set* of cars last
+changed -- the first full leaderboard, one after a reconnect that names
+different cars, a different session -- so "the latest snapshot" is the
+latest row per car within the latest epoch and a car that left the
+standings does not linger. `field_laps` is derived: a row each time a car's
+lap count increments, carrying the lap it completed and the standings as
+they stood at the crossing, with the flag it was driven under; a service
+started mid-race adopts the counts it finds and derives nothing from them.
+`field_passings` is every transponder crossing the feed reports, with
+`line` naming the loop (`main`, `pit_main`, `pit_entry`, `pit_exit`,
+`int1`, `int2`) and `tod` the timekeepers' own stamp when the feed carries
+one; `time` is always when the document reached the pit.
+
+`flag_state` and `sub_status` use Timing71's words whatever the source
+said: `none`, `green`, `yellow`, `red`, `chequered`, `ended`, and a
+sub-status of `sc`, `fcy`, `vsc`, `code_60`, `caution` or `slow_zone` when
+the yellow is a safety-car condition, NULL otherwise. `state` is `RUN`,
+`PIT`, `OUT`, or the feed's own `DNS` / `DNF` / `DSQ`.
+
+**Our car, reconciled.** The race plan's `car_number` (P7.8) identifies us
+in the feed. Every few seconds the service compares the feed's lap count
+for that car with the count of `v_laps` rows for the open session; a
+disagreement beyond a lap is a `field.lap_count` finding in
+`watch_findings` whose summary says whose count is higher and therefore
+which is the likely fault -- the feed ahead means the vehicle missed a line
+crossing, the vehicle ahead means the transponder was not seen -- and it
+closes when the counts agree again. The `field-warning` and
+`field-critical` rules in the profile's `alarms.yaml` alert on it by
+severity, the way the `strategy-*` rules alert on the strategy findings. Our main-line passings make the same
+comparison sharper: the offset between the timekeepers' `tod` and the
+nearest `v_laps.crossed_at` is the vehicle clock measured against theirs,
+written as `clock_offset_s` under source `timing-feed` in `pit_metrics`,
+with `feed_latency_s` (arrival minus `tod`) beside it.
+
+Amendments to the shape declared before the package was built: `epoch`,
+`tod` and `car_number` above, `competitor_id` as TEXT (a passing's ID may be
+`Safety` or `Course`), and `field_laps` itself.
+
 ### Ingest bookkeeping
 
 `ingest_cursor(consumer, stream, stream_seq, updated)` is the ingest-writer's
@@ -400,15 +464,12 @@ reading a plan.
 | `watch_findings` | `watch` (P7.5), `strategy` (P7.9) | Landed in migration 010 (see *Watch findings* above); P7.5's migration must create it with `IF NOT EXISTS` in the same shape |
 | `watch_baselines` | `watch` (P7.5) | `vehicle_id, monitor, session_id, stint_number, learned_at, model JSONB` |
 | `strategy_state` (hypertable) | `strategy` (P7.9) | Landed in migration 010 (see *Strategy state* above), with `vehicle_id`, the fuel bounds, the re-base, the refuel clock and `plan_drift` added to the declared shape |
-| `field_session` (hypertable) | `timing-feed` (P7.10) | `time, source, session_name, event_type, flag_state, sub_status, time_remaining_s, laps_remaining, time_elapsed_s, track_temp` |
-| `field_cars` (hypertable) | `timing-feed` (P7.10) | `time, source, car_number, competitor_id, class, position, class_position, laps, last_lap_s, best_lap_s, gap_lead_s, gap_next_s, sec1_s, sec2_s, sec3_s, pit_count, in_pit, pit_flag, driver, state` |
-| `field_passings` (hypertable) | `timing-feed` (P7.10) | `time, source, competitor_id, line, passing_type, active` |
+| `field_session`, `field_cars`, `field_laps`, `field_passings` (hypertables) | `timing-feed` (P7.10) | Landed in migration 011 (see *Field timing* above), with `epoch`, `tod`, `car_number` and the derived `field_laps` added to the declared shape |
 | `race_forecasts` | `strategy` (P7.11) | `time, session_id, scenario, car_number, p_position JSONB, expected_position, expected_gap_ahead_s, expected_gap_behind_s, runs` |
 
-Their views — `v_watch_scores`,
-`v_field_standings`, `v_field_laps`, `v_field_passings`, `v_field_gaps`,
-`v_field_flags`, `v_race_forecast_latest` — join the stable read surface
-below as each lands, with the `grafana_ro` grant in the same migration.
+Their views — `v_watch_scores` and `v_race_forecast_latest` — join the
+stable read surface below as each lands, with the `grafana_ro` grant in the
+same migration; the five `v_field_*` views landed with migration 011.
 
 ## The stable read surface
 
@@ -434,6 +495,11 @@ to keep stable, and it is these views:
 | `v_watch_findings` | `finding_id, vehicle_id, monitor, opened_at, closed_at, severity, peak_score, summary` |
 | `v_strategy_latest` | The latest `strategy_state` row per vehicle |
 | `v_strategy_history` | Every `strategy_state` row |
+| `v_field_standings` | The latest `field_cars` row per car within the latest `epoch` per source: the standings as the timing screen shows them now |
+| `v_field_laps` | Every `field_laps` row |
+| `v_field_passings` | Every `field_passings` row |
+| `v_field_flags` | `source, flag_state, sub_status, started_at, ended_at, duration_s` — one row per flag or sub-status change, `ended_at` NULL while current |
+| `v_field_gaps` | `time, source, session_id, our_car, lap_number, car_number, position, class, laps, gap_lead_s, gap_to_us_s, laps_to_us` — every other car's standing at each of our laps, joined on the race plan's car number |
 
 **The views are the stable surface. The base tables are not.** Anything
 reading this database from outside the pit services — the companion repo,
@@ -477,6 +543,19 @@ UI read; `v_strategy_history` draws the projection bands. Both expose every
 column of the base table, so a later reshaping keeps presenting them.
 `v_watch_findings` is the alert rules' surface: open rows by severity and
 monitor prefix.
+
+The five `v_field_*` views are the race dashboard's and the race forecast's
+surface. `v_field_standings` is a `DISTINCT ON` per car within the latest
+epoch, so it is one row per car however many changes were written.
+`v_field_flags` folds `field_session` into intervals -- one row each time
+the flag or the sub-status changed, ended by the next change -- which is
+what a safety-car model is fitted on. `v_field_gaps` needs a session with a
+race plan that names our car: it takes each of our laps in `field_laps` and
+joins every other car's latest `field_cars` row at that instant, so
+`gap_to_us_s` is positive for a car behind us on the road and `laps_to_us`
+for one behind us on distance. Without a named car it is empty rather than
+wrong. The two `LATERAL` lookups make it the most expensive view after
+`v_pit_stops`; materialise it if a race-length query proves too slow.
 
 `v_alert_events` joins each alert event to the acknowledgement for that
 firing, so "what fired overnight and who saw it" is one query and a dashboard

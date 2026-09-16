@@ -243,6 +243,10 @@ def test_gates_and_the_second_channel_condition_render_into_the_query(tmp_path: 
     _, text = gen_alert_rules.render(profile)
     rules = _rules(yaml.safe_load(text))
     assert "pit_status" in _sql(rules["gated"]) and ">= 2000" in _sql(rules["gated"])
+    # A parked car's last lap.event says "track" forever; only an open
+    # session makes a car-channel rule judge at all (migration 008).
+    assert "v_session_active" in _sql(rules["gated"])
+    assert "v_session_active" not in _sql(rules["ungated"])
     assert rules["gated"]["labels"]["scope"] == "on track"
     assert "car.rpm" in _sql(rules["engine"]) and "pit_status" not in _sql(rules["engine"])
     assert "CASE" not in _sql(rules["ungated"])

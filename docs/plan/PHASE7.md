@@ -1144,7 +1144,9 @@ Not work packages. Load-bearing for the phase.
   car-channel rules additionally on an active session — `session-control`
   knows, and a small `v_session_active` view would let the generated SQL
   ask — or the crew learns to ignore alerts overnight, which is the one
-  lesson this phase exists to prevent. A P7.1 follow-up.
+  lesson this phase exists to prevent. **Done the same day:** migration
+  008 adds `v_session_active` and the generated on-track gate asks it, so
+  ending the session on the session UI is what ends the alerts.
 - **Baselines are learned from the first clean window of the session.**
   If the car goes out with a known fault, the watch service learns the
   fault as normal. The operator UI should offer "re-learn baselines"

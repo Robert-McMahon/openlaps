@@ -226,7 +226,13 @@ def _gate_sql(vehicle: str, gate: str) -> str | None:
     if gate == "always":
         return None
     if gate == "on_track":
+        # Two conditions. A session must be open (v_session_active, migration
+        # 008): the last lap.event of a day says "track" forever, and the
+        # first deployment paged the crew about a car parked overnight. And
+        # that last lap.event must not say "pit": a refuelling stop powers
+        # the ECU down and looks exactly like a CAN failure.
         return (
+            f"EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id = '{vehicle}') AND "
             "COALESCE((SELECT value_text::jsonb ->> 'pit_status' FROM v_samples_named "
             f"WHERE vehicle_id = '{vehicle}' AND channel = 'lap.event' AND value_text "
             "IS NOT NULL ORDER BY time DESC LIMIT 1), 'track') = 'track'"

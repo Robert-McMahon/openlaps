@@ -32,10 +32,13 @@
 #   for          how long the condition must hold before firing
 #   severity     critical | warning   (notifier routing, docs/plan/PHASE7.md P7.2)
 #   gate         on_track | always | engine_running
-#                on_track: evaluates as `resting` while lap.event says "pit".
-#                A refuelling stop looks exactly like a CAN failure -- the ECU
-#                is off while the logger keeps publishing -- so every car
-#                channel rule is gated, and `noDataState: OK` stays.
+#                on_track: evaluates as `resting` unless a session is open
+#                (session-control's status, via v_session_active) AND the last
+#                lap.event does not say "pit". A refuelling stop looks exactly
+#                like a CAN failure -- the ECU is off while the logger keeps
+#                publishing -- and a car parked overnight looks like one too,
+#                so every car channel rule is gated, and `noDataState: OK`
+#                stays. Ending the session on the session UI ends the alerts.
 #   resting      the value the rule evaluates when gated off or with no
 #                sample yet; must be on the non-firing side of the threshold
 #   when         optional second-channel condition, e.g. only above an RPM

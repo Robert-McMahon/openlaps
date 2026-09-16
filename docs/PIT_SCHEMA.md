@@ -345,6 +345,7 @@ to keep stable, and it is these views:
 | `v_stint_fuel_level` | Stint/session/driver context, accepted level sample count, start/end/used litres, and the level trend in L/hour |
 | `v_pit_metrics` | `time, source, metric, value, value_text` |
 | `v_alert_events` | `time, rule_uid, alertname, status, severity, fingerprint, started_at, acked_at, acked_by, note, labels, annotations` |
+| `v_session_active` | `vehicle_id, session_id, session_type, track_name, started` — one row per open session |
 
 **The views are the stable surface. The base tables are not.** Anything
 reading this database from outside the pit services — the companion repo,
@@ -386,6 +387,12 @@ counter model. Fuel-temperature correction is not part of this first model.
 `v_alert_events` joins each alert event to the acknowledgement for that
 firing, so "what fired overnight and who saw it" is one query and a dashboard
 can annotate a trace with both.
+
+`v_session_active` is one row per session whose status is `active`, and it
+exists for the alert rules: every car-channel rule asks it before judging,
+so a car parked overnight with its last lap event still saying "track" does
+not page anyone, and ending the session on the session UI is what ends the
+alerts (migration 008).
 
 `v_pit_metrics` is the pit-health surface, and it is a plain projection of
 `pit_metrics` rather than a join: there is nothing to resolve. It exists so

@@ -707,8 +707,16 @@ BEGIN
   INSERT INTO samples (time, channel_key, value) VALUES (sample_time, key, numeric_value);
 END $$;
 
--- All car-channel rules are explicitly on-track gated.  This event puts the
--- bench in the on-track state; substitute "pit" to prove they remain Normal.
+-- All car-channel rules are gated on an open session AND an on-track lap
+-- event.  Open a bench session first (the session UI does the same through
+-- session-control); set status = 'ended' at the end of the drill and prove
+-- every car-channel rule falls Normal with the car still "on track".
+INSERT INTO sessions (session_id, vehicle_id, session_type, started, status)
+VALUES ('bench-drill', 'example-club-racer', 'test', now(), 'active')
+ON CONFLICT (session_id) DO UPDATE SET status = 'active', ended = NULL;
+
+-- This event puts the bench in the on-track state; substitute "pit" to
+-- prove the same rules remain Normal in the pits.
 WITH channel AS (
   INSERT INTO channels (vehicle_id, name, units, value_type)
   VALUES ('example-club-racer', 'lap.event', '', 4)
@@ -754,5 +762,8 @@ the measurement below each time the Grafana pin or the path changes.
 | `notifier-heartbeat` | Always firing; nothing to do. | Stop the grafana container: the annunciator's path indicator goes red within three minutes and `/health` reports `heartbeat.ok: false`. |
 
 Finally write a `lap.event` with `"pit_status":"pit"`, repeat each car-channel
-firing sample, and verify the seven on-track-gated rules remain Normal.  The
-`publish-lag-high` pipeline rule deliberately remains active in the pits.
+firing sample, and verify the seven on-track-gated rules remain Normal.  Then
+restore `"track"`, `UPDATE sessions SET status = 'ended' WHERE session_id =
+'bench-drill'`, repeat the firing samples again, and verify the same seven
+stay Normal: that is the overnight case.  The `publish-lag-high` pipeline
+rule deliberately remains active in both.

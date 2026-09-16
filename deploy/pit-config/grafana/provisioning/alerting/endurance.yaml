@@ -38,7 +38,8 @@ groups:
         format: time_series
         instant: true
         rawQuery: true
-        rawSql: '/* oil-pressure-low: below 200 kPa */ SELECT now() AS "time", CASE WHEN COALESCE((SELECT
+        rawSql: '/* oil-pressure-low: below 200 kPa */ SELECT now() AS "time", CASE WHEN EXISTS
+          (SELECT 1 FROM v_session_active WHERE vehicle_id = ''example-club-racer'') AND COALESCE((SELECT
           value_text::jsonb ->> ''pit_status'' FROM v_samples_named WHERE vehicle_id = ''example-club-racer''
           AND channel = ''lap.event'' AND value_text IS NOT NULL ORDER BY time DESC LIMIT
           1), ''track'') = ''track'' AND COALESCE((SELECT value FROM v_samples_named WHERE
@@ -120,7 +121,8 @@ groups:
         instant: true
         rawQuery: true
         rawSql: '/* coolant-temperature-high: above 110 °C = 383.15 K (catalog units) */ SELECT
-          now() AS "time", CASE WHEN COALESCE((SELECT value_text::jsonb ->> ''pit_status''
+          now() AS "time", CASE WHEN EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id
+          = ''example-club-racer'') AND COALESCE((SELECT value_text::jsonb ->> ''pit_status''
           FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel = ''lap.event''
           AND value_text IS NOT NULL ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN
           COALESCE((SELECT value FROM v_samples_named WHERE vehicle_id = ''example-club-racer''
@@ -200,7 +202,8 @@ groups:
         instant: true
         rawQuery: true
         rawSql: '/* oil-temperature-high: above 125 °C = 398.15 K (catalog units) */ SELECT
-          now() AS "time", CASE WHEN COALESCE((SELECT value_text::jsonb ->> ''pit_status''
+          now() AS "time", CASE WHEN EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id
+          = ''example-club-racer'') AND COALESCE((SELECT value_text::jsonb ->> ''pit_status''
           FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel = ''lap.event''
           AND value_text IS NOT NULL ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN
           COALESCE((SELECT value FROM v_samples_named WHERE vehicle_id = ''example-club-racer''
@@ -280,9 +283,10 @@ groups:
         instant: true
         rawQuery: true
         rawSql: '/* battery-voltage-low: below 11.5 Volts */ SELECT now() AS "time", CASE
-          WHEN COALESCE((SELECT value_text::jsonb ->> ''pit_status'' FROM v_samples_named
-          WHERE vehicle_id = ''example-club-racer'' AND channel = ''lap.event'' AND value_text
-          IS NOT NULL ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT
+          WHEN EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id = ''example-club-racer'')
+          AND COALESCE((SELECT value_text::jsonb ->> ''pit_status'' FROM v_samples_named WHERE
+          vehicle_id = ''example-club-racer'' AND channel = ''lap.event'' AND value_text IS
+          NOT NULL ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT
           value FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel
           = ''car.battery_v'' AND value IS NOT NULL ORDER BY time DESC LIMIT 1), 14.0) ELSE
           14.0 END AS "value"'
@@ -359,7 +363,8 @@ groups:
         format: time_series
         instant: true
         rawQuery: true
-        rawSql: '/* knock-high: above 80 dB */ SELECT now() AS "time", CASE WHEN COALESCE((SELECT
+        rawSql: '/* knock-high: above 80 dB */ SELECT now() AS "time", CASE WHEN EXISTS (SELECT
+          1 FROM v_session_active WHERE vehicle_id = ''example-club-racer'') AND COALESCE((SELECT
           value_text::jsonb ->> ''pit_status'' FROM v_samples_named WHERE vehicle_id = ''example-club-racer''
           AND channel = ''lap.event'' AND value_text IS NOT NULL ORDER BY time DESC LIMIT
           1), ''track'') = ''track'' THEN COALESCE((SELECT value FROM v_samples_named WHERE
@@ -439,9 +444,10 @@ groups:
         instant: true
         rawQuery: true
         rawSql: '/* engine-protection-active: above 0 none */ SELECT now() AS "time", CASE
-          WHEN COALESCE((SELECT value_text::jsonb ->> ''pit_status'' FROM v_samples_named
-          WHERE vehicle_id = ''example-club-racer'' AND channel = ''lap.event'' AND value_text
-          IS NOT NULL ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT
+          WHEN EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id = ''example-club-racer'')
+          AND COALESCE((SELECT value_text::jsonb ->> ''pit_status'' FROM v_samples_named WHERE
+          vehicle_id = ''example-club-racer'' AND channel = ''lap.event'' AND value_text IS
+          NOT NULL ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT
           value FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel
           = ''car.engine_protection_severity'' AND value IS NOT NULL ORDER BY time DESC LIMIT
           1), 0.0) ELSE 0.0 END AS "value"'
@@ -660,7 +666,8 @@ groups:
         format: time_series
         instant: true
         rawQuery: true
-        rawSql: SELECT now() AS "time", CASE WHEN COALESCE((SELECT value_text::jsonb ->> 'pit_status'
+        rawSql: SELECT now() AS "time", CASE WHEN EXISTS (SELECT 1 FROM v_session_active WHERE
+          vehicle_id = 'example-club-racer') AND COALESCE((SELECT value_text::jsonb ->> 'pit_status'
           FROM v_samples_named WHERE vehicle_id = 'example-club-racer' AND channel = 'lap.event'
           AND value_text IS NOT NULL ORDER BY time DESC LIMIT 1), 'track') = 'track' THEN
           COALESCE(extract(epoch FROM (now() - (SELECT max(time) FROM v_samples_named WHERE

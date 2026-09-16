@@ -125,6 +125,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "005_pit_metrics.sql",
             "006_alert_ledger.sql",
             "008_session_active.sql",
+            "009_race_plans.sql",
         ]
 
     # A real upgrade runs later in a new process/connection, so deployment
@@ -136,6 +137,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "005_pit_metrics.sql",
             "006_alert_ledger.sql",
             "008_session_active.sql",
+            "009_race_plans.sql",
         ]
         assert pending(conn) == []
 
@@ -206,6 +208,7 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "005_pit_metrics.sql",
             "006_alert_ledger.sql",
             "008_session_active.sql",
+            "009_race_plans.sql",
         ]
         assert apply_migrations(conn) == [
             "002_trace_read_surface.sql",
@@ -214,6 +217,7 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "005_pit_metrics.sql",
             "006_alert_ledger.sql",
             "008_session_active.sql",
+            "009_race_plans.sql",
         ]
         assert pending(conn) == []
 

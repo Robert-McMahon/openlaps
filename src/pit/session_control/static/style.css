@@ -119,6 +119,10 @@ button.danger.armed { background: #7f1010; }
 .banner.warn { background: #a35f00; }
 .banner.down { background: #b91c1c; }
 
+.triple { display: flex; gap: 0.5rem; }
+.triple input { flex: 1; min-width: 0; }
+textarea { font: inherit; padding: 0.5rem; border: 1px solid #aaa; border-radius: 8px; }
+
 .hidden { display: none; }
 
 code { font-size: 0.85em; background: #eee; padding: 0.1em 0.3em; border-radius: 4px; }

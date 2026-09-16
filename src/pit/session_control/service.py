@@ -19,7 +19,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from pit.db.dsn import dsn_from_env
-from pit.session_control.database import SessionDatabase
+from pit.session_control.database import PlanUnavailable, SessionDatabase
+from pit.session_control.plan import PlanError, validate_plan
 from pit.session_control.publisher import LatestSessionPublisher
 from pit.session_control.state import SESSION_TYPES, SessionError, SessionState
 
@@ -140,6 +141,9 @@ class SessionControlSettings:
 
 
 class DatabaseRecorder(Protocol):
+    async def save_plan(self, session_id: str, plan: object) -> dict[str, object]: ...
+    async def load_plan(self, session_id: str) -> dict[str, object] | None: ...
+
     async def record(self, state: dict[str, object]) -> bool:
         """Write now or queue for retry; return whether it landed immediately."""
         ...
@@ -308,6 +312,25 @@ class SessionController:
         async with self._lock:
             return self.state.to_dict()
 
+    async def plan_get(self) -> dict[str, object]:
+        """The current session's race plan (latest revision), or an empty shell."""
+        async with self._lock:
+            session_id = self.state.session_id if self.state.status != "none" else ""
+        if not session_id:
+            return {"session_id": None, "plan": None}
+        plan = await self.database.load_plan(session_id)
+        return {"session_id": session_id, "plan": plan}
+
+    async def plan_set(self, body: Mapping[str, object]) -> dict[str, object]:
+        """Validate and store a new revision of the current session's plan."""
+        async with self._lock:
+            session_id = self.state.session_id if self.state.status != "none" else ""
+        if not session_id:
+            raise SessionError("no session: start one before entering its race plan")
+        plan = validate_plan(body)
+        saved = await self.database.save_plan(session_id, plan)
+        return {"session_id": session_id, "plan": saved}
+
     def republish_current(self) -> None:
         """Re-assert persisted state after a service or broker restart."""
         if self.state.status != "none":
@@ -441,6 +464,15 @@ class _SessionHandler(BaseHTTPRequestHandler):
                 self._send(503, {"error": "service busy"})
         elif path == "/roster":
             self._send(200, load_roster(self.roster_path))
+        elif path == "/session/plan":
+            future = asyncio.run_coroutine_threadsafe(self.controller.plan_get(), self.loop)
+            try:
+                self._send(200, future.result(timeout=5.0))
+            except PlanUnavailable as exc:
+                self._send(503, {"error": str(exc)})
+            except TimeoutError:
+                future.cancel()
+                self._send(503, {"error": "service busy"})
         else:
             self._send(404, {"error": "not found"})
 
@@ -487,10 +519,16 @@ class _SessionHandler(BaseHTTPRequestHandler):
         decoded = self._read_json_body()
         if decoded is None:
             return
-        future = asyncio.run_coroutine_threadsafe(self.controller.act(parts[1], decoded), self.loop)
+        if parts[1] == "plan":
+            coroutine = self.controller.plan_set(decoded)
+        else:
+            coroutine = self.controller.act(parts[1], decoded)
+        future = asyncio.run_coroutine_threadsafe(coroutine, self.loop)
         try:
             self._send(200, future.result(timeout=5.0))
-        except SessionPersistenceError as exc:
+        except PlanError as exc:
+            self._send(400, {"error": str(exc)})
+        except (SessionPersistenceError, PlanUnavailable) as exc:
             self._send(503, {"error": str(exc)})
         except SessionError as exc:
             self._send(409, {"error": str(exc)})

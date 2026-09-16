@@ -268,6 +268,28 @@ Compression is `segmentby = source, metric` with a policy at 7 days. As with
 
 The working index is `pit_metrics(source, metric, time DESC)`.
 
+### Race plans
+
+```
+race_plans(plan_id, session_id -> sessions, revision, race_end_at, race_end_laps, end_authority,
+           tank_l, usable_fuel_l, refuel_min_s, service_typical_s, driver_limits JSONB,
+           planned_stops JSONB, car_number, updated_at, updated_by)   UNIQUE (session_id, revision)
+```
+
+The facts about the event the car cannot report (migration 009, P7.8):
+when the race ends (a time, a lap count, or both with one authoritative),
+tank and usable fuel in litres, the regulated refuelling minimum and the
+typical service stop in seconds, the driver-time rules in minutes, the
+planned stops, and our car number as the timekeepers know it. Written by
+session-control from its operator UI; read by the strategy service.
+
+**Every save is a new revision.** A plan changed at 2 am is a plan somebody
+will ask about at 9 am, so an edit inserts and nothing is ever updated.
+`v_race_plan` is the latest revision per session and is what strategy
+computes from; `v_race_plan_history` is all of them. Constraints hold the
+shape honest in the database, not only in the form: usable fuel never
+exceeds the tank, and the authoritative end condition must be present.
+
 ### The alert ledger
 
 ```
@@ -314,7 +336,6 @@ reading a plan.
 | `watch_scores` (hypertable) | `watch` (P7.5) | `time, vehicle_id, monitor, score, residual, expected, observed, baseline_status` |
 | `watch_findings` | `watch` (P7.5), `strategy` (P7.9) | `finding_id, vehicle_id, monitor, opened_at, closed_at, severity, peak_score, summary JSONB` |
 | `watch_baselines` | `watch` (P7.5) | `vehicle_id, monitor, session_id, stint_number, learned_at, model JSONB` |
-| `race_plans` | `session-control` (P7.8) | `session_id, race_end_at, race_end_laps, tank_l, usable_fuel_l, refuel_min_s, service_typical_s, driver_limits JSONB, planned_stops JSONB, updated_at` |
 | `strategy_state` (hypertable) | `strategy` (P7.9) | `time, session_id, fuel_remaining_l, rebase_confidence, burn_l_per_lap, burn_sd, laps_to_dry_lo, laps_to_dry_hi, time_to_dry_s_lo, time_to_dry_s_hi, window_open_lap, window_close_lap, target_lap_s, driver_time_remaining_s, stop_plan JSONB` |
 | `field_session` (hypertable) | `timing-feed` (P7.10) | `time, source, session_name, event_type, flag_state, sub_status, time_remaining_s, laps_remaining, time_elapsed_s, track_temp` |
 | `field_cars` (hypertable) | `timing-feed` (P7.10) | `time, source, car_number, competitor_id, class, position, class_position, laps, last_lap_s, best_lap_s, gap_lead_s, gap_next_s, sec1_s, sec2_s, sec3_s, pit_count, in_pit, pit_flag, driver, state` |
@@ -322,7 +343,7 @@ reading a plan.
 | `race_forecasts` | `strategy` (P7.11) | `time, session_id, scenario, car_number, p_position JSONB, expected_position, expected_gap_ahead_s, expected_gap_behind_s, runs` |
 
 Their views — `v_watch_scores`, `v_watch_findings`,
-`v_race_plan`, `v_strategy_latest`, `v_strategy_history`,
+`v_strategy_latest`, `v_strategy_history`,
 `v_field_standings`, `v_field_laps`, `v_field_passings`, `v_field_gaps`,
 `v_field_flags`, `v_race_forecast_latest` — join the stable read surface
 below as each lands, with the `grafana_ro` grant in the same migration.
@@ -346,6 +367,8 @@ to keep stable, and it is these views:
 | `v_pit_metrics` | `time, source, metric, value, value_text` |
 | `v_alert_events` | `time, rule_uid, alertname, status, severity, fingerprint, started_at, acked_at, acked_by, note, labels, annotations` |
 | `v_session_active` | `vehicle_id, session_id, session_type, track_name, started` — one row per open session |
+| `v_race_plan` | The latest `race_plans` revision per session |
+| `v_race_plan_history` | Every `race_plans` revision |
 
 **The views are the stable surface. The base tables are not.** Anything
 reading this database from outside the pit services — the companion repo,

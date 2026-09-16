@@ -117,6 +117,7 @@ function renderSession() {
   show($("end-section"), Boolean(apiKey) && active);
   if (ended) resetEndButton();
   updateDriverSelect();
+  renderPlan();
 }
 
 // The driver select marks whoever is in the car and preselects the first
@@ -293,6 +294,7 @@ $("key-form").addEventListener("submit", async (event) => {
   try {
     await loadRoster();
     await refreshSession();
+    await refreshPlan();
     setNotice("ok", "Unlocked");
   } catch (error) {
     setNotice("error", error.message);
@@ -354,6 +356,140 @@ $("end-button").addEventListener("click", async () => {
 // Boot
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Race plan (P7.8). One revision per save; the form always shows the latest
+// and says who saved it and when. The stops textarea is a tiny grammar so a
+// tired operator types "lap 42 refuel Driver B", not JSON.
+// ---------------------------------------------------------------------------
+
+let plan = null; // last GET /session/plan payload
+
+function toLocalInput(ms) {
+  const d = new Date(ms);
+  const pad = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
+    "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+
+function stopsToText(stops) {
+  return (stops || []).map((s) => {
+    const when = s.at_lap != null ? "lap " + s.at_lap
+      : new Date(s.at_ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    return when + " " + s.type + (s.driver_in ? " " + s.driver_in : "");
+  }).join("\n");
+}
+
+function parseStops(text) {
+  const stops = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    let m = line.match(/^lap\s+(\d+)\s+(refuel|service)(?:\s+(.+))?$/i);
+    if (m) {
+      stops.push({ at_lap: Number(m[1]), type: m[2].toLowerCase(), driver_in: m[3] ? m[3].trim() : null });
+      continue;
+    }
+    m = line.match(/^(\d{1,2}):(\d{2})\s+(refuel|service)(?:\s+(.+))?$/i);
+    if (m) {
+      const at = new Date();
+      at.setHours(Number(m[1]), Number(m[2]), 0, 0);
+      stops.push({ at_ms: at.getTime(), type: m[3].toLowerCase(), driver_in: m[4] ? m[4].trim() : null });
+      continue;
+    }
+    throw new Error("cannot read stop line: " + line);
+  }
+  return stops;
+}
+
+function renderPlan() {
+  const hasSession = session !== null && session.status !== "none";
+  show($("plan-section"), Boolean(apiKey) && hasSession);
+  if (!hasSession) return;
+  const current = plan && plan.plan;
+  if (!current) {
+    $("plan-status").textContent = "No plan entered for this session yet.";
+    return;
+  }
+  $("plan-status").textContent =
+    "Revision " + current.revision + ", saved " + fmtClock(current.updated_at_ms) +
+    (current.updated_by ? " by " + current.updated_by : "") + ".";
+}
+
+function fillPlanForm() {
+  const current = plan && plan.plan;
+  if (!current) return;
+  $("plan-end-at").value = current.race_end_at_ms ? toLocalInput(current.race_end_at_ms) : "";
+  $("plan-end-laps").value = current.race_end_laps == null ? "" : current.race_end_laps;
+  $("plan-authority").value = current.end_authority;
+  $("plan-tank").value = current.tank_l;
+  $("plan-usable").value = current.usable_fuel_l;
+  $("plan-refuel-min").value = current.refuel_min_s / 60;
+  $("plan-service-min").value = current.service_typical_s / 60;
+  const limits = current.driver_limits || {};
+  $("plan-max-continuous").value = limits.max_continuous_min == null ? "" : limits.max_continuous_min;
+  $("plan-max-total").value = limits.max_total_min == null ? "" : limits.max_total_min;
+  $("plan-min-rest").value = limits.min_rest_min == null ? "" : limits.min_rest_min;
+  $("plan-stops").value = stopsToText(current.planned_stops);
+  $("plan-car-number").value = current.car_number || "";
+  if (current.updated_by && !$("plan-by").value) $("plan-by").value = current.updated_by;
+}
+
+async function refreshPlan() {
+  if (!apiKey || session === null || session.status === "none") {
+    plan = null;
+    renderPlan();
+    return;
+  }
+  try {
+    const fresh = await api("/session/plan");
+    const changed = JSON.stringify(fresh) !== JSON.stringify(plan);
+    plan = fresh;
+    renderPlan();
+    if (changed) fillPlanForm();
+  } catch (error) {
+    $("plan-status").textContent = "Plan unavailable: " + error.message;
+  }
+}
+
+function numberOrNull(id) {
+  const value = $(id).value.trim();
+  return value === "" ? null : Number(value);
+}
+
+$("plan-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  let body;
+  try {
+    body = {
+      race_end_at_ms: parseAt($("plan-end-at")),
+      race_end_laps: numberOrNull("plan-end-laps"),
+      end_authority: $("plan-authority").value,
+      tank_l: numberOrNull("plan-tank"),
+      usable_fuel_l: numberOrNull("plan-usable"),
+      refuel_min_s: Math.round((numberOrNull("plan-refuel-min") || 0) * 60),
+      service_typical_s: Math.round((numberOrNull("plan-service-min") || 0) * 60),
+      driver_limits: {
+        max_continuous_min: numberOrNull("plan-max-continuous"),
+        max_total_min: numberOrNull("plan-max-total"),
+        min_rest_min: numberOrNull("plan-min-rest"),
+      },
+      planned_stops: parseStops($("plan-stops").value),
+      car_number: $("plan-car-number").value.trim() || null,
+      updated_by: $("plan-by").value.trim() || null,
+    };
+  } catch (error) {
+    setNotice("error", error.message);
+    return;
+  }
+  try {
+    plan = await api("/session/plan", body);
+    setNotice("ok", "Race plan saved as revision " + plan.plan.revision);
+    renderPlan();
+  } catch (error) {
+    setNotice("error", "Race plan not saved: " + error.message);
+  }
+});
+
 async function boot() {
   await refreshHealth();
   if (!apiKey) {
@@ -364,6 +500,7 @@ async function boot() {
   try {
     await loadRoster();
     await refreshSession();
+    await refreshPlan();
   } catch (error) {
     setNotice("error", error.message);
   }
@@ -371,6 +508,7 @@ async function boot() {
 
 setInterval(refreshHealth, 5000);
 setInterval(refreshSession, 2000);
+setInterval(refreshPlan, 5000);
 setInterval(() => {
   if (session !== null && session.status === "active") renderSession();
 }, 1000);

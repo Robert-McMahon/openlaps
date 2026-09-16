@@ -90,6 +90,40 @@ services:
       retries: 5
       start_period: 5s
 
+  ntfy:
+    # Push notifications to phones on the pit wifi with no internet at all
+    # (docs/plan/PHASE7.md locked decision 2). Pinned: a push server that
+    # changes its API two days before an event is the failure this line
+    # prevents. The notifier posts to it by compose name; phones subscribe
+    # to http://<pit-host>:8087 with the ntfy app's "instant delivery" on,
+    # or Android only fetches when it feels like it.
+    #
+    # Open by default: anyone on the pit LAN can read and post the two
+    # topics. That is the trust model of the rest of the LAN (mosquitto,
+    # the session UI behind one shared key). Turn on access control in
+    # ntfy/server.yml and set OPENLAPS_NTFY_TOKEN if the wifi is shared
+    # with strangers.
+    image: binwiederhier/ntfy:${NTFY_IMAGE_TAG:-v2.28.0}
+    command: ["serve"]
+    environment:
+      NTFY_BASE_URL: ${OPENLAPS_NTFY_PUBLIC_URL:-http://localhost:8087}
+      NTFY_LISTEN_HTTP: ":80"
+      NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+      NTFY_CACHE_DURATION: 24h
+      NTFY_BEHIND_PROXY: "false"
+      NTFY_ATTACHMENT_CACHE_DIR: ""
+    volumes:
+      - ntfy-cache:/var/cache/ntfy
+    ports:
+      - "8087:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/v1/health | grep -q '\"healthy\":true'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
   # --- one-shot bring-up steps ----------------------------------------------
 
   migrate:
@@ -261,6 +295,11 @@ services:
       OPENLAPS_NOTIFIER_PORT: "8086"
       OPENLAPS_NOTIFIER_CONFIG: /config/notifier.yaml
       OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
+      # The address a phone reaches this service at, for the Acknowledge
+      # button in a push. Empty disables the button, not the push.
+      OPENLAPS_NOTIFIER_PUBLIC_URL: ${OPENLAPS_NOTIFIER_PUBLIC_URL:-}
+      OPENLAPS_NTFY_TOKEN: ${OPENLAPS_NTFY_TOKEN:-}
+      OPENLAPS_DISCORD_WEBHOOK: ${OPENLAPS_DISCORD_WEBHOOK:-}
       TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
       TIMESCALE_PORT: "5432"
     volumes:
@@ -270,6 +309,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      ntfy:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8086/health"]
@@ -473,3 +514,4 @@ volumes:
   timescale-data:
   session-data:
   grafana-data:
+  ntfy-cache:

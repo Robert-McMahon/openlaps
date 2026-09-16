@@ -72,6 +72,12 @@ class NotifierSettings:
     host: str = "127.0.0.1"
     port: int = 8086
     vehicle_id: str | None = None
+    # Where a phone reaches this service (the pit host's LAN address), for
+    # the acknowledge action in a push notification. None disables actions.
+    public_url: str | None = None
+    # Secrets for the push channels; never in the YAML.
+    ntfy_token: str | None = None
+    discord_webhook: str | None = None
 
     @classmethod
     def from_env(
@@ -96,4 +102,7 @@ class NotifierSettings:
             host=env.get("OPENLAPS_NOTIFIER_HOST", "127.0.0.1").strip() or "127.0.0.1",
             port=port,
             vehicle_id=env.get("OPENLAPS_VEHICLE_ID", "").strip() or None,
+            public_url=env.get("OPENLAPS_NOTIFIER_PUBLIC_URL", "").strip() or None,
+            ntfy_token=env.get("OPENLAPS_NTFY_TOKEN", "").strip() or None,
+            discord_webhook=env.get("OPENLAPS_DISCORD_WEBHOOK", "").strip() or None,
         )

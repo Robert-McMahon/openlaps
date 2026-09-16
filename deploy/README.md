@@ -323,6 +323,7 @@ docker compose -f deploy/pit-compose.yaml exec timescaledb psql -U openlaps -d o
 | ntrip-client | 8083 | `OPENLAPS_NTRIP_HEALTH_PORT` |
 | timing-extrapolator | 8084 | `OPENLAPS_TIMING_HEALTH_PORT` |
 | notifier | 8086 | `OPENLAPS_NOTIFIER_PORT` (annunciator UI at `/`, Grafana webhook, `/health`) |
+| ntfy | 8087 | fixed (`GET /v1/health`); phones subscribe here |
 | grafana | 3000 | fixed (`GET /api/health`) |
 
 ```bash

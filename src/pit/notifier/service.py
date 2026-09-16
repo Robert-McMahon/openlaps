@@ -37,6 +37,7 @@ from pit.notifier.channels import (
 )
 from pit.notifier.config import ChannelConfig, NotifierConfig, NotifierSettings, load_config
 from pit.notifier.ledger import AlertLedger
+from pit.notifier.push import DiscordChannel, NtfyChannel
 from pit.session_control.service import BoundedThreadingHTTPServer
 
 logger = logging.getLogger(__name__)
@@ -65,20 +66,50 @@ class LedgerLike:
     def close(self) -> None: ...
 
 
-def build_channels(config: NotifierConfig, broadcaster: Broadcaster) -> list[Channel]:
-    """The configured channels, in order. Unknown types are P7.3's to add."""
+def build_channels(
+    config: NotifierConfig, broadcaster: Broadcaster, settings: NotifierSettings
+) -> list[Channel]:
+    """The configured channels, in order; a channel missing its secret is skipped."""
     channels: list[Channel] = []
     for spec in config.channels:
-        channels.append(_build_channel(spec, broadcaster))
+        channel = _build_channel(spec, broadcaster, settings)
+        if channel is not None:
+            channels.append(channel)
     return channels
 
 
-def _build_channel(spec: ChannelConfig, broadcaster: Broadcaster) -> Channel:
+def _build_channel(
+    spec: ChannelConfig, broadcaster: Broadcaster, settings: NotifierSettings
+) -> Channel | None:
     if spec.type == "log":
         return LogChannel(spec.name, spec.min_severity)
     if spec.type == "annunciator":
         return AnnunciatorChannel(broadcaster, spec.name, spec.min_severity, spec.repeat_s)
-    raise ValueError(f"channel type {spec.type!r} is not available yet (P7.3)")
+    if spec.type == "ntfy":
+        return NtfyChannel(
+            name=spec.name,
+            min_severity=spec.min_severity,
+            repeat_s=spec.repeat_s,
+            url=spec.settings.get("url", "http://ntfy"),
+            critical_topic=spec.settings.get("critical_topic", "openlaps-critical"),
+            warning_topic=spec.settings.get("warning_topic", "openlaps-warning"),
+            public_url=settings.public_url,
+            token=settings.ntfy_token,
+        )
+    if spec.type == "discord":
+        if not settings.discord_webhook:
+            logger.info(
+                "notifier: channel %r disabled: OPENLAPS_DISCORD_WEBHOOK is not set", spec.name
+            )
+            return None
+        return DiscordChannel(
+            name=spec.name,
+            min_severity=spec.min_severity,
+            repeat_s=spec.repeat_s,
+            webhook_url=settings.discord_webhook,
+            public_url=settings.public_url,
+        )
+    raise ValueError(f"unknown channel type {spec.type!r}")
 
 
 class NotifierService:
@@ -101,7 +132,9 @@ class NotifierService:
             heartbeat_missed_intervals=self.config.heartbeat_missed_intervals,
         )
         self.dispatcher = Dispatcher(
-            channels if channels is not None else build_channels(self.config, self.broadcaster),
+            channels
+            if channels is not None
+            else build_channels(self.config, self.broadcaster, settings),
             retry_deadline_s=self.config.retry_deadline_s,
         )
         if ledger is not None:

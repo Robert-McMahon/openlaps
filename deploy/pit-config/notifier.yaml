@@ -27,8 +27,25 @@ channels:
   - name: log
     type: log
     min_severity: none
-  # P7.3 adds:
-  #   - { name: phones, type: ntfy, min_severity: warning, repeat_s: 300,
-  #       settings: { url: http://ntfy, critical_topic: openlaps-critical,
-  #                   warning_topic: openlaps-warning } }
-  #   - { name: discord, type: discord, min_severity: critical, repeat_s: 600 }
+  # Phones, through the ntfy server in the pit stack (deploy/pit-compose.yaml),
+  # reached by its compose name from here and by the pit host's LAN address
+  # from a phone. Two topics so a phone can take criticals without warnings.
+  # A critical alert is re-pushed every 5 minutes until acknowledged; the
+  # push carries an Acknowledge button when OPENLAPS_NOTIFIER_PUBLIC_URL is
+  # set. The optional access credential comes from OPENLAPS_NTFY_TOKEN.
+  - name: phones
+    type: ntfy
+    min_severity: warning
+    repeat_s: 300
+    settings:
+      url: http://ntfy
+      critical_topic: openlaps-critical
+      warning_topic: openlaps-warning
+  # Discord, only while the pit has internet: critical only, repeated every
+  # 10 minutes until acknowledged, queued with backoff when the link is
+  # down. Disabled (with a log line, not an error) while
+  # OPENLAPS_DISCORD_WEBHOOK is empty.
+  - name: discord
+    type: discord
+    min_severity: critical
+    repeat_s: 600

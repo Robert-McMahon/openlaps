@@ -41,7 +41,7 @@ flowchart LR
     NTRIP[ntrip-client] --> PNATS
     PNATS -.-> WATCH[watch, strategy<br/>Phase 7] -.-> TSDB
     FEED[timing-feed<br/>Phase 7] -.-> TSDB
-    GSQL -- "alerts" --> NOTIF[notifier] -.-> NTFY[ntfy, phones<br/>Phase 7]
+    GSQL -- "alerts" --> NOTIF[notifier] --> NTFY[ntfy, phones]
   end
 ```
 
@@ -129,7 +129,7 @@ flowchart LR
   DB -.-> ST[strategy<br/>Phase 7] -. "strategy_state, strategy.* live" .-> DB
   TF[timing-feed<br/>Phase 7] -. "field_* tables" .-> DB
   G2 -- "alert webhook" --> NF[notifier] -- "annunciator" --> PH[pit wall]
-  NF -. "ntfy, Discord (Phase 7)" .-> PHONES[phones]
+  NF -- "ntfy on the pit LAN, Discord" --> PHONES[phones]
 ```
 
 - **ingest-writer** is a durable JetStream consumer: decode batch → resolve
@@ -179,12 +179,14 @@ namespace (`watch.*`, `strategy.*`, `field.*`).
 - **timing-feed** ingests the other cars from a timing provider — the
   Natsoft TCP feed first, a browser relay as fallback — into `field_*`
   tables, and reconciles our own car's count against `v_laps`.
-- **notifier** (landed, P7.2) is Grafana's only contact point. It records
-  every alert in the `alert_events` ledger, serves the annunciator at
-  `:8086` (sound, acknowledge buttons, a heartbeat that proves the path is
-  alive), repeats unacknowledged critical alerts, and holds a retry queue
-  for the phone channels P7.3 adds -- `ntfy` on the pit LAN and Discord when
-  there is internet.
+- **notifier** (landed, P7.2–P7.3) is Grafana's only contact point. It
+  records every alert in the `alert_events` ledger, serves the annunciator
+  at `:8086` (sound, acknowledge buttons, a heartbeat that proves the path
+  is alive), repeats unacknowledged critical alerts, and fans out by
+  severity to phones through the stack's own `ntfy` server on `:8087` --
+  a push over the pit wifi with no internet at all, carrying an
+  Acknowledge button -- and to Discord when there is internet, with a
+  retry queue for when there is not.
 
 ## Link dropout and recovery
 

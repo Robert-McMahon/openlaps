@@ -43,6 +43,15 @@ _PLAN_COLUMNS = (
 )
 
 
+_STRATEGY_COLUMNS = (
+    "time, session_id, trigger, lap_number, plan_revision, fuel_remaining_l, "
+    "fuel_remaining_lo_l, fuel_remaining_hi_l, rebase_confidence, burn_l_per_lap, burn_sd, "
+    "burn_laps, laps_to_dry_lo, laps_to_dry_hi, time_to_dry_s_lo, laps_remaining, stops_needed, "
+    "window_open_lap, window_close_lap, target_lap_s, driver, driver_time_remaining_s, "
+    "driver_total_remaining_s, refuel_remaining_s, refuel_release_at, stop_plan, plan_drift"
+)
+
+
 class SessionDatabase:
     """Own ``drivers``, ``sessions``, ``stints`` and ``race_plans`` with outage retry."""
 
@@ -173,6 +182,38 @@ class SessionDatabase:
                 self.errors += 1
                 await self._drop_connection()
                 raise PlanUnavailable("database unavailable; the plan cannot be read") from exc
+
+    async def load_strategy(self, session_id: str) -> dict[str, object] | None:
+        """The strategy service's latest evaluation for the session, or None.
+
+        Read-only, from `v_strategy_latest` (P7.9): the session UI shows the
+        numbers the crew would otherwise open a dashboard for. None when
+        the strategy service has not evaluated this session yet.
+        """
+        async with self._lock:
+            if not self.connected:
+                raise PlanUnavailable("database unavailable; strategy cannot be read")
+            try:
+                return await asyncio.wait_for(
+                    self._select_strategy(self._require(), session_id),
+                    timeout=self._operation_timeout_s,
+                )
+            except (TimeoutError, psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                self.errors += 1
+                await self._drop_connection()
+                raise PlanUnavailable("database unavailable; strategy cannot be read") from exc
+
+    async def _select_strategy(
+        self, conn: psycopg.AsyncConnection, session_id: str
+    ) -> dict[str, object] | None:
+        async with conn.transaction():
+            row = await (
+                await conn.execute(
+                    f"SELECT {_STRATEGY_COLUMNS} FROM v_strategy_latest WHERE session_id = %s",
+                    (session_id,),
+                )
+            ).fetchone()
+        return _strategy_row(row) if row is not None else None
 
     async def _insert_plan(
         self, conn: psycopg.AsyncConnection, session_id: str, plan: RacePlan
@@ -542,3 +583,13 @@ def _plan_row(row: tuple) -> dict[str, object]:
         "updated_at_ms": int(updated_at.timestamp() * 1000),
         "updated_by": updated_by,
     }
+
+
+def _strategy_row(row: tuple) -> dict[str, object]:
+    """A v_strategy_latest row in the API's shape (epoch ms, not datetimes)."""
+    names = [name.strip() for name in _STRATEGY_COLUMNS.split(",")]
+    data = dict(zip(names, row, strict=True))
+    for name in ("time", "refuel_release_at"):
+        stamp = data.pop(name)
+        data[f"{name}_ms"] = int(stamp.timestamp() * 1000) if stamp else None
+    return data

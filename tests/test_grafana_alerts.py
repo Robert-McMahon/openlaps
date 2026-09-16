@@ -21,6 +21,8 @@ REQUIRED_RULES = {
     "publish-lag-high",
     "live-feed-stale",
     "notifier-heartbeat",
+    "strategy-warning",
+    "strategy-critical",
 }
 
 
@@ -52,15 +54,16 @@ def test_alert_rules_are_provisioned_with_stable_uids_and_local_contact_point() 
     assert all(rule.get("for") for rule in rules)
 
 
-def test_alert_files_contain_no_secrets_and_every_rule_links_to_reliability() -> None:
+def test_alert_files_contain_no_secrets_and_every_rule_links_to_its_dashboard() -> None:
     serialized = "\n".join(path.read_text(encoding="utf-8") for path in ALERTING.glob("*.yaml"))
     assert not SECRET.search(serialized)
     for rule in _rules():
         annotations = rule.get("annotations", {})
-        assert (
-            "reliability"
-            in (annotations.get("dashboardUID", "") + annotations.get("runbook_url", "")).lower()
-        )
+        # Car and pipeline rules explain themselves on the reliability
+        # dashboard; the strategy rules (P7.9) on the fuel dashboard.
+        expected = "fuel" if rule["uid"].startswith("strategy-") else "reliability"
+        assert annotations.get("dashboardUID") == expected, rule["uid"]
+        assert f"/d/{expected}/" in annotations.get("runbook_url", ""), rule["uid"]
 
 
 def test_car_staleness_alerts_are_gated_off_in_the_pits() -> None:

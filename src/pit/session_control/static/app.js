@@ -118,6 +118,7 @@ function renderSession() {
   if (ended) resetEndButton();
   updateDriverSelect();
   renderPlan();
+  renderStrategy();
 }
 
 // The driver select marks whoever is in the car and preselects the first
@@ -451,6 +452,90 @@ async function refreshPlan() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Strategy (P7.9). Read-only: the strategy service's latest evaluation for
+// this session, from GET /session/strategy. The lower bound is the number
+// that gets radioed, so it is the one shown.
+// ---------------------------------------------------------------------------
+
+let strategy = null; // last GET /session/strategy payload
+
+function fmtLapTime(seconds) {
+  if (seconds == null) return "--";
+  const m = Math.floor(seconds / 60);
+  const s = (seconds - m * 60).toFixed(1).padStart(4, "0");
+  return m + ":" + s;
+}
+
+function fmtSeconds(seconds) {
+  return seconds == null ? "--" : fmtDuration(seconds * 1000);
+}
+
+function strategyRows(s) {
+  const window = s.window_open_lap == null ? (s.stops_needed === 0 ? "no stop needed" : "--")
+    : "laps " + s.window_open_lap + " to " + s.window_close_lap;
+  return [
+    ["Fuel remaining", s.fuel_remaining_l == null ? "--"
+      : s.fuel_remaining_l.toFixed(1) + " L (" + s.rebase_confidence + ")", false],
+    ["Burn per lap", s.burn_l_per_lap == null ? "--"
+      : s.burn_l_per_lap.toFixed(2) + " L over " + s.burn_laps + " laps", false],
+    ["Laps to dry (lower bound)", s.laps_to_dry_lo == null ? "--"
+      : s.laps_to_dry_lo.toFixed(1) + " (up to " + s.laps_to_dry_hi.toFixed(1) + ")", false],
+    ["Time to dry", fmtSeconds(s.time_to_dry_s_lo), false],
+    ["Pit window", window, false],
+    ["Target lap", fmtLapTime(s.target_lap_s), false],
+    ["Driver time left", (s.driver || "--") + ": " + fmtSeconds(s.driver_time_remaining_s),
+      s.driver_time_remaining_s != null && s.driver_time_remaining_s < 600],
+    ["Refuel release", s.refuel_release_at_ms == null ? "--"
+      : fmtClock(s.refuel_release_at_ms) + " (" + fmtSeconds(s.refuel_remaining_s) + " to go)", false],
+  ];
+}
+
+function renderStrategy() {
+  const hasSession = session !== null && session.status !== "none";
+  show($("strategy-section"), Boolean(apiKey) && hasSession);
+  if (!hasSession) return;
+  const current = strategy && strategy.strategy;
+  const grid = $("strategy-grid");
+  grid.replaceChildren();
+  if (!current) {
+    $("strategy-status").textContent = "The strategy service has not evaluated this session yet.";
+    $("strategy-stops").textContent = "";
+    return;
+  }
+  $("strategy-status").textContent =
+    "Evaluated " + fmtClock(current.time_ms) + " after lap " + (current.lap_number ?? "--") +
+    (current.plan_revision ? ", plan revision " + current.plan_revision : ", no plan") + ".";
+  for (const [label, value, warn] of strategyRows(current)) {
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    const dd = document.createElement("dd");
+    dd.textContent = value;
+    if (warn) dd.classList.add("warn");
+    grid.append(dt, dd);
+  }
+  const stops = (current.stop_plan || []).map((stop) =>
+    "lap " + stop.lap + " " + stop.type + (stop.driver_in ? " " + stop.driver_in : "") +
+    (stop.delta_laps ? " (" + (stop.delta_laps > 0 ? "+" : "") + stop.delta_laps + " vs plan)" : ""));
+  $("strategy-stops").textContent = stops.length
+    ? "Stops the numbers say: " + stops.join("; ") + "."
+    : (current.stops_needed === 0 ? "No further stop needed on current fuel." : "");
+}
+
+async function refreshStrategy() {
+  if (!apiKey || session === null || session.status === "none") {
+    strategy = null;
+    renderStrategy();
+    return;
+  }
+  try {
+    strategy = await api("/session/strategy");
+    renderStrategy();
+  } catch (error) {
+    $("strategy-status").textContent = "Strategy unavailable: " + error.message;
+  }
+}
+
 function numberOrNull(id) {
   const value = $(id).value.trim();
   return value === "" ? null : Number(value);
@@ -501,6 +586,7 @@ async function boot() {
     await loadRoster();
     await refreshSession();
     await refreshPlan();
+    await refreshStrategy();
   } catch (error) {
     setNotice("error", error.message);
   }
@@ -509,6 +595,7 @@ async function boot() {
 setInterval(refreshHealth, 5000);
 setInterval(refreshSession, 2000);
 setInterval(refreshPlan, 5000);
+setInterval(refreshStrategy, 5000);
 setInterval(() => {
   if (session !== null && session.status === "active") renderSession();
 }, 1000);

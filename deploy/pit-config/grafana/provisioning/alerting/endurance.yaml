@@ -712,6 +712,150 @@ groups:
         expression: B
         refId: C
         type: threshold
+  - uid: strategy-warning
+    title: Strategy warning (driver time, pit window, plan drift, short fill)
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: fuel
+      runbook_url: /d/fuel/fuel?var-alert=strategy-warning
+      summary: Strategy warning (driver time, pit window, plan drift, short fill)
+      panelID: '3'
+    labels:
+      service: openlaps
+      kind: watch
+      severity: warning
+      scope: always
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: timescale
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id
+          = 'example-club-racer' AND closed_at IS NULL AND monitor LIKE 'strategy.%' AND severity
+          IN ('warning'))::double precision AS "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource: &id010
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource: *id010
+        expression: B
+        refId: C
+        type: threshold
+  - uid: strategy-critical
+    title: Strategy critical (driver over a limit, pit window closed)
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: fuel
+      runbook_url: /d/fuel/fuel?var-alert=strategy-critical
+      summary: Strategy critical (driver over a limit, pit window closed)
+      panelID: '3'
+    labels:
+      service: openlaps
+      kind: watch
+      severity: critical
+      scope: always
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: timescale
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id
+          = 'example-club-racer' AND closed_at IS NULL AND monitor LIKE 'strategy.%' AND severity
+          IN ('critical'))::double precision AS "value"
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource: &id011
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0.0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+        datasource: *id011
+        expression: B
+        refId: C
+        type: threshold
 contactPoints:
 - orgId: 1
   name: openlaps-local

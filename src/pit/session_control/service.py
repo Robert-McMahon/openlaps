@@ -143,6 +143,7 @@ class SessionControlSettings:
 class DatabaseRecorder(Protocol):
     async def save_plan(self, session_id: str, plan: object) -> dict[str, object]: ...
     async def load_plan(self, session_id: str) -> dict[str, object] | None: ...
+    async def load_strategy(self, session_id: str) -> dict[str, object] | None: ...
 
     async def record(self, state: dict[str, object]) -> bool:
         """Write now or queue for retry; return whether it landed immediately."""
@@ -321,6 +322,15 @@ class SessionController:
         plan = await self.database.load_plan(session_id)
         return {"session_id": session_id, "plan": plan}
 
+    async def strategy_get(self) -> dict[str, object]:
+        """The strategy service's latest numbers for the current session (P7.9)."""
+        async with self._lock:
+            session_id = self.state.session_id if self.state.status != "none" else ""
+        if not session_id:
+            return {"session_id": None, "strategy": None}
+        strategy = await self.database.load_strategy(session_id)
+        return {"session_id": session_id, "strategy": strategy}
+
     async def plan_set(self, body: Mapping[str, object]) -> dict[str, object]:
         """Validate and store a new revision of the current session's plan."""
         async with self._lock:
@@ -464,8 +474,13 @@ class _SessionHandler(BaseHTTPRequestHandler):
                 self._send(503, {"error": "service busy"})
         elif path == "/roster":
             self._send(200, load_roster(self.roster_path))
-        elif path == "/session/plan":
-            future = asyncio.run_coroutine_threadsafe(self.controller.plan_get(), self.loop)
+        elif path in ("/session/plan", "/session/strategy"):
+            coroutine = (
+                self.controller.plan_get()
+                if path == "/session/plan"
+                else self.controller.strategy_get()
+            )
+            future = asyncio.run_coroutine_threadsafe(coroutine, self.loop)
             try:
                 self._send(200, future.result(timeout=5.0))
             except PlanUnavailable as exc:

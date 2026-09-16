@@ -126,7 +126,7 @@ flowchart LR
   S[session-control] -- "cmd.vehicle.session" --> LEAF
   PM[pit-monitor] -- "chrony, psutil, /health, :8222" --> DB
   SRC -.-> WT[watch<br/>Phase 7] -. "watch_* tables, watch.* live" .-> DB
-  DB -.-> ST[strategy<br/>Phase 7] -. "strategy_state, strategy.* live" .-> DB
+  DB -- "views, per lap" --> ST[strategy] -- "strategy_state, strategy.* live" --> DB
   TF[timing-feed<br/>Phase 7] -. "field_* tables" .-> DB
   G2 -- "alert webhook" --> NF[notifier] -- "annunciator" --> PH[pit wall]
   NF -- "ntfy on the pit LAN, Discord" --> PHONES[phones]
@@ -172,10 +172,16 @@ namespace (`watch.*`, `strategy.*`, `field.*`).
   `watch_*` tables and publishing live scores for the reliability
   dashboard. Findings become alerts through the same Grafana rules as
   every threshold.
-- **strategy** runs per lap off the read surface: fuel remaining, burn
-  with bounds, the pit window, the stop plan against the operator's race
-  plan, driver-time compliance, and the race forecast once field data
-  exists. `fuel.json` reads its table rather than computing in a panel.
+- **strategy** (landed, P7.9) runs per lap off the read surface: it polls
+  the views for a new crossing, a plan revision or an open stop, and on
+  each computes fuel remaining by the P6.3 model with its re-base
+  confidence, burn with bounds, the pit window, the stop plan against the
+  operator's race plan, driver-time compliance, the target lap and the
+  refuel clock. Every evaluation is a `strategy_state` row; the warnings
+  are `strategy.*` findings alerted by the same generated rules as every
+  threshold; the radio numbers go out retained under `strategy.*` on the
+  pit-local broker. `fuel.json` reads its views rather than computing in a
+  panel. The race forecast joins it once field data exists (P7.11).
 - **timing-feed** ingests the other cars from a timing provider — the
   Natsoft TCP feed first, a browser relay as fallback — into `field_*`
   tables, and reconciles our own car's count against `v_laps`.

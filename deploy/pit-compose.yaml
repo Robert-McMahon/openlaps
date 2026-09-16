@@ -410,6 +410,38 @@ services:
       retries: 4
       start_period: 20s
 
+  strategy:
+    # The state of the race for this car (P7.9, ADR 0011): fuel remaining
+    # with its re-base, burn with bounds, the pit window, the stop plan
+    # against the operator's race plan, driver time and the refuel clock.
+    # Runs per lap off the read surface -- it polls the views and evaluates
+    # on a new crossing, a plan revision or a timer -- writes strategy_state,
+    # raises its warnings as strategy.* findings, and publishes the live
+    # numbers under strategy.* on the pit-local broker for the pit wall.
+    <<: [*openlaps-image, *pit-env]
+    command: ["openlaps-strategy"]
+    environment:
+      OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
+      OPENLAPS_STRATEGY_HEALTH_PORT: "8088"
+      OPENLAPS_MQTT_HOST: mosquitto
+      OPENLAPS_MQTT_PORT: "1883"
+      TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
+      TIMESCALE_PORT: "5432"
+    ports:
+      - "8088:8088"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8088/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
   # --- read surface ---------------------------------------------------------
 
   grafana:

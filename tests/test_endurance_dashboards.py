@@ -132,21 +132,54 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation_and_fix_quality() 
         assert clock["options"]["countupSettings"]["queryField"]
 
 
-def test_fuel_dashboard_uses_fuel_views_and_has_refuel_legal_clock() -> None:
+def test_fuel_dashboard_is_a_consumer_of_the_strategy_views() -> None:
+    """P7.9: the arithmetic lives in the strategy service, not in a panel."""
     dashboard = _dashboard("fuel.json")
     sql = _all_sql(dashboard)
     text = json.dumps(dashboard).lower()
+    panels = _panels(dashboard)
 
+    # The measurements are still drawn from the fuel views; every projection
+    # comes from the strategy service's table through its views.
     assert "v_lap_fuel" in sql
     assert "v_stint_fuel_level" in sql
-    assert "v_pit_stops" in sql
-    assert "8 minute" in text or "8-minute" in text
+    assert "v_strategy_latest" in sql and "v_strategy_history" in sql
+    assert "v_watch_findings" in sql and "strategy.%" in sql
+    for column in (
+        "laps_to_dry_lo",
+        "laps_to_dry_hi",
+        "window_open_lap",
+        "window_close_lap",
+        "target_lap_s",
+        "driver_time_remaining_s",
+        "refuel_release_at",
+        "refuel_remaining_s",
+        "stop_plan",
+        "rebase_confidence",
+    ):
+        assert column in sql, column
+    # No panel computes a projection any more, and the legal minimum comes
+    # from the race plan rather than a number typed into a panel.
+    assert "level_end_l / fuel_used_l" not in sql
+    assert "480.0" not in sql and "interval '8 minutes'" not in sql
     assert "reset" in text
     assert "cross-check" in text
+    assert "lower bound" in text
     assert all(
         name in {item["name"] for item in dashboard["templating"]["list"]}
         for name in ("vehicle", "session", "driver", "stint", "lap")
     )
+    # A projection from three laps and one from a full stint must not look
+    # identical: the band panel fills between its lower and upper bound.
+    band = next(panel for panel in panels if panel["id"] == 3)
+    assert band["type"] == "timeseries"
+    fills = [
+        prop["value"]
+        for override in band["fieldConfig"]["overrides"]
+        for prop in override["properties"]
+        if prop["id"] == "custom.fillBelowTo"
+    ]
+    assert fills == ["Laps to dry (lower)"]
 
 
 def test_reliability_dashboard_uses_long_range_aggregate_and_kelvin_units() -> None:

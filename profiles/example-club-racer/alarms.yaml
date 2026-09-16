@@ -47,7 +47,10 @@
 #   kind         threshold (default) | stale | watch | heartbeat
 #     stale:     fires when `channel` has had no sample for `older_than_s`
 #     watch:     fires on open v_watch_findings rows at `severity_at_least`
+#                (up to `severity_at_most`), optionally only those whose
+#                monitor starts with `monitor_prefix`
 #     heartbeat: always fires; the notifier's proof the path is alive
+#   dashboard    reliability (default) | fuel -- where the runbook link opens
 
 group: endurance
 
@@ -157,3 +160,31 @@ alarms:
     gate: on_track
     summary: Live feed stale while on track
     panel: 7
+
+  # The strategy service's warnings (P7.9): driver time against the
+  # regulation limits, the pit window closing, the computed stop plan
+  # drifting from the operator's, a short fill. They are findings with a
+  # `strategy.` monitor, judged by the service on every lap and only while a
+  # session is open, so the rules carry no gate and no hold of their own.
+  strategy-warning:
+    kind: watch
+    monitor_prefix: strategy.
+    severity_at_least: warning
+    severity_at_most: warning    # a critical finding fires the rule below, not both
+    for: 0s
+    severity: warning
+    gate: always
+    dashboard: fuel
+    summary: Strategy warning (driver time, pit window, plan drift, short fill)
+    panel: 3
+
+  strategy-critical:
+    kind: watch
+    monitor_prefix: strategy.
+    severity_at_least: critical
+    for: 0s
+    severity: critical
+    gate: always
+    dashboard: fuel
+    summary: Strategy critical (driver over a limit, pit window closed)
+    panel: 3

@@ -4,7 +4,7 @@
   "description": "Fuel and stint strategy \u2014 provisioned openlaps endurance operations dashboard.",
   "editable": false,
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
@@ -168,6 +168,367 @@
       "targets": []
     },
     {
+      "id": 7,
+      "title": "Fuel remaining",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "litre",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, fuel_remaining_l AS \"Fuel remaining\", fuel_remaining_lo_l AS \"Lower bound\", rebase_confidence AS \"Re-base\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "Tank contents by the P6.3 model, computed by the strategy service: the last level re-base less the counter deltas since. `Re-base` says where that reading came from (key_on: stationary after a refuel; moving: the live level sensor, which sloshes; plan: no reading at all)."
+    },
+    {
+      "id": 8,
+      "title": "Laps to dry (lower bound)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 3,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, laps_to_dry_lo AS \"Laps to dry\", laps_to_dry_hi AS \"Upper bound\", burn_laps AS \"Laps in burn\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "The number that gets radioed is the lower bound: usable fuel at the low end over burn at the high end (mean + 2 sd of the last clean laps). `Laps in burn` is how many laps that mean rests on -- three laps and a full stint must not look alike."
+    },
+    {
+      "id": 9,
+      "title": "Pit window",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 3,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, window_open_lap AS \"Opens at lap\", window_close_lap AS \"Closes at lap\", stops_needed AS \"Stops needed\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "Earliest lap the car can stop and still make the end with the planned number of stops; latest lap it can stay out on the lower-bound fuel. Empty when the car makes the end without stopping."
+    },
+    {
+      "id": 10,
+      "title": "Target lap time",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, target_lap_s AS \"Target lap\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "The lap time that reaches the next planned stop (or a time-authority race end) exactly dry: time to that moment over laps to dry. Only defined when the next stop is planned at a wall-clock time -- against a stop at a lap, pace does not change whether the fuel lasts."
+    },
+    {
+      "id": 11,
+      "title": "Driver time remaining",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 3,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, driver AS \"Driver\", driver_time_remaining_s AS \"Continuous\", driver_total_remaining_s AS \"Total\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "Against the race plan's regulation limits: remaining continuous time in this stint and remaining total for this driver. A strategy finding fires within the configured margin and goes critical past the limit."
+    },
+    {
+      "id": 12,
+      "title": "Refuelling legal release",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 3,
+        "w": 4,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Release at"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsLocalNoDate"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, refuel_elapsed_s AS \"Elapsed\", refuel_remaining_s AS \"To legal minimum\", refuel_release_at AS \"Release at\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "Live only while a refuel stop is open: elapsed since the PitEntryRefuel crossing, remaining to the plan's regulated minimum, and the wall time the car may be released. Releasing early is a penalty, not a gain."
+    },
+    {
       "id": 1,
       "title": "Fuel used per lap and rolling five-lap mean",
       "type": "timeseries",
@@ -177,7 +538,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 3,
+        "y": 8,
         "w": 12,
         "h": 8
       },
@@ -225,7 +586,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 3,
+        "y": 8,
         "w": 12,
         "h": 8
       },
@@ -265,7 +626,7 @@
     },
     {
       "id": 3,
-      "title": "Laps and dry-time projection",
+      "title": "Laps to dry, with bounds",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -273,13 +634,13 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 11,
+        "y": 16,
         "w": 12,
         "h": 8
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "none",
           "color": {
             "mode": "palette-classic"
           },
@@ -291,9 +652,68 @@
                 "value": null
               }
             ]
+          },
+          "custom": {
+            "fillOpacity": 25,
+            "spanNulls": false
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Laps to dry (upper)"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Laps to dry (lower)"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Laps to dry (lower)"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Window closes at lap"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {},
       "targets": [
@@ -306,14 +726,14 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT crossed_at AS time, CASE WHEN fuel_used_l > 0 THEN (SELECT level_end_l FROM v_stint_fuel_level sf WHERE sf.session_id = lf.session_id AND sf.stint_number = lf.stint_number) / fuel_used_l END AS \"Laps remaining\", CASE WHEN fuel_used_l > 0 THEN (SELECT level_end_l FROM v_stint_fuel_level sf WHERE sf.session_id = lf.session_id AND sf.stint_number = lf.stint_number) / fuel_used_l * lap_time_s END AS \"Projected dry time\", lap_time_s AS \"Target lap time to window\" FROM v_lap_fuel lf WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND measurement_status = 'clean' ORDER BY crossed_at"
+          "rawSql": "SELECT time, laps_to_dry_lo AS \"Laps to dry (lower)\", laps_to_dry_hi AS \"Laps to dry (upper)\", window_close_lap AS \"Window closes at lap\" FROM v_strategy_history WHERE vehicle_id = '$vehicle' AND $__timeFilter(time) AND ('$session' = 'all' OR session_id::text = '$session') ORDER BY time"
         }
       ],
-      "description": "Projected dry time, stint clock, and planned window belong on one time axis; fewer clean laps means lower confidence."
+      "description": "The strategy service's projection per evaluation, drawn as a band between its lower and upper bound rather than one line: a projection from three laps is wide and one from a full stint is narrow, and the crew can see which they are looking at. Counter-reset laps are excluded from the burn, never averaged in. Strategy alerts annotate this panel."
     },
     {
       "id": 4,
-      "title": "Refuelling legal release clock",
+      "title": "Burn per lap used by strategy, and fuel added at stops",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -321,13 +741,78 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 11,
+        "y": 16,
         "w": 12,
         "h": 8
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "litre",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fuel added at refuel"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "points"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 8
+              }
+            ]
+          }
+        ]
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT time, burn_l_per_lap AS \"Burn per lap (rolling mean)\", burn_l_per_lap + 2 * burn_sd AS \"Burn upper bound\", fuel_added_l AS \"Fuel added at refuel\" FROM v_strategy_history WHERE vehicle_id = '$vehicle' AND $__timeFilter(time) AND ('$session' = 'all' OR session_id::text = '$session') ORDER BY time"
+        }
+      ],
+      "description": "The rolling mean over the last clean laps (in-laps, out-laps, counter resets and lap-time outliers excluded) and its upper bound, which is what laps to dry is computed against. Fuel added is the level after a refuel less the level before it: a short fill shows here and raises a strategy finding."
+    },
+    {
+      "id": 13,
+      "title": "Stop plan: what the numbers say vs what the operator entered",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
           "color": {
             "mode": "palette-classic"
           },
@@ -343,7 +828,9 @@
         },
         "overrides": []
       },
-      "options": {},
+      "options": {
+        "showHeader": true
+      },
       "targets": [
         {
           "refId": "A",
@@ -352,12 +839,72 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT entry_at AS time, duration_s AS \"Refuel elapsed\", greatest(480.0 - duration_s, 0.0) AS \"Time to 8-minute minimum\", extract(epoch FROM entry_at + interval '8 minutes') AS \"Legal release wall time\" FROM v_pit_stops WHERE vehicle_id = '$vehicle' AND stop_type = 'refuel' AND $__timeFilter(entry_at) ORDER BY entry_at"
+          "rawSql": "SELECT s.time, (stop ->> 'lap')::int AS \"Stop at lap\", stop ->> 'type' AS \"Type\", stop ->> 'reason' AS \"Why\", stop ->> 'driver_in' AS \"Driver in\", (stop ->> 'planned_lap')::int AS \"Operator planned lap\", (stop ->> 'delta_laps')::int AS \"Drift (laps)\" FROM v_strategy_latest s CROSS JOIN LATERAL jsonb_array_elements(s.stop_plan) AS stop WHERE s.vehicle_id = '$vehicle' ORDER BY 2"
         }
       ],
-      "description": "Refuelling has an 8-minute legal minimum. Elapsed, remaining, and release wall time are deliberately distinct."
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "time": true
+            }
+          }
+        }
+      ],
+      "description": "Recomputed every lap from the burn, the stop minimum and the driver limits, and diffed against the race plan entered on the session UI, so the gap between the plan and what the numbers now say is visible before it is a problem. A drift beyond the configured laps raises a strategy finding."
+    },
+    {
+      "id": 14,
+      "title": "Open strategy findings",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT opened_at AS time, monitor AS \"Monitor\", severity AS \"Severity\", summary ->> 'message' AS \"Detail\" FROM v_watch_findings WHERE vehicle_id = '$vehicle' AND monitor LIKE 'strategy.%' AND closed_at IS NULL ORDER BY opened_at DESC"
+        }
+      ],
+      "description": "Driver time within its margin, the pit window closing, the computed plan drifting from the operator's, a short fill. Each is also a Grafana alert (strategy-warning, strategy-critical) that reaches the annunciator and the phones."
     },
     {
       "id": 5,
@@ -369,7 +916,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 31,
         "w": 24,
         "h": 4
       },
@@ -393,7 +940,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Counter reset laps are omitted, not treated as zero burn. `car.fuel_level` is the **cross-check** except at a post-refuel re-base. Compare the fuel window, stint clock, driving-time rules, and in/out-lap cost before radioing a target."
+        "content": "Every projection here is computed by the strategy service and read from `v_strategy_latest` / `v_strategy_history`; no panel does the arithmetic. Counter-reset laps are omitted from the burn, not treated as zero; in-laps, out-laps and lap-time outliers are excluded too. `car.fuel_level` is the **cross-check** except at a post-refuel re-base, where it is the model's anchor -- the `Re-base` label says which. Radio the lower bound. The refuelling legal minimum comes from the race plan, not from this dashboard."
       },
       "targets": []
     }

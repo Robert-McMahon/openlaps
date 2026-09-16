@@ -311,6 +311,69 @@ Written directly by the notifier, one transaction per notification, in the
 `pit_metrics` pattern. A ledger failure is counted on `/health` and never
 stops the alert reaching the page.
 
+### Strategy state
+
+```
+strategy_state(time, vehicle_id, session_id, trigger, lap_number, plan_revision,
+               fuel_remaining_l, fuel_remaining_lo_l, fuel_remaining_hi_l,
+               rebase_confidence, rebase_level_l, rebase_at, fuel_added_l,
+               burn_l_per_lap, burn_sd, burn_laps, lap_time_ref_s,
+               laps_to_dry_lo, laps_to_dry_hi, time_to_dry_s_lo, time_to_dry_s_hi,
+               laps_remaining, stops_needed, window_open_lap, window_close_lap, target_lap_s,
+               driver, driver_time_remaining_s, driver_total_remaining_s,
+               refuel_elapsed_s, refuel_remaining_s, refuel_release_at,
+               stop_plan JSONB, plan_drift JSONB)
+```
+
+One row per evaluation by the strategy service (`src/pit/strategy/`,
+migration 010, P7.9): on every completed lap, on a timer while the car is in
+the pits, whenever the race plan changes, and once with a NULL `session_id`
+when the session ends so the latest row never shows yesterday's numbers.
+`trigger` says which. A daily-chunked hypertable in the `pit_metrics`
+pattern, written directly by the service as the owner role, one transaction
+per evaluation together with its findings.
+
+Every projection carries its bounds -- `laps_to_dry_lo` is usable fuel at
+its low end over burn at its high end (the rolling mean plus two standard
+deviations), and the lower bound is the one that gets radioed. The fuel
+figure is P6.3's model in code: `rebase_level_l` at `rebase_at` less the
+clean per-lap counter deltas since, with an unmeasured lap (a counter reset,
+no samples) substituted at the rolling mean and widening the bounds rather
+than averaged into the burn. `rebase_confidence` says where the re-base came
+from: `key_on` (the first accepted level reading of a stint that began
+during a refuelling stop -- the car stationary, the engine not yet turning),
+`session_start`, `moving` (the latest on-track level reading, when the
+current stint spans the stop and so has no stationary reading after it),
+`plan` (no reading at all; the plan's tank figure assumed) or `none`.
+`burn_laps` is how many clean laps the mean rests on; in-laps, out-laps,
+counter resets and lap-time outliers are excluded. `stop_plan` is the
+remaining stops the numbers now say (`lap`, `type`, `driver_in`, `reason`,
+`planned_lap`, `delta_laps`), and `plan_drift` its diff against the
+operator's plan. The service reads views only and reimplements none of
+their semantics.
+
+`v_strategy_latest` is the latest row per vehicle; `v_strategy_history` is
+every row. The strategy service's warnings -- driver time within its margin
+or over a limit, the pit window closing or closed, the computed plan
+drifting from the operator's, a short fill -- are `watch_findings` rows with
+`monitor` prefixed `strategy.`, so they alert through the generated `watch`
+rules like everything else.
+
+### Watch findings
+
+```
+watch_findings(finding_id UUID, vehicle_id, monitor, opened_at, closed_at, severity, peak_score, summary JSONB)
+```
+
+One row per finding, open while `closed_at` is NULL: a monitor's judgement
+that something is wrong, with `summary` carrying enough (expected, observed,
+a message) for the crew to deduce the cause. Written by the strategy service
+for the `strategy.*` monitors and by the watch service for the rest (P7.5);
+the table is created with `IF NOT EXISTS` by whichever migration lands
+first, in the shape declared below for both. `v_watch_findings` is the read
+surface, and the generated alert rules count its open rows by severity and
+monitor prefix.
+
 ### Ingest bookkeeping
 
 `ingest_cursor(consumer, stream, stream_seq, updated)` is the ingest-writer's
@@ -334,16 +397,15 @@ reading a plan.
 | Table | Written by | Columns |
 | --- | --- | --- |
 | `watch_scores` (hypertable) | `watch` (P7.5) | `time, vehicle_id, monitor, score, residual, expected, observed, baseline_status` |
-| `watch_findings` | `watch` (P7.5), `strategy` (P7.9) | `finding_id, vehicle_id, monitor, opened_at, closed_at, severity, peak_score, summary JSONB` |
+| `watch_findings` | `watch` (P7.5), `strategy` (P7.9) | Landed in migration 010 (see *Watch findings* above); P7.5's migration must create it with `IF NOT EXISTS` in the same shape |
 | `watch_baselines` | `watch` (P7.5) | `vehicle_id, monitor, session_id, stint_number, learned_at, model JSONB` |
-| `strategy_state` (hypertable) | `strategy` (P7.9) | `time, session_id, fuel_remaining_l, rebase_confidence, burn_l_per_lap, burn_sd, laps_to_dry_lo, laps_to_dry_hi, time_to_dry_s_lo, time_to_dry_s_hi, window_open_lap, window_close_lap, target_lap_s, driver_time_remaining_s, stop_plan JSONB` |
+| `strategy_state` (hypertable) | `strategy` (P7.9) | Landed in migration 010 (see *Strategy state* above), with `vehicle_id`, the fuel bounds, the re-base, the refuel clock and `plan_drift` added to the declared shape |
 | `field_session` (hypertable) | `timing-feed` (P7.10) | `time, source, session_name, event_type, flag_state, sub_status, time_remaining_s, laps_remaining, time_elapsed_s, track_temp` |
 | `field_cars` (hypertable) | `timing-feed` (P7.10) | `time, source, car_number, competitor_id, class, position, class_position, laps, last_lap_s, best_lap_s, gap_lead_s, gap_next_s, sec1_s, sec2_s, sec3_s, pit_count, in_pit, pit_flag, driver, state` |
 | `field_passings` (hypertable) | `timing-feed` (P7.10) | `time, source, competitor_id, line, passing_type, active` |
 | `race_forecasts` | `strategy` (P7.11) | `time, session_id, scenario, car_number, p_position JSONB, expected_position, expected_gap_ahead_s, expected_gap_behind_s, runs` |
 
-Their views — `v_watch_scores`, `v_watch_findings`,
-`v_strategy_latest`, `v_strategy_history`,
+Their views — `v_watch_scores`,
 `v_field_standings`, `v_field_laps`, `v_field_passings`, `v_field_gaps`,
 `v_field_flags`, `v_race_forecast_latest` — join the stable read surface
 below as each lands, with the `grafana_ro` grant in the same migration.
@@ -369,6 +431,9 @@ to keep stable, and it is these views:
 | `v_session_active` | `vehicle_id, session_id, session_type, track_name, started` — one row per open session |
 | `v_race_plan` | The latest `race_plans` revision per session |
 | `v_race_plan_history` | Every `race_plans` revision |
+| `v_watch_findings` | `finding_id, vehicle_id, monitor, opened_at, closed_at, severity, peak_score, summary` |
+| `v_strategy_latest` | The latest `strategy_state` row per vehicle |
+| `v_strategy_history` | Every `strategy_state` row |
 
 **The views are the stable surface. The base tables are not.** Anything
 reading this database from outside the pit services — the companion repo,
@@ -406,6 +471,12 @@ separate because level regression has different failure modes: it rejects
 readings paired with battery voltage below 12 V to avoid cranking transients,
 then exposes the independent stint-scale level trend used to cross-check the
 counter model. Fuel-temperature correction is not part of this first model.
+
+`v_strategy_latest` is what the fuel dashboard's stat panels and the session
+UI read; `v_strategy_history` draws the projection bands. Both expose every
+column of the base table, so a later reshaping keeps presenting them.
+`v_watch_findings` is the alert rules' surface: open rows by severity and
+monitor prefix.
 
 `v_alert_events` joins each alert event to the acknowledgement for that
 firing, so "what fired overnight and who saw it" is one query and a dashboard

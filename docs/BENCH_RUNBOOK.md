@@ -760,6 +760,13 @@ the measurement below each time the Grafana pin or the path changes.
 | `publish-lag-high` | `CALL bench_alert_sample('sys.agent.publish_lag_ms', 750);` | `CALL bench_alert_sample('sys.agent.publish_lag_ms', 0);` |
 | `live-feed-stale` | Stop the replay after an on-track `car.rpm` sample and wait more than 5 seconds. | Restart replay or `CALL bench_alert_sample('car.rpm', 3000);` |
 | `notifier-heartbeat` | Always firing; nothing to do. | Stop the grafana container: the annunciator's path indicator goes red within three minutes and `/health` reports `heartbeat.ok: false`. |
+| `strategy-warning` | `INSERT INTO watch_findings (finding_id, vehicle_id, monitor, opened_at, severity, peak_score, summary) VALUES (gen_random_uuid(), 'example-club-racer', 'strategy.bench_drill', now(), 'warning', 1.0, '{"message": "bench drill"}');` | `UPDATE watch_findings SET closed_at = now() WHERE monitor = 'strategy.bench_drill' AND closed_at IS NULL;` |
+| `strategy-critical` | As above with `'critical'`. The real path: a race plan with `max continuous` a few minutes ahead of the current stint's elapsed time raises `strategy.driver_time` from the strategy service within its poll interval; the dashboard's *Open strategy findings* table shows it. | Close the row as above, or end the session: the service closes every strategy finding when no session is open. |
+
+The two `strategy-*` rules watch `v_watch_findings` rows whose monitor
+starts with `strategy.`; the drill monitor name above is one the strategy
+service does not own, so a running service leaves the drill row alone (it
+adopts and closes only the monitors it judges).
 
 Finally write a `lap.event` with `"pit_status":"pit"`, repeat each car-channel
 firing sample, and verify the seven on-track-gated rules remain Normal.  Then

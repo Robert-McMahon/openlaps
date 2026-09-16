@@ -41,6 +41,9 @@ SHIPPED_LIMITS: dict[str, tuple[str | None, str, float, str]] = {
     "publish-lag-high": ("sys.agent.publish_lag_ms", "gt", 500.0, "30s"),
     "live-feed-stale": ("car.rpm", "gt", 5.0, "5s"),
     "notifier-heartbeat": (None, "gt", 0.0, "0s"),
+    # P7.9: the strategy service's findings, by severity.
+    "strategy-warning": (None, "gt", 0.0, "0s"),
+    "strategy-critical": (None, "gt", 0.0, "0s"),
 }
 
 
@@ -285,6 +288,76 @@ def test_the_stale_watch_and_heartbeat_kinds_render(tmp_path: Path) -> None:
     assert _condition(rules["stale"])["evaluator"]["params"] == [5.0]
     assert "v_watch_findings" in _sql(rules["findings"])
     assert "'critical', 'warning'" in _sql(rules["findings"])
+    assert "monitor LIKE" not in _sql(rules["findings"])
+
+
+_HEARTBEAT = {
+    "kind": "heartbeat",
+    "for": "0s",
+    "severity": "none",
+    "gate": "always",
+    "summary": "h",
+}
+
+
+def test_a_watch_alarm_can_be_scoped_to_a_monitor_prefix_and_a_severity_band(
+    tmp_path: Path,
+) -> None:
+    # The strategy service's findings (P7.9) alert through the same kind as
+    # the anomaly monitors', narrowed to their monitor prefix, with a warning
+    # rule and a critical rule that do not both fire on one critical finding.
+    profile = _profile_with_alarms(
+        tmp_path,
+        {
+            "strategy-warning": {
+                "kind": "watch",
+                "monitor_prefix": "strategy.",
+                "severity_at_least": "warning",
+                "severity_at_most": "warning",
+                "severity": "warning",
+                "gate": "always",
+                "dashboard": "fuel",
+                "for": "0s",
+                "summary": "w",
+                "panel": 3,
+            },
+            "strategy-critical": {
+                "kind": "watch",
+                "monitor_prefix": "strategy.",
+                "severity_at_least": "critical",
+                "gate": "always",
+                "dashboard": "fuel",
+                "for": "0s",
+                "summary": "c",
+            },
+            "notifier-heartbeat": _HEARTBEAT,
+        },
+    )
+    _, text = gen_alert_rules.render(profile)
+    rules = _rules(yaml.safe_load(text))
+    warning, critical = _sql(rules["strategy-warning"]), _sql(rules["strategy-critical"])
+    assert "monitor LIKE 'strategy.%'" in warning and "monitor LIKE 'strategy.%'" in critical
+    assert "severity IN ('warning')" in warning
+    assert "severity IN ('critical')" in critical
+    assert rules["strategy-warning"]["annotations"]["dashboardUID"] == "fuel"
+    assert rules["strategy-warning"]["annotations"]["panelID"] == "3"
+    assert rules["strategy-warning"]["labels"]["severity"] == "warning"
+    with pytest.raises(ValueError, match="severity_at_most"):
+        gen_alert_rules.render(
+            _profile_with_alarms(
+                tmp_path / "bad",
+                {
+                    "x": {
+                        "kind": "watch",
+                        "severity_at_least": "critical",
+                        "severity_at_most": "warning",
+                        "for": "0s",
+                        "summary": "x",
+                    },
+                    "notifier-heartbeat": _HEARTBEAT,
+                },
+            )
+        )
     assert _sql(rules["notifier-heartbeat"]).endswith('1.0 AS "value"')
     assert rules["notifier-heartbeat"]["labels"]["severity"] == "none"
 
@@ -307,7 +380,13 @@ def test_every_continuous_shipped_alarm_has_hysteresis() -> None:
     # The discrete ones (a severity level, a staleness age) fire and clear on
     # their own threshold; everything measured on a continuous scale clears
     # past a second value so a reading that hovers at the limit fires once.
-    discrete = {"engine-protection-active", "live-feed-stale", "notifier-heartbeat"}
+    discrete = {
+        "engine-protection-active",
+        "live-feed-stale",
+        "notifier-heartbeat",
+        "strategy-warning",
+        "strategy-critical",
+    }
     for uid, rule in _rules(_rendered()).items():
         condition = _condition(rule)
         if uid in discrete:

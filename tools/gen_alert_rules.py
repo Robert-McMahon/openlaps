@@ -112,6 +112,15 @@ class Alarm(_Strict):
     clear_above: float | None = None
     older_than_s: float | None = None
     severity_at_least: Literal["critical", "warning"] | None = None
+    # watch: cap the counted severities, so a warning rule and a critical
+    # rule over the same findings do not both fire on one critical finding.
+    severity_at_most: Literal["critical", "warning"] | None = None
+    # watch: only findings whose monitor starts with this (`strategy.`), so
+    # the strategy service's warnings and the anomaly monitors' can carry
+    # different severities and different runbooks.
+    monitor_prefix: str | None = None
+    # The dashboard the alert annotates and its runbook link opens.
+    dashboard: Literal["reliability", "fuel"] = "reliability"
     for_: str = Field(alias="for")
     severity: Literal["critical", "warning", "none"] = "critical"
     gate: Literal["on_track", "always", "engine_running"] = "on_track"
@@ -147,6 +156,10 @@ class Alarm(_Strict):
         elif self.kind == "watch":
             if self.severity_at_least is None:
                 raise ValueError("a watch alarm needs severity_at_least")
+        if self.monitor_prefix is not None and self.kind != "watch":
+            raise ValueError("monitor_prefix applies to watch alarms only")
+        if self.severity_at_most == "warning" and self.severity_at_least == "critical":
+            raise ValueError("severity_at_most cannot sit below severity_at_least")
         return self
 
 
@@ -272,12 +285,19 @@ def _stale_sql(vehicle: str, alarm: Alarm) -> str:
 
 
 def _watch_sql(vehicle: str, alarm: Alarm) -> str:
-    severities = {"critical": "('critical')", "warning": "('critical', 'warning')"}
+    ladder = ("warning", "critical")
     assert alarm.severity_at_least is not None
+    lowest = ladder.index(alarm.severity_at_least)
+    highest = ladder.index(alarm.severity_at_most or "critical")
+    counted = ", ".join(f"'{level}'" for level in reversed(ladder[lowest : highest + 1]))
+    monitor = ""
+    if alarm.monitor_prefix:
+        prefix = alarm.monitor_prefix.replace("'", "''").replace("%", "\\%").replace("_", "\\_")
+        monitor = f" AND monitor LIKE '{prefix}%'"
     return (
         'SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id = '
-        f"'{vehicle}' AND closed_at IS NULL AND severity IN "
-        f'{severities[alarm.severity_at_least]})::double precision AS "value"'
+        f"'{vehicle}' AND closed_at IS NULL{monitor} AND severity IN "
+        f'({counted}))::double precision AS "value"'
     )
 
 
@@ -317,8 +337,8 @@ def _rule(uid: str, alarm: Alarm, vehicle: str, channels: dict[str, Any]) -> dic
     if unload is not None:
         condition["unloadEvaluator"] = unload
     annotations = {
-        "dashboardUID": "reliability",
-        "runbook_url": f"/d/reliability/reliability?var-alert={uid}",
+        "dashboardUID": alarm.dashboard,
+        "runbook_url": f"/d/{alarm.dashboard}/{alarm.dashboard}?var-alert={uid}",
         "summary": alarm.summary,
     }
     if alarm.panel is not None:

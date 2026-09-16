@@ -39,12 +39,13 @@ DEFAULT_PROFILE = ROOT / "profiles" / "example-club-racer"
 ALERTING_DIR = ROOT / "deploy" / "pit-config" / "grafana" / "provisioning" / "alerting"
 TIMESCALE_UID = "timescale"
 EXPRESSION_UID = "-100"
-# Evaluation cadence. 2 s is below Grafana's default floor of 10 s; the floor
-# is lowered in deploy/pit-compose.yaml (GF_UNIFIED_ALERTING_MIN_INTERVAL and
-# _SCHEDULER_TICK_INTERVAL) and Grafana silently rounds a group interval up
-# to the floor if the two disagree -- which is why the bench drill measures
-# the result instead of trusting this constant.
-GROUP_INTERVAL = "2s"
+# Evaluation cadence. Grafana's base interval is 10 s and, on 12.4.9, cannot
+# be lowered (deploy/pit-compose.yaml records the attempt); a rule group
+# interval that does not divide it is refused at provisioning time and
+# Grafana fails to start. The under-10 s latency budget is therefore met by
+# the watch service's sample-rate path for critical limits (P7.5), not by
+# this constant.
+GROUP_INTERVAL = "10s"
 
 # Units the generator knows how to convert between, as families. Each entry
 # maps a unit to (scale, offset) into the family's base unit. Anything
@@ -410,12 +411,16 @@ def _delivery() -> dict[str, Any]:
                 "orgId": 1,
                 "receiver": "openlaps-local",
                 "group_by": ["grafana_folder", "alertname"],
-                # Send the first notification the moment a group has an alert,
-                # follow-ups for the group every 10 s, and leave repeats to the
-                # notifier's acknowledgement logic rather than Grafana's clock.
+                # Send the first notification the moment a group has an alert
+                # and follow-ups for the group every 10 s. Grafana re-sends a
+                # still-firing alert every 5 minutes: the notifier ignores a
+                # re-send of an alert it already holds, so this costs nothing,
+                # and it is how a restarted notifier -- whose memory is empty
+                # -- learns within minutes what is still firing. Repeats a
+                # person hears are the notifier's own, keyed to acknowledgement.
                 "group_wait": "0s",
                 "group_interval": "10s",
-                "repeat_interval": "4h",
+                "repeat_interval": "5m",
                 "routes": [
                     {
                         "receiver": "openlaps-local",

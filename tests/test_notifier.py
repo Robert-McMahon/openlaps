@@ -74,6 +74,28 @@ def test_grafana_payloads_parse_into_bounded_alerts_and_junk_yields_nothing():
     assert len(parse_notification(many, T0)) == 50
 
 
+def test_the_rule_uid_survives_grafana_stripping_its_private_labels():
+    # Observed 2026-09-16 on Grafana 12.4.9: the webhook carries no
+    # __alert_rule_uid__ label; the uid is only in generatorURL.
+    payload = grafana_payload({})
+    del payload["alerts"][0]["labels"]["__alert_rule_uid__"]
+    payload["alerts"][0]["generatorURL"] = (
+        "http://192.168.12.203:3000/alerting/grafana/oil-pressure-low/view"
+    )
+    assert parse_notification(payload, T0)[0].rule_uid == "oil-pressure-low"
+
+
+def test_the_heartbeat_is_recognised_by_its_kind_label_alone():
+    book = _book()
+    payload = grafana_payload(
+        {"name": "Notifier heartbeat", "severity": "none", "fingerprint": "hb", "uid": "whatever"}
+    )
+    del payload["alerts"][0]["labels"]["__alert_rule_uid__"]
+    payload["alerts"][0]["labels"]["kind"] = "heartbeat"
+    assert book.receive(parse_notification(payload, T0), T0) == []
+    assert book.active == {} and book.heartbeat_seen == T0
+
+
 def test_a_rule_without_a_severity_label_is_treated_as_critical_not_ignored():
     payload = grafana_payload({})
     del payload["alerts"][0]["labels"]["severity"]

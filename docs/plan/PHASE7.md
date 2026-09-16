@@ -131,6 +131,17 @@ Do not relitigate.
    directly, with Grafana kept as the record. Dashboard refresh intervals
    play no part in any of this.
 
+   **Outcome, 2026-09-16:** the evidence arrived at the first deployment.
+   Grafana 12.4.9 refuses to start with `min_interval` below its 10 s base
+   interval, with or without the `configurableSchedulerTick` feature
+   toggle (`deploy/pit-compose.yaml` records the attempt). The rules
+   evaluate every 10 s, `group_wait` is 0 and `for` is per alarm, so a
+   critical crossing reaches the notifier in 3–13 s — over budget in the
+   worst case. **The fallback is therefore in scope for P7.5**: the watch
+   service evaluates `severity: critical` limits from `alarms.yaml` at
+   sample rate and posts to the notifier directly, and Grafana's rule for
+   the same limit stays as the record and the dashboard annotation.
+
 2. **Phones get `ntfy`, on the pit LAN, with Discord as the
    internet-dependent second channel.** `ntfy` is open source, runs as one
    container in `pit-compose.yaml`, needs no account, and its Android/iOS
@@ -1126,6 +1137,14 @@ Not work packages. Load-bearing for the phase.
   event, and point the same client at it. That is the no-internet path.
 - **Send Natsoft a courtesy email** stating the intended use. No terms
   were found; a reply either way is worth having in writing.
+- **The on-track gate outlives the session.** Every car-channel rule is
+  gated on the last `lap.event`'s `pit_status`, and a car that ended its
+  day on track leaves that at `"track"` for good: at the first deployment
+  `live-feed-stale` fired against a car parked for thirty hours. Gate the
+  car-channel rules additionally on an active session — `session-control`
+  knows, and a small `v_session_active` view would let the generated SQL
+  ask — or the crew learns to ignore alerts overnight, which is the one
+  lesson this phase exists to prevent. A P7.1 follow-up.
 - **Baselines are learned from the first clean window of the session.**
   If the car goes out with a known fault, the watch service learns the
   fault as normal. The operator UI should offer "re-learn baselines"

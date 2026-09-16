@@ -720,10 +720,8 @@ SELECT now(), channel_key, '{"type":"lap_completed","pit_status":"track"}' FROM 
 ```
 
 Exercise one rule at a time, wait for its configured `for` period plus two
-evaluation intervals (2 s each -- the group interval in the rendered file,
-which only holds if `GF_UNIFIED_ALERTING_MIN_INTERVAL` and
-`_SCHEDULER_TICK_INTERVAL` in `deploy/pit-compose.yaml` are honoured; a rule
-that takes 10 s or more to move is the sign they are not), verify
+10-second evaluation intervals (Grafana's base interval, which 12.4.9
+refuses to lower -- see the comment in `deploy/pit-compose.yaml`), verify
 **Firing**, then write the reset value and verify **Normal**.  Every
 continuous rule carries a recovery threshold: a value between the firing
 and clear thresholds must leave a Firing rule Firing, and must leave a
@@ -733,13 +731,15 @@ Normal rule Normal.  Temperatures below are Kelvin, not Celsius.
 clock, `CALL bench_alert_sample('car.oil_pressure', 150);` (RPM already at
 4000), and note the time the annunciator shows it (or the `time` column of
 the `alert_events` row).
-The budget is under 10 s for a critical alarm: 3 s `for`, up to 4 s of
-evaluation, 0 s `group_wait`.  Record the measurement below each time the
-Grafana pin or the evaluation floor changes.
+The budget is under 10 s for a critical alarm.  Through Grafana the path is
+3 s `for` plus up to 10 s of evaluation plus 0 s `group_wait`: 3-13 s, over
+budget in the worst case, which is why the watch service (P7.5) evaluates
+critical limits at sample rate and posts to the notifier directly.  Record
+the measurement below each time the Grafana pin or the path changes.
 
-| Date | Grafana | Crossing to notification | Notes |
-| --- | --- | --- | --- |
-| _not yet measured_ | 12.4.9 | | first measurement pending a bench run |
+| Date | Grafana | Path | Crossing to notification | Notes |
+| --- | --- | --- | --- | --- |
+| 2026-09-16 | 12.4.9 | Grafana rules | _not measured_ | evaluation floor cannot be lowered below 10 s; see pit-compose.yaml |
 
 | Rule uid | Firing sample | Reset sample |
 | --- | --- | --- |

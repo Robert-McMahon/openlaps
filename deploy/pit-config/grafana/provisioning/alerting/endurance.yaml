@@ -6,7 +6,7 @@ groups:
 - orgId: 1
   name: openlaps-endurance
   folder: openlaps
-  interval: 2s
+  interval: 10s
   rules:
   - uid: oil-pressure-low
     title: Oil pressure low against RPM
@@ -723,7 +723,7 @@ policies:
   - alertname
   group_wait: 0s
   group_interval: 10s
-  repeat_interval: 4h
+  repeat_interval: 5m
   routes:
   - receiver: openlaps-local
     object_matchers:

@@ -285,15 +285,18 @@ def test_the_stale_watch_and_heartbeat_kinds_render(tmp_path: Path) -> None:
     assert rules["notifier-heartbeat"]["labels"]["severity"] == "none"
 
 
-def test_the_latency_budget_is_in_the_rendered_cadence_and_the_compose_floor() -> None:
+def test_the_rendered_cadence_divides_grafana_s_fixed_base_interval() -> None:
+    # Grafana 12.4.9 refuses to start on a group interval that does not
+    # divide its 10 s base interval, and refuses to lower that base
+    # (deploy/pit-compose.yaml). The rest of the latency budget lives in
+    # the policy's zero group wait and in each alarm's `for`.
     document = _rendered()
-    assert all(group["interval"] == "2s" for group in document["groups"])
+    assert all(group["interval"] == "10s" for group in document["groups"])
     policy = document["policies"][0]
     assert policy["group_wait"] == "0s"
     compose = yaml.safe_load((ROOT / "deploy/pit-compose.yaml").read_text(encoding="utf-8"))
     environment = compose["services"]["grafana"]["environment"]
-    assert environment["GF_UNIFIED_ALERTING_MIN_INTERVAL"] == "2s"
-    assert environment["GF_UNIFIED_ALERTING_SCHEDULER_TICK_INTERVAL"] == "2s"
+    assert "GF_UNIFIED_ALERTING_MIN_INTERVAL" not in environment
 
 
 def test_every_continuous_shipped_alarm_has_hysteresis() -> None:

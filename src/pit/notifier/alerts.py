@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -22,6 +23,9 @@ MAX_ALERTS_PER_NOTIFICATION = 50
 MAX_TEXT_CHARS = 240
 MAX_LABELS = 32
 TEST_ALERT_NAME = "notifier-test"
+# Grafana's webhook strips its private (double-underscore) labels, so the rule
+# uid has to come from the generator URL: .../alerting/grafana/<uid>/view.
+_GENERATOR_UID = re.compile(r"/alerting/grafana/([^/?#]+)/view")
 
 
 def severity_rank(severity: str) -> int:
@@ -101,6 +105,10 @@ def parse_notification(payload: Any, now: datetime) -> list[Alert]:
             # A rule that forgot to say is treated as the loud kind; a quiet
             # default is how an alert gets lost.
             severity = "critical"
+        rule_uid = labels.get("__alert_rule_uid__") or None
+        if rule_uid is None:
+            match = _GENERATOR_UID.search(_text(raw.get("generatorURL")))
+            rule_uid = match.group(1) if match else None
         alerts.append(
             Alert(
                 fingerprint=fingerprint,
@@ -110,7 +118,7 @@ def parse_notification(payload: Any, now: datetime) -> list[Alert]:
                 started_at=_parse_time(raw.get("startsAt"), now),
                 labels=labels,
                 annotations=annotations,
-                rule_uid=labels.get("__alert_rule_uid__") or None,
+                rule_uid=rule_uid,
                 summary=annotations.get("summary") or name,
             )
         )
@@ -195,7 +203,13 @@ class AlertBook:
         self.notifications = 0
 
     def _is_heartbeat(self, alert: Alert) -> bool:
-        return alert.rule_uid == self.heartbeat_rule or alert.name == self.heartbeat_rule
+        # The generator labels every heartbeat rule `kind: heartbeat`; the uid
+        # and name are accepted too so a hand-written rule still counts.
+        return (
+            alert.labels.get("kind") == "heartbeat"
+            or alert.rule_uid == self.heartbeat_rule
+            or alert.name == self.heartbeat_rule
+        )
 
     def receive(self, alerts: list[Alert], now: datetime) -> list[Event]:
         """Fold a notification in; return the events it caused, in order."""

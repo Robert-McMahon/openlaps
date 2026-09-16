@@ -166,12 +166,14 @@ derives data rather than carrying it, writes its own tables in the
 pit-monitor pattern, and publishes live values only under a pit-owned
 namespace (`watch.*`, `strategy.*`, `field.*`).
 
-- **watch** consumes the sourced stream like the timing extrapolator does
-  and scores anomaly monitors — envelopes, per-lap drift, physical ratios,
-  and a whole-car residual model — writing scores and findings to
-  `watch_*` tables and publishing live scores for the reliability
-  dashboard. Findings become alerts through the same Grafana rules as
-  every threshold.
+- **watch** (landed, P7.5–P7.6) consumes the sourced stream like the
+  timing extrapolator does and scores anomaly monitors — envelopes,
+  per-lap drift by CUSUM, physical ratios per gear and per wheel, a
+  monotonic counter's rate, and a whole-car ridge-regression residual
+  model that ranks the channels in its finding — writing scores and
+  findings to `watch_*` tables and publishing live scores for the
+  reliability dashboard. Findings become alerts through the same Grafana
+  rules as every threshold; `docs/WATCH.md` is the reference.
 - **strategy** (landed, P7.9) runs per lap off the read surface: it polls
   the views for a new crossing, a plan revision or an open stop, and on
   each computes fuel remaining by the P6.3 model with its re-base

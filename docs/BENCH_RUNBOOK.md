@@ -789,3 +789,10 @@ change outside its learned envelope must open the warning rule. Healthy
 samples must close the findings and resolve the rules. The short engine-start
 fixture alone cannot learn these on-track baselines. Check `/health` on 8090
 and both `v_watch_*` views before attributing a non-firing rule to a healthy car.
+
+The P7.6 kinds -- per-lap drift, the driveline and wheel-speed ratios, the
+trigger-error counter and the whole-car model -- fire through the same two
+rules. Their demonstrated firings are the synthetic drives in
+`tests/test_watch_monitors.py` until P7.7's scenario suite gives each one a
+replayable fault against the live stack; the drift and ratio kinds need laps
+and gears the engine-start fixture does not have.

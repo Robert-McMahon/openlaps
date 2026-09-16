@@ -159,3 +159,264 @@ monitors:
     open_finding_above: 0.8
     severity: warning
     gate: on_track
+
+  # ---- P7.6: drift -- a slow per-lap decline the envelope never sees ----
+  # The lap's mean of the target while `when` holds, compared with the
+  # baseline laps by a CUSUM. A bearing, a fan, a slipping belt accumulate
+  # here. Cruise RPM is 4000-5000 for this engine; adjust per car.
+  oil_pressure_drift:
+    kind: drift
+    target: car.oil_pressure
+    when:
+    - channel: car.rpm
+      between: [4000, 5000]
+    baseline_laps: 5
+    min_lap_samples: 20
+    min_scale: 2
+    cusum_k: 0.5
+    cusum_h: 4.0
+    direction: down
+    severity: warning
+    gate: on_track
+  battery_voltage_drift:
+    kind: drift
+    target: car.battery_v
+    when:
+    - channel: car.rpm
+      between: [4000, 5000]
+    baseline_laps: 5
+    min_lap_samples: 20
+    min_scale: 0.05
+    direction: down
+    severity: warning
+    gate: on_track
+  coolant_temperature_drift:
+    kind: drift
+    target: car.coolant_temp
+    when:
+    - channel: car.rpm
+      between: [4000, 5000]
+    baseline_laps: 5
+    min_lap_samples: 20
+    min_scale: 1
+    direction: up
+    severity: warning
+    gate: on_track
+  gearbox_oil_temperature_drift:
+    kind: drift
+    target: car.gearbox_oil_temp
+    when:
+    - channel: car.rpm
+      between: [4000, 5000]
+    baseline_laps: 5
+    min_lap_samples: 20
+    min_scale: 1
+    direction: up
+    severity: warning
+    gate: on_track
+  thermo_fan_1_drift:
+    kind: drift
+    target: car.thermo_fan_1_current
+    when:
+    - channel: car.thermo_fan_1_load
+      above: 0
+    baseline_laps: 5
+    min_lap_samples: 20
+    min_scale: 0.1
+    severity: warning
+    gate: on_track
+  fuel_pump_drift:
+    kind: drift
+    target: car.fuel_pump_current
+    when:
+    - channel: car.fuel_pump_load
+      above: 0
+    baseline_laps: 5
+    min_lap_samples: 20
+    min_scale: 0.1
+    severity: warning
+    gate: on_track
+  power_steering_pump_1_drift:
+    kind: drift
+    target: car.power_steering_pump_1_current
+    when:
+    - channel: car.power_steering_pump_1_load
+      above: 0
+    baseline_laps: 5
+    min_lap_samples: 20
+    min_scale: 0.1
+    severity: warning
+    gate: on_track
+  oil_pump_drift:
+    kind: drift
+    target: car.oil_pump_current
+    when:
+    - channel: car.oil_pump_load
+      above: 0
+    baseline_laps: 5
+    min_lap_samples: 20
+    min_scale: 0.1
+    severity: warning
+    gate: on_track
+  lift_pump_drift:
+    kind: drift
+    target: car.lift_pump_current
+    when:
+    - channel: car.lift_pump_load
+      above: 0
+    baseline_laps: 5
+    min_lap_samples: 20
+    min_scale: 0.1
+    severity: warning
+    gate: on_track
+
+  # ---- P7.6: ratio -- a physical relationship that should be a constant ----
+  # Engine to driveshaft per gear is one number per gear; a change is clutch
+  # slip or a gear-position fault, and the finding says which gear.
+  driveline_ratio:
+    kind: ratio
+    numerator: car.rpm
+    denominator: car.driveshaft_rpm
+    per: car.gear
+    when:
+    - channel: car.gear
+      above: 0
+    - channel: car.driveshaft_rpm
+      above: 500
+    - channel: car.clutch_switch
+      below: 0.5
+    baseline_seconds: 180
+    min_group_samples: 30
+    residual_sigma: 3.0
+    min_scale: 0.02
+    score_window: 20s
+    open_finding_above: 0.8
+    low_means: engine turning slower than the wheels say it should (gear position fault)
+    high_means: engine turning faster than the wheels say it should (clutch slip)
+    severity: warning
+    gate: on_track
+  # Each wheel against the mean of the other three, at steady speed only:
+  # small longitudinal g, above 60 km/h, brake off. Tyre circumference
+  # differences are the learned per-wheel baseline. Low is a puncture or
+  # pressure loss; high is a dragging brake or a bearing.
+  wheel_speed_fl:
+    kind: ratio
+    numerator: car.wheel_speed_fl
+    denominator: [car.wheel_speed_fr, car.wheel_speed_rl, car.wheel_speed_rr]
+    when:
+    - channel: car.accel_x
+      between: [-0.15, 0.15]
+    - channel: car.vehicle_speed
+      above: 60
+    - channel: car.brake_pedal_switch
+      below: 0.5
+    baseline_seconds: 120
+    min_group_samples: 30
+    residual_sigma: 3.0
+    min_scale: 0.004
+    score_window: 20s
+    open_finding_above: 0.8
+    low_means: front-left reading low (puncture or pressure loss)
+    high_means: front-left reading high (dragging brake or bearing)
+    severity: warning
+    gate: on_track
+  wheel_speed_fr:
+    kind: ratio
+    numerator: car.wheel_speed_fr
+    denominator: [car.wheel_speed_fl, car.wheel_speed_rl, car.wheel_speed_rr]
+    when:
+    - channel: car.accel_x
+      between: [-0.15, 0.15]
+    - channel: car.vehicle_speed
+      above: 60
+    - channel: car.brake_pedal_switch
+      below: 0.5
+    baseline_seconds: 120
+    min_group_samples: 30
+    residual_sigma: 3.0
+    min_scale: 0.004
+    score_window: 20s
+    open_finding_above: 0.8
+    low_means: front-right reading low (puncture or pressure loss)
+    high_means: front-right reading high (dragging brake or bearing)
+    severity: warning
+    gate: on_track
+  wheel_speed_rl:
+    kind: ratio
+    numerator: car.wheel_speed_rl
+    denominator: [car.wheel_speed_fl, car.wheel_speed_fr, car.wheel_speed_rr]
+    when:
+    - channel: car.accel_x
+      between: [-0.15, 0.15]
+    - channel: car.vehicle_speed
+      above: 60
+    - channel: car.brake_pedal_switch
+      below: 0.5
+    baseline_seconds: 120
+    min_group_samples: 30
+    residual_sigma: 3.0
+    min_scale: 0.004
+    score_window: 20s
+    open_finding_above: 0.8
+    low_means: rear-left reading low (puncture or pressure loss)
+    high_means: rear-left reading high (dragging brake or bearing)
+    severity: warning
+    gate: on_track
+  wheel_speed_rr:
+    kind: ratio
+    numerator: car.wheel_speed_rr
+    denominator: [car.wheel_speed_fl, car.wheel_speed_fr, car.wheel_speed_rl]
+    when:
+    - channel: car.accel_x
+      between: [-0.15, 0.15]
+    - channel: car.vehicle_speed
+      above: 60
+    - channel: car.brake_pedal_switch
+      below: 0.5
+    baseline_seconds: 120
+    min_group_samples: 30
+    residual_sigma: 3.0
+    min_scale: 0.004
+    score_window: 20s
+    open_finding_above: 0.8
+    low_means: rear-right reading low (puncture or pressure loss)
+    high_means: rear-right reading high (dragging brake or bearing)
+    severity: warning
+    gate: on_track
+
+  # ---- P7.6: counter -- a count that should not move ----
+  # Trigger errors rising at any rate on track is a crank or cam sensor going.
+  trigger_errors:
+    kind: counter
+    channel: car.trigger_error_count
+    score_window: 60s
+    open_finding_above: 1.0    # counts per minute
+    severity: critical
+    gate: on_track
+
+  # ---- P7.6: whole car -- a channel list, a baseline policy, nothing else ----
+  # Every channel predicted from all the others; a finding ranks the channels
+  # by how far they sit from their prediction, with expected and observed in
+  # catalog units. Re-learned at every driver change, because it will fire on
+  # legitimate change too, and the finding names its baseline.
+  whole_car:
+    kind: whole_car
+    channels:
+    - car.rpm
+    - car.map
+    - car.throttle_pos
+    - car.oil_pressure
+    - car.oil_temp
+    - car.coolant_temp
+    - car.fuel_pressure
+    - car.battery_v
+    - car.lambda1
+    - car.thermo_fan_1_current
+    - car.fuel_pump_current
+    - car.pd16_total_current
+    baseline: stint_start
+    baseline_minutes: 15
+    score_window: 60s
+    open_finding_above: 4.0    # overall score, in sigma
+    severity: warning
+    gate: on_track

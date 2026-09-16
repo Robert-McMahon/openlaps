@@ -9,6 +9,7 @@ dependencies = [
     "aiomqtt>=2.3",
     "cantools>=42.0.3",
     "nats-py>=2.15.0",
+    "numpy>=2.5.3",
     "protobuf>=5.28",
     "psutil>=7.2.2",
     "psycopg[binary,pool]>=3.2",

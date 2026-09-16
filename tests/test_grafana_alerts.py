@@ -82,3 +82,38 @@ def test_each_rule_has_a_secret_free_demonstrated_firing_procedure() -> None:
     runbook = (ROOT / "docs/BENCH_RUNBOOK.md").read_text(encoding="utf-8").lower()
     for uid in REQUIRED_RULES:
         assert uid in runbook
+
+
+def test_every_rule_annotates_a_panel_that_exists_on_its_dashboard() -> None:
+    # Grafana draws alert state changes on the panel a rule names; a stale
+    # panel id annotates nothing and says nothing (P7.4).
+    dashboards = ROOT / "deploy/pit-config/grafana/dashboards"
+    for rule in _rules():
+        annotations = rule.get("annotations", {})
+        panel_id = annotations.get("panelID")
+        if panel_id is None:
+            continue
+        dashboard = yaml.safe_load(
+            (dashboards / f"{annotations['dashboardUID']}.json").read_text(encoding="utf-8")
+        )
+        panels = list(dashboard["panels"])
+        for panel in list(panels):
+            panels.extend(panel.get("panels", []))
+        matching = [p for p in panels if str(p.get("id")) == str(panel_id)]
+        uid = annotations["dashboardUID"]
+        assert matching, f"{rule['uid']} names panel {panel_id}, absent from {uid}"
+        assert matching[0]["type"] in {"timeseries", "xychart", "state-timeline", "trend"}, (
+            f"{rule['uid']} annotates a {matching[0]['type']} panel, which draws no annotations"
+        )
+
+
+def test_the_four_watched_dashboards_carry_a_firing_alert_strip_at_the_top() -> None:
+    dashboards = ROOT / "deploy/pit-config/grafana/dashboards"
+    for name in ("pitwall", "car", "reliability", "fuel"):
+        dashboard = yaml.safe_load((dashboards / f"{name}.json").read_text(encoding="utf-8"))
+        strips = [p for p in dashboard["panels"] if p.get("type") == "alertlist"]
+        assert len(strips) == 1, f"{name} needs exactly one alert strip"
+        strip = strips[0]
+        assert strip["gridPos"]["y"] == 0 and strip["gridPos"]["w"] == 24
+        assert strip["options"]["stateFilter"]["firing"] is True
+        assert strip["options"]["stateFilter"]["normal"] is False

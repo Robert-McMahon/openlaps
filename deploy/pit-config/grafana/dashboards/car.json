@@ -36,12 +36,45 @@
   "liveNow": true,
   "panels": [
     {
+      "id": 41,
+      "title": "Firing alerts",
+      "description": "Every rule in the openlaps folder that is firing right now, wherever you are looking. Acknowledge on the annunciator (notifier, port 8086); this strip shows, it does not silence.",
+      "type": "alertlist",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "alertName": "",
+        "dashboardAlerts": false,
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 8,
+        "sortOrder": 3,
+        "stateFilter": {
+          "error": true,
+          "firing": true,
+          "noData": false,
+          "normal": false,
+          "pending": false
+        },
+        "viewMode": "list"
+      },
+      "targets": []
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 3
       },
       "id": 1,
       "panels": [],
@@ -87,7 +120,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 1
+        "y": 4
       },
       "hideTimeOverride": true,
       "id": 2,
@@ -169,7 +202,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 1
+        "y": 4
       },
       "hideTimeOverride": true,
       "id": 3,
@@ -265,7 +298,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 1
+        "y": 4
       },
       "hideTimeOverride": true,
       "id": 4,
@@ -345,7 +378,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 1
+        "y": 4
       },
       "hideTimeOverride": true,
       "id": 5,
@@ -425,7 +458,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 6
+        "y": 9
       },
       "hideTimeOverride": true,
       "id": 6,
@@ -513,7 +546,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 6
+        "y": 9
       },
       "hideTimeOverride": true,
       "id": 7,
@@ -621,7 +654,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 6
+        "y": 9
       },
       "hideTimeOverride": true,
       "id": 8,
@@ -729,7 +762,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 6
+        "y": 9
       },
       "hideTimeOverride": true,
       "id": 9,
@@ -815,7 +848,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 11
+        "y": 14
       },
       "hideTimeOverride": true,
       "id": 10,
@@ -901,7 +934,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 11
+        "y": 14
       },
       "hideTimeOverride": true,
       "id": 11,
@@ -989,7 +1022,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 11
+        "y": 14
       },
       "hideTimeOverride": true,
       "id": 12,
@@ -1075,7 +1108,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 11
+        "y": 14
       },
       "hideTimeOverride": true,
       "id": 13,
@@ -1128,7 +1161,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 19
       },
       "id": 14,
       "panels": [],
@@ -1164,7 +1197,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 17
+        "y": 20
       },
       "hideTimeOverride": true,
       "id": 15,
@@ -1241,7 +1274,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 17
+        "y": 20
       },
       "hideTimeOverride": true,
       "id": 16,
@@ -1319,7 +1352,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 17
+        "y": 20
       },
       "hideTimeOverride": true,
       "id": 17,
@@ -1397,7 +1430,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 17
+        "y": 20
       },
       "hideTimeOverride": true,
       "id": 18,
@@ -1475,7 +1508,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 17
+        "y": 20
       },
       "hideTimeOverride": true,
       "id": 19,
@@ -1563,7 +1596,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 17
+        "y": 20
       },
       "hideTimeOverride": true,
       "id": 20,
@@ -1641,7 +1674,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 21
+        "y": 24
       },
       "hideTimeOverride": true,
       "id": 21,
@@ -1723,7 +1756,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 21
+        "y": 24
       },
       "hideTimeOverride": true,
       "id": 22,
@@ -1801,7 +1834,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 21
+        "y": 24
       },
       "hideTimeOverride": true,
       "id": 23,
@@ -1856,7 +1889,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 28
       },
       "id": 37,
       "panels": [],
@@ -1942,7 +1975,7 @@
         "h": 12,
         "w": 8,
         "x": 0,
-        "y": 26
+        "y": 29
       },
       "hideTimeOverride": true,
       "id": 40,
@@ -2128,7 +2161,7 @@
         "h": 12,
         "w": 8,
         "x": 8,
-        "y": 26
+        "y": 29
       },
       "hideTimeOverride": true,
       "id": 38,
@@ -2249,7 +2282,7 @@
         "h": 12,
         "w": 8,
         "x": 16,
-        "y": 26
+        "y": 29
       },
       "hideTimeOverride": true,
       "id": 39,
@@ -2290,7 +2323,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 41
       },
       "id": 24,
       "panels": [],
@@ -2393,7 +2426,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 42
       },
       "id": 25,
       "options": {
@@ -2567,7 +2600,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 39
+        "y": 42
       },
       "id": 26,
       "options": {
@@ -2731,7 +2764,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 47
+        "y": 50
       },
       "id": 27,
       "options": {
@@ -2873,7 +2906,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 47
+        "y": 50
       },
       "id": 28,
       "options": {
@@ -3014,7 +3047,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 55
+        "y": 58
       },
       "id": 29,
       "options": {
@@ -3155,7 +3188,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 55
+        "y": 58
       },
       "id": 30,
       "options": {
@@ -3328,7 +3361,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 63
+        "y": 66
       },
       "id": 31,
       "options": {
@@ -3491,7 +3524,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 63
+        "y": 66
       },
       "id": 32,
       "options": {
@@ -3632,7 +3665,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 71
+        "y": 74
       },
       "id": 33,
       "options": {
@@ -3773,7 +3806,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 71
+        "y": 74
       },
       "id": 34,
       "options": {
@@ -3914,7 +3947,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 79
+        "y": 82
       },
       "id": 35,
       "options": {
@@ -4055,7 +4088,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 79
+        "y": 82
       },
       "id": 36,
       "options": {
@@ -4187,12 +4220,12 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
         "includeAll": true,
         "label": "Stint",
         "name": "stint",
         "options": [],
-        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
         "refresh": 1,
         "regex": "",
         "regexApplyTo": "value",
@@ -4209,12 +4242,12 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
         "includeAll": true,
         "label": "Lap",
         "name": "lap",
         "options": [],
-        "query": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
         "refresh": 1,
         "regex": "",
         "regexApplyTo": "value",

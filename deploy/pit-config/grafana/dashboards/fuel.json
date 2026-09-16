@@ -135,6 +135,39 @@
   },
   "panels": [
     {
+      "id": 6,
+      "title": "Firing alerts",
+      "description": "Every rule in the openlaps folder that is firing right now, wherever you are looking. Acknowledge on the annunciator (notifier, port 8086); this strip shows, it does not silence.",
+      "type": "alertlist",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "alertName": "",
+        "dashboardAlerts": false,
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 8,
+        "sortOrder": 3,
+        "stateFilter": {
+          "error": true,
+          "firing": true,
+          "noData": false,
+          "normal": false,
+          "pending": false
+        },
+        "viewMode": "list"
+      },
+      "targets": []
+    },
+    {
       "id": 1,
       "title": "Fuel used per lap and rolling five-lap mean",
       "type": "timeseries",
@@ -144,7 +177,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 3,
         "w": 12,
         "h": 8
       },
@@ -192,7 +225,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 3,
         "w": 12,
         "h": 8
       },
@@ -240,7 +273,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 11,
         "w": 12,
         "h": 8
       },
@@ -288,7 +321,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 8,
+        "y": 11,
         "w": 12,
         "h": 8
       },
@@ -336,7 +369,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 19,
         "w": 24,
         "h": 4
       },

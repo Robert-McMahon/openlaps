@@ -761,8 +761,8 @@
       "title": "Clock source",
       "type": "stat",
       "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
       },
       "gridPos": {
         "x": 0,
@@ -835,10 +835,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
-          "topic": "openlaps/$vehicle/sys.host.clock_source"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value_text\n          FROM v_samples_named\n         WHERE vehicle_id = '$vehicle' AND channel = 'sys.host.clock_source'\n           AND time >= now() - interval '30 seconds'\n           AND time <= now() + interval '1 second'\n         ORDER BY time DESC\n         LIMIT 1) AS \"value\""
         }
       ],
       "description": "chrony's currently selected reference. GPS means the RP2040 timing head's PPS refclock is selected; anything else means it fell back to network NTP.",
@@ -862,8 +865,8 @@
       "title": "Stratum",
       "type": "stat",
       "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
       },
       "gridPos": {
         "x": 5,
@@ -917,10 +920,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
-          "topic": "openlaps/$vehicle/sys.host.clock_stratum"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_samples_named\n         WHERE vehicle_id = '$vehicle' AND channel = 'sys.host.clock_stratum'\n           AND time >= now() - interval '30 seconds'\n           AND time <= now() + interval '1 second'\n         ORDER BY time DESC\n         LIMIT 1) AS \"value\""
         }
       ],
       "description": "1 means locked to the local GNSS refclock.",
@@ -944,8 +950,8 @@
       "title": "Clock offset",
       "type": "stat",
       "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
       },
       "gridPos": {
         "x": 9,
@@ -991,10 +997,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
-          "topic": "openlaps/$vehicle/sys.host.clock_offset_s"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_samples_named\n         WHERE vehicle_id = '$vehicle' AND channel = 'sys.host.clock_offset_s'\n           AND time >= now() - interval '30 seconds'\n           AND time <= now() + interval '1 second'\n         ORDER BY time DESC\n         LIMIT 1) AS \"value\""
         }
       ],
       "timeFrom": "5m",
@@ -1017,8 +1026,8 @@
       "title": "Root dispersion",
       "type": "stat",
       "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
       },
       "gridPos": {
         "x": 14,
@@ -1064,10 +1073,13 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
-          "topic": "openlaps/$vehicle/sys.host.clock_root_dispersion_s"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS \"time\",\n       (SELECT value\n          FROM v_samples_named\n         WHERE vehicle_id = '$vehicle' AND channel = 'sys.host.clock_root_dispersion_s'\n           AND time >= now() - interval '30 seconds'\n           AND time <= now() + interval '1 second'\n         ORDER BY time DESC\n         LIMIT 1) AS \"value\""
         }
       ],
       "description": "Chrony's own error bound. This is the honest uncertainty on every timestamp the car produces.",

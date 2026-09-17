@@ -86,9 +86,7 @@ relitigate:
 
 1. **The eight legacy dashboards are reference material, not a
    specification.** There is no parity obligation, no coverage table, and
-   no requirement that a legacy panel survive. They are read for ideas and
-   left where they are (`/mnt/data/logger/grafana/dashboards/`, not in this
-   repository and never will be). ADR 0003's negative consequence — "all
+   no requirement that a legacy panel survive. ADR 0003's negative consequence — "all
    existing Grafana dashboards (eight in the current system) must be
    rewritten against SQL" — is superseded and gets a dated amendment
    (P5.0).
@@ -436,7 +434,6 @@ someone who reads the limiter before picking numbers.
 units, `docs/CATALOG.md` on the Kelvin inconsistency,
 `docs/ARCHITECTURE.md` → "Link dropout and recovery",
 `docs/WIRE_FORMAT.md` → `lap.event` payload schema.
-**Reference, not specification:** `/mnt/data/logger/grafana/dashboards/racing-dashboard.json`.
 **uid:** `car`. **File:** `deploy/pit-config/grafana/dashboards/car.json`.
 
 One dashboard: what the engine is doing now, and what it has been doing.

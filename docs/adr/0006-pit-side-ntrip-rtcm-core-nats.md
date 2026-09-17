@@ -11,8 +11,8 @@ and fetches RTK correction data from an NTRIP caster over the internet from
 the vehicle itself. This requires the vehicle to have independent internet
 reachability, which it does not reliably have; the pit does, via its own
 backhaul. The credentials involved are environment-baked and present in the
-old repository's history, which is one of the concrete secrets-hygiene
-problems the rewrite (and ADR 0001's clean-history decision) exists to
+the legacy implementation's history, which is one of the concrete
+secrets-hygiene problems the rewrite (and ADR 0001's clean-history decision) exists to
 address — the leaked NTRIP password specifically needs rotation regardless
 of what the new system does.
 

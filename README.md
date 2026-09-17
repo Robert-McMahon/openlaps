@@ -9,11 +9,11 @@ channels; hardware targets define the vehicle computer and its device paths.
 
 Read the documentation site:
 
-- [Documentation home](docs/index.md)
-- [Getting started](docs/getting-started/index.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Deployment](docs/operations/index.md)
-- [Project status](docs/status.md)
+- [Documentation home](https://robert-mcmahon.github.io/openlaps/)
+- [Getting started](https://robert-mcmahon.github.io/openlaps/getting-started/)
+- [Architecture](https://robert-mcmahon.github.io/openlaps/ARCHITECTURE/)
+- [Deployment](https://robert-mcmahon.github.io/openlaps/operations/)
+- [Project status](https://robert-mcmahon.github.io/openlaps/status/)
 
 ## License
 

@@ -6,10 +6,10 @@ Accepted, 2026-07-26
 
 ## Context
 
-The current telemetry stack lives in a private repository (`/mnt/data/logger`)
+The current telemetry stack is a private, vehicle-specific implementation
 that is going to be replaced end-to-end by a generic, open-source platform
 (`openlaps`) in which any specific car is just a configuration profile.
-Two properties of the existing repo make simply continuing it in the open
+Two properties of the existing implementation make simply continuing it in the open
 unattractive:
 
 - **Secrets are hardcoded, and not only in the current tree.** NTRIP
@@ -35,8 +35,8 @@ into that stream in the first place.
 ## Decision
 
 Start a fresh public repository (`openlaps`) with clean history from an empty
-initial commit. The old repository stays private and unpublished; it is not
-scrubbed, rewritten, or merged in any form. It remains bootable as an
+initial commit. The legacy implementation is not scrubbed, rewritten, or
+merged in any form. It remains bootable as an
 operational rollback until the new stack has been validated on the car.
 
 Sequencing is **big-bang, not incremental**: build the complete new system
@@ -90,7 +90,7 @@ and ready as a rollback for the first on-track sessions on the new system.
 
 **Negative**
 
-- The old repository's secrets (NTRIP password, InfluxDB tokens, Grafana/
+- The legacy implementation's secrets (NTRIP password, InfluxDB tokens, Grafana/
   admin passwords) still exist in that history and still must be rotated —
   this decision does not substitute for that work, it only prevents the
   *new* repo from inheriting the problem.
@@ -105,7 +105,7 @@ and ready as a rollback for the first on-track sessions on the new system.
   a defect touching several components at once is more likely to surface
   late. Replay validation mitigates this for logic bugs but cannot exercise
   real RF link conditions.
-- Keeping the old repository bootable as a rollback is itself a small
+- Keeping the legacy implementation bootable as a rollback is itself a small
   ongoing maintenance burden for the duration of the transition.
 
 ## Amendment (2026-08-22)

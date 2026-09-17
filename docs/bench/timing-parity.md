@@ -149,8 +149,8 @@ Two changes to the replay tool were needed and are part of this work package:
 ### 4. The comparison
 
 `tools/compare_timing.py` reads `v_laps` and `v_samples_named` (channel
-`lap.event`) for the parity vehicle and diffs them against
-`/mnt/data/logger/exports/timing_validation_june2025.csv`.
+`lap.event`) for the parity vehicle and diffs them against the operator-provided
+`timing_validation_june2025.csv`.
 
 That export is the predecessor's **own** replay-versus-live validation of this
 event: `old_*` columns from the system that was running in the car, `new_*`
@@ -289,7 +289,8 @@ are the sort of thing that gets rediscovered:
 
 ### Second opinion: P3.8's import
 
-Re-derived from `lap.lp.gz` with `tools/import_legacy.py --dry-run`, and
+Re-derived from `lap.lp.gz` with `tools/import_legacy.py lap.lp.gz
+--vehicle example-club-racer --dry-run`, and
 identical to what P3.8 accepted:
 
 | | import (live system's own lap records) | openlaps parity replay |
@@ -362,11 +363,13 @@ is the same claim P4.4 will test properly.
 ## Reproducing
 
 ```bash
-uv run tools/extract_gps_trace.py --out /var/tmp/openlaps-bench/p4.6/june2025-gps.csv
+uv run tools/extract_gps_trace.py gps.lp.gz \
+  --out /var/tmp/openlaps-bench/p4.6/june2025-gps.csv
 ```
 
 ```bash
-uv run tools/compare_timing.py --vehicle example-club-racer-parity --json report.json
+uv run tools/compare_timing.py --vehicle example-club-racer-parity \
+  --validation timing_validation_june2025.csv --json report.json
 ```
 
 `compare_timing.py` exits 0 on a passing gate and 1 on a failing one, so it can

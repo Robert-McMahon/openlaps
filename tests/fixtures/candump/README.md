@@ -18,6 +18,5 @@ resulting `can.Message` iterable directly.
 `candump-sample.log` and `candump-keyon-sample.log` are windows of the same
 garage capture (`candump-2026-05-23_085133.log`, 154.9 s, kept off-repo on
 the vehicle SBC): the key-on file is its first 8,000 frames, the engine-start
-file is t+12 s → t+42 s. `candump-imu-sample.log` pre-dates openlaps and came
-from the predecessor logger's replay fixtures. They are checked in here so
-the tests are self-contained.
+file is t+12 s → t+42 s. `candump-imu-sample.log` pre-dates openlaps. They are
+checked in here so the tests are self-contained.

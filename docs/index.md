@@ -43,6 +43,7 @@ so a temporary link failure delays data instead of discarding it.
 | Install a vehicle | [Vehicle installation](operations/vehicle.md) |
 | Install the pit stack | [Pit installation](operations/pit.md) |
 | Configure a car | [Profiles and channel catalog](CATALOG.md) |
+| Configure lap, sector and pit lines | [Track setup](TRACK_SETUP.md) |
 | Check implementation maturity | [Project status](status.md) |
 | Diagnose a deployment | [Verify the stack](operations/verification.md) |
 

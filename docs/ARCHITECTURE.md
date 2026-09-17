@@ -251,7 +251,7 @@ catalog — a config push, not a code change.
 
 ## What replaced what
 
-The predecessor system (same author, private repo) accreted overlapping data
+The predecessor system accreted overlapping data
 paths. openlaps replaces them with explicit vehicle, transport, storage and
 derived-service boundaries:
 

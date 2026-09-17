@@ -140,6 +140,9 @@ apps:
     track: <string>              # track definition name, resolved under profiles/<profile>/tracks/
 ```
 
+See [Track setup](TRACK_SETUP.md) for preparing the KML timing lines and
+optional JSON metadata selected by `apps.lap_timing.track`.
+
 `rbe` governs what reaches the durable JetStream stream and Timescale. It
 does not affect the timing engine, which taps the sample stream **pre-RBE**
 so lap timing never sees decimated position data (see the vehicle agent
@@ -427,10 +430,9 @@ transports.
 it never referenced a bus or decoder, only canonical names. Every consumer
 downstream of the catalog mapper is equally unaffected.
 
-## Coverage: old `signals_config.yaml` -> canonical channels
+## Coverage: legacy `signals_config.yaml` -> canonical channels
 
-Every `include_signals` entry from the old repo's
-`config/signals_config.yaml`, expanded against the four DBCs
+Every `include_signals` entry from the legacy configuration, expanded against the four DBCs
 (`haltech-ecu.dbc`, `haltech-multiplexed.dbc`, `haltech-wideband.dbc`,
 `fdi-imu.dbc`) and mapped to its canonical channel(s) in
 `profiles/example-club-racer/catalog.yaml`. Wildcard entries (e.g.

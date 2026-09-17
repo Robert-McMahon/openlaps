@@ -10,9 +10,8 @@ redesigning the wire format?
 This is a static analysis, not a live model: it runs
 [`tools/size_batch.py`](https://github.com/Robert-McMahon/openlaps/blob/main/tools/size_batch.py) against a measured signal mix
 and reports the resulting bitrate, then checks that against the HaLow PHY
-rate table. It replaces the predecessor project's marimo notebook
-(`docs/mqtt_bandwidth.py` in the old repo) with real serialized protobuf
-messages instead of interactive what-if sliders — the openlaps wire format
+rate table. It replaces an earlier hand-calculated model with real serialized
+protobuf messages instead of interactive what-if sliders — the openlaps wire format
 (`ChannelRegistry` / `SampleBatch`, see [`WIRE_FORMAT.md`](WIRE_FORMAT.md)
 and [`proto/telemetry.proto`](https://github.com/Robert-McMahon/openlaps/blob/main/proto/telemetry.proto)) is simple and small
 enough that one worked example, re-run when the signal mix changes, is more

@@ -10,9 +10,8 @@ format + bindings, example profile) is complete and committed.
 - Repo: `/home/muggles/openlaps`. Specs are authoritative — read the ones
   named in your brief *before* coding: `docs/ARCHITECTURE.md`,
   `docs/AGENT_DESIGN.md`, `docs/WIRE_FORMAT.md`, `docs/CATALOG.md`.
-- The predecessor system (source material for ports) is at
-  `/mnt/data/logger` — read-only. Never copy credentials from it; never
-  reference its car/team specifics except via the example profile.
+- Never copy credentials or car/team-specific details into the repository;
+  represent vehicle-specific behaviour through the example profile.
 - Python 3.13, `uv`-managed. Style: PEP 8, type hints on public functions,
   Google-ish docstrings, `snake_case`. Run `uv run ruff check .`,
   `uv run ruff format`, and `uv run pytest -q` before finishing — all green.
@@ -113,11 +112,9 @@ accounting (feeds `sys.agent.rbe_suppressed`).
 (capture timestamps, queues are the caller's — the collector just calls an
 `emit(sample)` callback from its read loop).
 
-**Port from:** `/mnt/data/logger/src/telemetry-processor/signal_parser.py`
-(cantools-based multi-DBC decode — already handles several DBCs; adapt so
-each DBC keeps its device alias for `source_ref` formatting
-`bus:device.MESSAGE.SIGNAL`) and `can_reader.py` (socketCAN read loop
-shape). Old include/exclude filtering is NOT ported — the catalog decides
+Implement cantools-based multi-DBC decode, ensuring each DBC keeps its device
+alias for `source_ref` formatting (`bus:device.MESSAGE.SIGNAL`), plus a
+socketCAN read loop. Old include/exclude filtering is NOT ported — the catalog decides
 what's consumed; the collector decodes everything its DBCs know and emits
 it (unmapped refs are dropped cheaply by the mapper).
 
@@ -127,7 +124,7 @@ handles bus-off/interface-absent with retry-backoff (never crash the
 process); `cantools` + `python-can` deps.
 
 **Tests:** decode recorded frames from
-`/mnt/data/logger/tests/fixtures/candump/` replayed through the parser
+`tests/fixtures/candump/` replayed through the parser
 (no real bus needed — feed `can.Message` objects directly); source_ref
 formatting incl. two DBCs with a colliding message name under different
 device aliases; malformed/unknown-ID frames are counted and skipped.
@@ -138,11 +135,9 @@ Include one optional vcan integration test marked `skipif` no vcan.
 **Specs:** `docs/CATALOG.md` (serial source schema), `docs/AGENT_DESIGN.md`
 (startup config routine, RTCM write-back, device-absent behaviour).
 
-**Port from:** `/mnt/data/logger/src/telemetry-processor/gps_config.py`
-(UM980 command/config routine — port nearly verbatim, it's well-tested at
-the bench) and the NMEA/RMC parsing bits of `gps_processor.py` (parsing
-ONLY — the old class's NTRIP client, MQTT, and timing calls are explicitly
-NOT ported; see ADR 0006 and `docs/ARCHITECTURE.md`).
+Implement the bench-tested UM980 command/config routine and NMEA/RMC parsing.
+Only parsing belongs here — NTRIP, MQTT, and timing calls are explicitly out
+of scope; see ADR 0006 and `docs/ARCHITECTURE.md`.
 
 **Deliverables:** `src/collectors/serial/` — transport (pyserial read
 loop, reconnect-on-absent), `nmea.py` decoder (RMC → source refs
@@ -151,12 +146,10 @@ through), `um980.py` driver (applies rate/sentences on start per profile
 config; exposes a `write_rtcm(bytes)` method for the agent to wire to the
 `rtcm.<vehicle>` subject).
 
-**Tests:** feed recorded NMEA sentences (grab real RMC samples from the
-old repo's test fixtures / `tests/` — several GPS replay assets exist
-there) through the decoder; malformed sentence handling; um980 config
-routine against a scripted fake serial port (assert command sequence and
-failure-on-bad-ack behaviour, mirroring the old `gps_config.py` tests at
-`/mnt/data/logger/tests/`).
+**Tests:** feed recorded NMEA sentences from the checked-in fixtures through
+the decoder; malformed sentence handling; um980 config routine against a
+scripted fake serial port (assert command sequence and failure-on-bad-ack
+behaviour).
 
 ## P2.5 — Host metrics collector
 
@@ -172,14 +165,10 @@ sidecar (`docs/ARCHITECTURE.md` → What replaced what).
 
 ## P2.6 — Timing engine port (pure modules)
 
-**Port verbatim** (with their tests) from
-`/mnt/data/logger/src/telemetry-processor/`: `timing_core.py`,
-`distance_model.py`, `reference_lap.py` → `src/timing/`. Also port the
-track-definition loading out of `track_manager.py` into a pure
-`src/timing/tracks.py` (KML + JSON sidecar parsing only — no MQTT/session
-code; see the old repo's `docs/TRACK_SETUP.md` for the format). Old tests
-live in `/mnt/data/logger/tests/` (`test_timing_core.py` etc. — port all
-that apply, adapting imports only). The example profile's
+Implement `timing_core.py`, `distance_model.py`, and `reference_lap.py` in
+`src/timing/`, preserving their validated behaviour. Keep track-definition
+loading in a pure `src/timing/tracks.py` (KML + JSON sidecar parsing only —
+no MQTT/session code). The example profile's
 `profiles/example-club-racer/tracks/Wanneroo.*` files are the fixture.
 
 **Acceptance:** ported tests green unmodified in their assertions; no

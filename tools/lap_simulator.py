@@ -9,8 +9,7 @@ collector's NMEA decoder into the **real** `Pipeline`/`LapTimingApp`, so the
 real timing engine does the timing. Built so bench work does not need a car
 (`docs/plan/PHASE3.md` P3.7).
 
-Ported from `/mnt/data/logger/scripts/lap_simulator.py`: keeps the path and
-speed math -- the actual value -- and drops the MQTT publishing,
+The simulator keeps the validated path and speed math while avoiding MQTT,
 `TrackManager` and `SessionCache` coupling, none of which exist here.
 Simulated laps are stamped with a distinct `track_name` (default
 `<track>_sim`, mirroring the predecessor's convention) so they are

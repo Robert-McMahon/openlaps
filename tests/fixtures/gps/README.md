@@ -1,10 +1,8 @@
 # GPS trace replay fixture
 
 `wanneroo-trace.csv` is a ~110 s, ~20 Hz slice (2 200 fixes) of real
-on-track driving at Wanneroo Raceway, extracted from the predecessor
-logger's `gps.lp.gz` InfluxDB line-protocol dump
-(`/mnt/data/logger/backups/backup_migration_tmp/gps.lp.gz`, June 2025
-event). Speed in that dump is knots (`pyubx2`'s native RMC unit); this
+on-track driving at Wanneroo Raceway, extracted from a June 2025 InfluxDB
+line-protocol export. Speed in that export is knots (`pyubx2`'s native RMC unit); this
 fixture converts it to km/h so it can be dropped straight into an encoded
 `$GPRMC` sentence without a units surprise downstream.
 

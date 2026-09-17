@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract a `--gps-trace` CSV from the predecessor's InfluxDB `gps.lp` dump.
+"""Extract a `--gps-trace` CSV from an InfluxDB `gps.lp` export.
 
 `tools/replay.py --gps-trace` takes a ``t_s,lat,lon,speed_kmh,heading_deg``
 CSV and encodes each row to a synthetic RMC sentence through the real serial
@@ -24,7 +24,7 @@ km/h and converts back. `t_s` is seconds from the first whole fix -- the
 absolute instant that zero corresponds to is reported as `epoch_unix_s` and
 belongs in the run manifest, because nothing downstream can recover it.
 
-    uv run tools/extract_gps_trace.py --out /var/tmp/june2025-gps.csv
+    uv run tools/extract_gps_trace.py gps.lp.gz --out /var/tmp/june2025-gps.csv
 """
 
 from __future__ import annotations
@@ -41,7 +41,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from import_legacy import parse_line_protocol, parse_time_bound  # noqa: E402
 
-DEFAULT_INPUT = Path("/mnt/data/logger/backups/backup_migration_tmp/gps.lp.gz")
 FIELDS = ("lat", "lon", "speed", "heading")
 KNOTS_TO_KMH = 1.852
 
@@ -208,9 +207,7 @@ def write_trace(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "path", nargs="?", type=Path, default=DEFAULT_INPUT, help="gps line-protocol dump"
-    )
+    parser.add_argument("path", type=Path, help="gps line-protocol dump")
     parser.add_argument("--out", type=Path, required=True, help="destination CSV ('-' for stdout)")
     parser.add_argument("--since", type=parse_time_bound, help="inclusive ISO time or unix seconds")
     parser.add_argument("--until", type=parse_time_bound, help="inclusive ISO time or unix seconds")

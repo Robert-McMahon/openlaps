@@ -533,10 +533,9 @@ Assert an unknown `format_version` batch produces zero publishes and one log.
 `max_msgs_per_subject = 1`; session payload schema pinned by P3.0),
 `src/agent/session.py` (the consumer's guarantees), `docs/PIT_SCHEMA.md`.
 
-**Port from:** `/mnt/data/logger/src/session-control/session_state.py` —
-the pure session/driver-stint state machine. Port it nearly verbatim into
-`src/pit/session_control/state.py` (it is already pure, side-effect free and
-documented as such). Its `payload()` output *is* the pinned wire schema.
+Implement the pure session/driver-stint state machine in
+`src/pit/session_control/state.py`. Keep it side-effect free; its `payload()`
+output *is* the pinned wire schema.
 The HTTP service around it (`service.py`) is a shape reference only:
 **MQTT and the retained-message mechanism are not ported** — the equivalent
 is a JetStream publish to `cmd.<vehicle>.session` on a stream configured
@@ -934,9 +933,7 @@ something to drive it, and so bench work does not need a car.
   `--server`. Build it by promoting the machinery already proven in
   `tests/test_agent_e2e.py` rather than writing a parallel path — the value
   of this harness is that it is the same code the car runs.
-- `lap_simulator.py` — port from
-  `/mnt/data/logger/scripts/lap_simulator.py`. Keep the parts that are the
-  actual value: the closed-loop path through the track's timing-line
+- `lap_simulator.py` — build a closed-loop path through the track's timing-line
   midpoints, the curvature-derived speed profile with lateral-g and
   accel/brake limits, per-lap pace variation, and 20 Hz GPS with RTK noise.
   **Do not port** the MQTT publishing, `TrackManager`, or `SessionCache`
@@ -966,8 +963,8 @@ invalid laps. Assert simulated data carries the `_sim` track name.
 ADR 0001 (the June-2025 Wanneroo event is the validation corpus).
 No prior design documentation exists for this — it is greenfield.
 
-**Inputs** (read-only, `/mnt/data/logger/backups/backup_migration_tmp/`):
-InfluxDB line-protocol dumps — `can.lp.gz` (537 MB), `gps.lp.gz` (83 MB),
+**Inputs** (operator-provided, read-only): InfluxDB line-protocol dumps —
+`can.lp.gz` (537 MB), `gps.lp.gz` (83 MB),
 `lap.lp.gz` (177 KB), `system.lp.gz` (2.3 MB). Shapes observed:
 
 ```
@@ -1028,8 +1025,8 @@ channel resolution, and that re-running the import produces no duplicates.
 
 **Acceptance gate:** the June-2025 Wanneroo event imports and is queryable —
 `v_samples_named` returns GPS and CAN traces over the event window, and
-`v_laps` contains the event's laps. Cross-check the lap set against
-`/mnt/data/logger/exports/timing_validation_june2025.csv` (2,395 matched
+`v_laps` contains the event's laps. Cross-check the lap set against the operator-provided
+`timing_validation_june2025.csv` (2,395 matched
 crossings from the predecessor's own replay validation): same lap count,
 same lap numbers, lap times agreeing to the millisecond after ms→s
 conversion. Full-history import is supported but not a Phase 3 gate.
@@ -1046,10 +1043,8 @@ shape anticipated here was otherwise right, and is recorded below as
 written:
 
 - **Timing parity.** Replay the June-2025 event through the new stack and
-  compare against `exports/timing_validation_june2025.csv`. The predecessor
-  already did this exercise against its own engine
-  (`/mnt/data/logger/scripts/validate_timing_replay.py`), and P2.6 ported the
-  timing modules with their tests unmodified, so parity is expected —
+  compare against the operator-provided `timing_validation_june2025.csv`.
+  P2.6 preserved the timing modules' validated behaviour, so parity is expected —
   proving it end-to-end through collectors, wire format, transport and
   database is the actual test.
 - **Bandwidth, latency and dropout on the real radio.** `docs/LINK_BUDGET.md`

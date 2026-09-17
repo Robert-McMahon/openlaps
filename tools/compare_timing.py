@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Diff a parity replay's timing against the predecessor's validation export (P4.6).
+"""Diff a parity replay's timing against a legacy validation export (P4.6).
 
-`/mnt/data/logger/exports/timing_validation_june2025.csv` is the predecessor's
-*own* replay-versus-live validation of the June-2025 event: one row per line
+The input CSV is the legacy system's replay-versus-live validation of the
+June-2025 event: one row per line
 crossing, `old_*` columns from the system that was running in the car and
 `new_*` columns from its offline re-run. That export is the reference, and its
 `dt` column is the yardstick — it is what "no worse than the system it
@@ -24,7 +24,8 @@ from the data (modal pairwise difference, then a median within that mode), and
 the *residual* spread after removing it is a real result: it is the
 crossing-time agreement, and it is reported as such.
 
-    uv run tools/compare_timing.py --vehicle example-club-racer-parity
+    uv run tools/compare_timing.py --vehicle example-club-racer-parity \
+        --validation timing_validation_june2025.csv
 """
 
 from __future__ import annotations
@@ -42,7 +43,6 @@ import psycopg
 
 from pit.db.dsn import dsn_from_env
 
-DEFAULT_VALIDATION = Path("/mnt/data/logger/exports/timing_validation_june2025.csv")
 START_FINISH = "StartFinish"
 LINE_ORDER = (START_FINISH, "Sector1", "Sector2", "PitEntry", "PitExit")
 
@@ -583,9 +583,7 @@ def _fmt(stats: object) -> str:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--vehicle", required=True, help="vehicle id the parity run published as")
-    parser.add_argument(
-        "--validation", type=Path, default=DEFAULT_VALIDATION, help="validation CSV export"
-    )
+    parser.add_argument("--validation", type=Path, required=True, help="validation CSV export")
     parser.add_argument("--dsn", default=None, help="TimescaleDB DSN (default: from TIMESCALE_*)")
     parser.add_argument(
         "--tolerance",

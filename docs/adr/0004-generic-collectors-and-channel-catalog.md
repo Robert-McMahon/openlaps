@@ -6,8 +6,8 @@ Accepted, 2026-07-26
 
 ## Context
 
-The old repo's `gps_processor.py` is the concrete counter-example this
-decision is written against: a single 592-line class that mixes serial I/O,
+The legacy implementation's GPS processor is the concrete counter-example
+this decision is written against: a single 592-line class that mixes serial I/O,
 an NTRIP client, NMEA parsing, calls into the timing engine, and MQTT
 publishing. Adding a new GPS receiver, or moving GPS to a different
 transport entirely (for example, a GPS module that reports over CAN instead

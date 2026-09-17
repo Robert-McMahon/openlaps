@@ -4,8 +4,8 @@
 # this file cannot be shared between targets, and the README beside it for
 # what this board is wired to.
 #
-# Ported from the predecessor stack's config (logger repo,
-# config/go2rtc/go2rtc.yaml) with the stream renamed `linux_usbcam` -> `car`.
+# Adapted from the hardware's previously validated configuration, with the
+# stream renamed `linux_usbcam` -> `car`.
 # The pipelines themselves are unchanged: they were tuned on this hardware
 # and the bitrates are what docs/LINK_BUDGET.md §5 budgets against — ~800k
 # video + 64k audio sits inside the ~1.4 Mbit/s the link budget reserves for

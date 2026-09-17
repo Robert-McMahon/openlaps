@@ -216,8 +216,7 @@ channels:
   # sentence. The nmea decoder normalizes RMC's knots-on-the-wire speed-over-ground
   # to km/h so position.speed is directly comparable to car.vehicle_speed.
   # fix_quality carries RMC's posMode indicator (R=RTK fixed, F=RTK float,
-  # D=differential, A=autonomous/SPP, N=no fix) -- see docs/GPS_SETUP.md equivalent
-  # in the old repo for receiver-side detail.
+  # D=differential, A=autonomous/SPP, N=no fix).
   position.lat:  { from: "serial0:um980.RMC.lat", units: "deg" }
   position.lon:  { from: "serial0:um980.RMC.lon", units: "deg" }
   position.speed: { from: "serial0:um980.RMC.speed", units: "km/h" }

@@ -583,9 +583,8 @@ standing in a garage.
 
 ## P4.6 — Timing parity against the June-2025 event
 
-**Specs:** ADR 0001 (parity is half the cutover gate),
-`/mnt/data/logger/exports/timing_validation_june2025.csv` (the predecessor's
-own replay-validation export), `tools/replay.py` and
+**Specs:** ADR 0001 (parity is half the cutover gate), the operator-provided
+`timing_validation_june2025.csv`, `tools/replay.py` and
 `tests/fixtures/gps/README.md` (the `--gps-trace` path P3.7 built for
 exactly this), `docs/PIT_SCHEMA.md` (`v_laps`).
 
@@ -606,8 +605,8 @@ a broader claim.
 
 **Deliverables:**
 
-- Extract the full event's GPS trace at native rate from
-  `/mnt/data/logger/backups/backup_migration_tmp/gps.lp.gz` into the CSV
+- Extract the full event's GPS trace at native rate from the operator-provided
+  `gps.lp.gz` into the CSV
   shape `--gps-trace` already takes. `tools/import_legacy.py` has the
   line-protocol streaming reader; reuse it rather than writing a second
   parser.
@@ -820,8 +819,7 @@ written:
   eight-dashboard SQL rewrite (ADR 0003: "all existing Grafana dashboards
   (eight in the current system) must be rewritten against SQL; there is no
   automatic Flux-to-SQL translation"), plus the live gauge panels fed by
-  P3.3's MQTT bridge. The eight live at
-  `/mnt/data/logger/grafana/dashboards/`. `GRAFANA_*` is stubbed in
+  P3.3's MQTT bridge. `GRAFANA_*` is stubbed in
   `example.env` and no Grafana container exists yet — that was locked
   decision 3 of Phase 3 and it expires here.
 - **Cutover.** Per ADR 0001: big-bang, gated on P4.6's parity and P4.3–P4.5's

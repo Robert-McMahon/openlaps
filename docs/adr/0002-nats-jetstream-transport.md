@@ -15,8 +15,8 @@ did the pit miss while the link was down, and how do we get it there without
 duplicating what it already has" — with application-level reconciliation
 logic.
 
-The link-budget analysis in `docs/mqtt_bandwidth.py` (old repo) measured this
-concretely rather than estimating it:
+The legacy system's link-budget analysis measured this concretely rather than
+estimating it:
 
 - The default configuration offers roughly **850 MQTT messages/s**, which
   does not fit a 2 MHz MCS4 HaLow channel (3.90 Mbps PHY, ~1.95 Mbit/s

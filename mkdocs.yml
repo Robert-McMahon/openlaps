@@ -19,6 +19,7 @@ nav:
       - Vehicle agent: AGENT_DESIGN.md
   - Configuration:
       - Profiles and channel catalog: CATALOG.md
+      - Track timing lines: TRACK_SETUP.md
       - Watch monitors: WATCH.md
       - Hardware targets: hardware/index.md
   - Operations:

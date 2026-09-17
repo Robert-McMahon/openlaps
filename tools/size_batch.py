@@ -6,8 +6,8 @@ for a given batching tick length and prints on-wire size figures: samples/s,
 batches/s, mean batch bytes, bytes/s, kbit/s — with and without an
 approximation of NATS framing overhead.
 
-This replaces the hand-rolled protobuf byte-math in the old repo's
-`docs/mqtt_bandwidth.py` (section 7) with real serialized messages: instead
+This replaces the earlier hand-rolled protobuf byte-math with real serialized
+messages: instead
 of computing tag/varint lengths by hand, we build one SampleBatch per
 source-class per tick using the generated bindings and just measure
 `len(batch.SerializeToString())`.

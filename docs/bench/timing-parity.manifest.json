@@ -33,8 +33,8 @@
     "coord_resolution_m": 1.85e-06
   },
   "source_data": {
-    "gps_dump": "/mnt/data/logger/backups/backup_migration_tmp/gps.lp.gz",
-    "validation_export": "/mnt/data/logger/exports/timing_validation_june2025.csv",
+    "gps_dump": "operator-provided gps.lp.gz",
+    "validation_export": "operator-provided timing_validation_june2025.csv",
     "trace_epoch_unix_s": 1749784529.6016154,
     "trace_fixes": 1767617,
     "trace_duration_s": 88781.748280517,

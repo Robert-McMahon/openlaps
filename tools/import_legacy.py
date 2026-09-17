@@ -32,10 +32,6 @@ from pit.ingest_writer.store import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MAP = Path(__file__).with_name("legacy_channel_map.yaml")
-DEFAULT_INPUT_DIR = Path("/mnt/data/logger/backups/backup_migration_tmp")
-DEFAULT_INPUTS = tuple(
-    DEFAULT_INPUT_DIR / name for name in ("can.lp.gz", "gps.lp.gz", "lap.lp.gz", "system.lp.gz")
-)
 DEFAULT_BATCH_ROWS = 5_000
 CHECKPOINT_LINE_INTERVAL = 100_000
 
@@ -724,7 +720,7 @@ def parse_time_bound(value: str) -> int:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Import legacy telemetry into TimescaleDB")
-    parser.add_argument("paths", nargs="*", type=Path, help=".lp.gz dumps (defaults to June 2025)")
+    parser.add_argument("paths", nargs="+", type=Path, help="one or more .lp.gz dumps")
     parser.add_argument("--vehicle", required=True, help="vehicle id for imported rows")
     parser.add_argument("--map", type=Path, default=DEFAULT_MAP, help="legacy mapping YAML")
     parser.add_argument("--since", type=parse_time_bound, help="inclusive ISO time or unix seconds")
@@ -743,7 +739,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
-    paths = args.paths or list(DEFAULT_INPUTS)
+    paths = args.paths
     try:
         mapping = load_channel_map(args.map)
         dsn = None if args.dry_run else dsn_from_env()

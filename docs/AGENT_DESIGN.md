@@ -2,8 +2,8 @@
 
 The vehicle agent is one process that turns raw collector output into
 catalog-mapped, RBE-filtered, batched telemetry on the local JetStream — and
-hosts the on-vehicle timing engine. This document is the implementation spec
-for Phases 2–3; `ARCHITECTURE.md` has the system context, `WIRE_FORMAT.md`
+hosts the on-vehicle timing engine. This document describes the current
+implementation; `ARCHITECTURE.md` has the system context, `WIRE_FORMAT.md`
 the wire encoding, `CATALOG.md` the configuration schema.
 
 ## Process model

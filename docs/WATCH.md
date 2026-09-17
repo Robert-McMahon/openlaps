@@ -206,25 +206,9 @@ Stop/restart `watch` during the fault: the expected value and finding id must
 remain unchanged. If input goes missing, the score becomes NULL and the
 finding stays open until healthy evidence or a session change closes it.
 
-## Implementation verification
+## Validation status
 
-Validated from the isolated P7.5 branch based on `9324136`:
-
-- 16 watch tests pass, including the real NATS/Timescale/MQTT service test,
-  stored-file loading, restart persistence and Grafana view grants.
-- 37 alert-generator, alert-contract and catalog tests pass.
-- 20 bench-check tests pass with the unrelated live serial test deselected.
-  The mapped replay rate is now approximately 2067.7 CAN samples/s, reflecting
-  the five added load channels and three repaired current mappings.
-- The full regression run completed with 816 passed, 23 failed and 3 skipped.
-  Its two old eight-rule assumptions and three outdated rate assertions were
-  corrected and the affected tests rerun as above. Other failures concern
-  the existing serial collector's uninitialised `_raw_log_dir`/`_raw_writer`
-  and firewall tests that reject the existing video counter rules. Both
-  failure causes were reproduced from an untouched archive of `9324136`.
-- Formatting passes repository-wide. Lint passes for the changed files;
-  repository-wide lint still reports the existing unused imports/import order
-  in `src/collectors/serial/transport.py` and `tests/test_serial_collector.py`.
-
-These are automated replay/integration results, not an on-car false-positive
-measurement. The recorded on-track drill above remains an event prerequisite.
+Automated unit, replay and service tests cover monitor behaviour, persistence
+and database integration. On-car false-positive measurement remains an event
+prerequisite; see the current [project status](status.md) and the bench runbook
+rather than relying on historical branch test counts.

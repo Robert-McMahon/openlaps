@@ -41,6 +41,9 @@ dev = [
     "pre-commit>=4.0",
     "grpcio-tools>=1.66",
 ]
+docs = [
+    "mkdocs-material>=9.6,<10",
+]
 
 [build-system]
 requires = ["hatchling"]

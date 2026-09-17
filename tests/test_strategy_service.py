@@ -362,7 +362,7 @@ def test_entrypoint_compose_env_and_health_probe_wire_the_separate_service():
     pyproject = (REPO / "pyproject.toml").read_text(encoding="utf-8")
     compose = (REPO / "deploy" / "pit-compose.yaml").read_text(encoding="utf-8")
     env = (REPO / "example.env").read_text(encoding="utf-8")
-    readme = (REPO / "deploy" / "README.md").read_text(encoding="utf-8")
+    operations = (REPO / "docs" / "operations" / "verification.md").read_text(encoding="utf-8")
 
     assert 'openlaps-strategy = "pit.strategy.__main__:main"' in pyproject
     assert "\n  strategy:\n" in compose
@@ -370,4 +370,4 @@ def test_entrypoint_compose_env_and_health_probe_wire_the_separate_service():
     assert '"8088:8088"' in compose
     assert "OPENLAPS_STRATEGY_HEALTH_PORT=8088" in env
     assert "OPENLAPS_STRATEGY_BURN_WINDOW_LAPS" in env
-    assert "| strategy | 8088 |" in readme
+    assert "| 8088 | strategy |" in operations

@@ -1,41 +1,19 @@
 # openlaps
 
-A generic, open-source racing telemetry platform: multi-CAN + serial
-collectors feed a channel catalog that assigns domain meaning to raw
-signals, ship it over NATS JetStream from vehicle to pit, and land it in
-TimescaleDB for dashboards and lap analysis. Any specific car — its buses,
-DBCs, sensors, and track — is just a configuration profile on top of a
-generic core; `profiles/example-club-racer/` is a real one, checked in as
-documentation. The SBC that profile runs on is configuration too, and a
-separate one: `deploy/targets/` describes each supported board — its CAN
-interface, its GNSS tty, the encoder its silicon actually has — so moving a
-car to different hardware edits no DBC and no channel.
+Open-source racing telemetry from vehicle to pit: multi-CAN and serial
+collection, vehicle-side lap timing, loss-tolerant NATS JetStream transport,
+TimescaleDB storage, Grafana dashboards, strategy and alerts.
 
-The vehicle side is built — collectors, channel catalog, timing engine and
-the JetStream publisher all run — and the pit side is in progress: the
-TimescaleDB schema and the ingest-writer have landed, the remaining pit
-services and the deploy stacks have not. Start with
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), then:
+The car is configuration. Profiles define buses, DBCs, sensors and canonical
+channels; hardware targets define the vehicle computer and its device paths.
 
-- [`docs/WIRE_FORMAT.md`](docs/WIRE_FORMAT.md) — subjects, streams, protobuf schema
-- [`docs/AGENT_DESIGN.md`](docs/AGENT_DESIGN.md) — vehicle agent internals
-- [`docs/CATALOG.md`](docs/CATALOG.md) — configuration profiles and channel naming
-- [`deploy/targets/`](deploy/targets/README.md) — the supported vehicle SBCs, and how to add one
-- [`docs/PIT_SCHEMA.md`](docs/PIT_SCHEMA.md) — the pit database and its stable read surface
-- [`docs/LINK_BUDGET.md`](docs/LINK_BUDGET.md) — measured bandwidth vs. radio capacity
-- [`docs/adr/`](docs/adr/) — decision records
+Read the documentation site:
 
-Entry points, all configured from the environment
-([`example.env`](example.env)):
-
-| Command | Runs |
-| --- | --- |
-| `openlaps-agent` | The vehicle agent (collectors → catalog → timing → JetStream) |
-| `openlaps-migrate` | Applies the pit database schema; a bring-up step, not a service |
-| `openlaps-ingest-writer` | The pit's durable consumer: JetStream → TimescaleDB |
-| `openlaps-notifier` | Grafana's alert contact point: ledger, annunciator, acknowledgements, phone fan-out |
-| `openlaps-strategy` | The state of the race for this car: fuel, stops, driver time and the target lap, per lap |
-| `openlaps-timing-feed` | The other cars: standings, laps, passings and the flag state from a timing provider, into `field_*` |
+- [Documentation home](docs/index.md)
+- [Getting started](docs/getting-started/index.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Deployment](docs/operations/index.md)
+- [Project status](docs/status.md)
 
 ## License
 
@@ -44,8 +22,9 @@ Apache-2.0 — see [LICENSE](LICENSE).
 ## Development
 
 ```bash
-uv sync --all-extras
+uv sync --all-extras --extra docs
 uv run pytest
 uv run ruff check .
+uv run mkdocs build --strict
 pre-commit install
 ```

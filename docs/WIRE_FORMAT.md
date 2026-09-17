@@ -2,7 +2,8 @@
 
 The wire format is how the vehicle agent gets samples off the car and onto
 the pit's TimescaleDB and live dashboards: NATS JetStream subjects carrying
-protobuf messages defined in [`proto/telemetry.proto`](../proto/telemetry.proto).
+protobuf messages defined in
+[`proto/telemetry.proto`](https://github.com/Robert-McMahon/openlaps/blob/main/proto/telemetry.proto).
 This document is the prose companion to that schema — read them together.
 
 ## Subject hierarchy
@@ -13,7 +14,8 @@ the same string as `ChannelRegistry.vehicle_id`.
 
 | Subject pattern | Direction | Transport | Purpose |
 | --- | --- | --- | --- |
-| `tele.<vehicle>.<source-class>` | vehicle → pit | JetStream (`TELE`) | Telemetry data: `ChannelRegistry` and `SampleBatch` messages |
+| `tele.<vehicle>.catalog` | vehicle → pit | JetStream (`TELE`) | Full `ChannelRegistry` snapshots |
+| `tele.<vehicle>.<source-class>` | vehicle → pit | JetStream (`TELE`) | `SampleBatch` telemetry from one source class |
 | `cmd.<vehicle>.session` | pit → vehicle | JetStream (`CMD`) | Session/driver state, track selection |
 | `rtcm.<vehicle>` | pit → vehicle | core NATS (no stream) | RTK correction bytes for the GPS receiver |
 
@@ -22,18 +24,14 @@ example `can0`, `can1`, `serial0`, `host`, or `derived` for channels
 synthesised by an in-agent app such as the timing engine (`lap.*`,
 `timing.*`). Source-class is a routing concern only: it says which collector
 published a batch, not which canonical channels are inside it — a single
-`can0` batch can carry samples for `engine.*`, `pd16.*` and `chassis.*`
+`can0` batch can carry samples for `car.rpm`, `car.oil_pressure` and other `car.*`
 channels side by side, because the channel catalog assigns domain meaning
 independently of the source.
 
-Both `ChannelRegistry` and `SampleBatch` messages are published on the same
-`tele.<vehicle>.<source-class>` subject for that source-class — there is no
-separate registry subject. A JetStream consumer distinguishes the two by
-message shape (a registry has no `samples` field; a batch always does) or,
-more robustly, by trying to parse as `SampleBatch` first and falling back to
-`ChannelRegistry` if that fails, since both are valid protobuf on the wire.
-Implementations should tag published messages with a NATS header
-(`Openlaps-Msg-Type: registry` / `batch`) so consumers never need to guess.
+Registries are published only on `tele.<vehicle>.catalog` with
+`Openlaps-Msg-Type: registry`. Batches use their source-class subject with
+`Openlaps-Msg-Type: batch`. Consumers use the header and never guess from a
+protobuf payload that may parse under more than one message type.
 
 ### `rtcm.<vehicle>` — core NATS only, by design
 
@@ -162,11 +160,10 @@ integer instead of a repeated string) and gives the catalog a single,
 auditable place to change.
 
 1. **Publish triggers.** The vehicle agent publishes a `ChannelRegistry` to
-   `tele.<vehicle>.<source-class>` (using the source-class the registry's
-   channels mostly belong to, or a dedicated `catalog` source-class if a
-   registry spans classes) in two situations: on agent startup, and whenever
-   the channel catalog changes (a config reload, a new device coming
-   online). Each publish carries a `registry_seq` one higher than the last.
+   `tele.<vehicle>.catalog` on startup and periodically after that. The
+   catalog is loaded at startup; runtime catalog reload is not implemented.
+   Periodic republication keeps the same `registry_seq`. A changed catalog on
+   a later startup receives a new generation.
 2. **Batches carry the seq they were built against.** Every `SampleBatch`
    has a `registry_seq` field. A consumer decoding a batch must already hold
    (or be able to fetch) the `ChannelRegistry` with that exact seq — decoding

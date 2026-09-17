@@ -21,10 +21,9 @@ def test_pit_chrony_uses_the_vehicle_sbc():
 
 def test_pit_install_docs_install_and_restart_chrony():
     install_command = "sudo install -m 0644 deploy/chrony/pit.conf /etc/chrony/chrony.conf"
-    for path in (ROOT / "deploy" / "README.md", ROOT / "docs" / "BENCH_RUNBOOK.md"):
-        instructions = path.read_text(encoding="utf-8")
-        assert install_command in instructions
-        assert "sudo systemctl restart chrony" in instructions
+    instructions = (ROOT / "docs" / "operations" / "pit.md").read_text(encoding="utf-8")
+    assert install_command in instructions
+    assert "sudo systemctl restart chrony" in instructions
 
 
 def test_timing_head_service_waits_for_chrony_and_restarts():
@@ -47,7 +46,7 @@ def test_timing_head_service_waits_for_chrony_and_restarts():
 
 def test_uart_build_uses_the_x4_internal_uart_and_leaves_uart1_for_the_um980():
     source = (ROOT / "firmware" / "timing-head" / "main.c").read_text(encoding="utf-8")
-    readme = (ROOT / "firmware" / "timing-head" / "README.md").read_text(encoding="utf-8")
+    readme = (ROOT / "docs" / "hardware" / "timing-head.md").read_text(encoding="utf-8")
 
     assert "#define TIMING_HOST_UART uart0" in source
     assert "#define TIMING_HOST_TX_GPIO 0" in source
@@ -65,10 +64,10 @@ def test_the_timing_shim_install_carries_the_module_it_imports():
     the offset's sign, not two. Python finds it because both land in the same
     directory, which only happens if the runbook says to put them there.
     """
-    for doc in (ROOT / "deploy" / "README.md", ROOT / "docs" / "BENCH_RUNBOOK.md"):
-        text = doc.read_text()
-        assert "/usr/local/libexec/openlaps/timing_head_shim.py" in text
-        assert "/usr/local/libexec/openlaps/chrony_sock.py" in text, f"{doc.name}"
+    doc = ROOT / "docs" / "hardware" / "timing-head.md"
+    text = doc.read_text()
+    assert "/usr/local/libexec/openlaps/timing_head_shim.py" in text
+    assert "/usr/local/libexec/openlaps/chrony_sock.py" in text
 
 
 def test_the_two_time_sources_refuse_to_run_together():

@@ -54,7 +54,10 @@ MIGRATION = REPO / "src" / "pit" / "db" / "migrations" / "001_init.sql"
 _COUNTER = re.compile(r"^counter\s+(\S+)\s*\{")
 _CHAIN = re.compile(r"^chain\s+(\S+)\s*\{")
 _TYPE = re.compile(r"^type\s+filter\s+hook\s+(\w+)\s+priority\s+\w+;\s*policy\s+(\w+);$")
-_RULE = re.compile(r'^tcp\s+(dport|sport)\s+(\d+)\s+counter\s+name\s+"(\w+)"$')
+_RULE = re.compile(
+    r"^(tcp|udp)\s+(dport|sport)\s+(\d+|\{\s*\d+(?:\s*,\s*\d+)*\s*\})"
+    r'\s+counter\s+name\s+"(\w+)"$'
+)
 
 
 def parse_nft(path: Path) -> dict:
@@ -99,7 +102,10 @@ def parse_nft(path: Path) -> dict:
             f"{path.name}: {line!r} in chain {current} is not a counter rule. "
             "These rulesets count and do nothing else."
         )
-        chains[current]["rules"].append((match.group(1), int(match.group(2)), match.group(3)))
+        ports = [int(port) for port in re.findall(r"\d+", match.group(3))]
+        chains[current]["rules"].extend(
+            (match.group(1), match.group(2), port, match.group(4)) for port in ports
+        )
     return {"table": table, "counters": counters, "chains": chains}
 
 
@@ -117,7 +123,7 @@ def leafnode_listen_port() -> int:
 
 
 @pytest.mark.parametrize("role", sorted(NFT))
-def test_ruleset_defines_exactly_the_counters_link_probe_reads(role: str):
+def test_ruleset_defines_the_leaf_and_video_counters(role: str):
     """A renamed counter does not fail; it silently coarsens every run.
 
     `link_probe` falls back to `/proc/net/dev` when it finds neither name,
@@ -128,6 +134,8 @@ def test_ruleset_defines_exactly_the_counters_link_probe_reads(role: str):
     assert parse_nft(NFT[role])["counters"] == {
         link_probe.DEFAULT_NFT_COUNTER_OUT,
         link_probe.DEFAULT_NFT_COUNTER_IN,
+        "openlaps_video_out",
+        "openlaps_video_in",
     }
 
 
@@ -156,14 +164,25 @@ def test_ruleset_covers_every_path_a_leafnode_packet_can_take(role: str):
 def test_ruleset_counts_only_the_leafnode_port(role: str):
     port = leafnode_listen_port()
     for chain in parse_nft(NFT[role])["chains"].values():
-        assert {rule[1] for rule in chain["rules"]} == {port}
+        leaf_rules = [rule for rule in chain["rules"] if rule[3].startswith("openlaps_leaf_")]
+        assert {rule[2] for rule in leaf_rules} == {port}
+
+
+@pytest.mark.parametrize("role", sorted(NFT))
+def test_ruleset_counts_all_go2rtc_ports(role: str):
+    expected = {("tcp", 1984), ("tcp", 8554), ("tcp", 8555), ("udp", 8555)}
+    for chain in parse_nft(NFT[role])["chains"].values():
+        for counter in ("openlaps_video_out", "openlaps_video_in"):
+            assert {(rule[0], rule[2]) for rule in chain["rules"] if rule[3] == counter} == expected
 
 
 def _port_to_counter(role: str) -> dict[str, str]:
     """The `dport`/`sport` -> counter mapping, asserted consistent across hooks."""
     mapping: dict[str, str] = {}
     for chain in parse_nft(NFT[role])["chains"].values():
-        for keyword, _, counter in chain["rules"]:
+        for _, keyword, _, counter in chain["rules"]:
+            if not counter.startswith("openlaps_leaf_"):
+                continue
             assert mapping.setdefault(keyword, counter) == counter, (
                 f"{role}: {keyword} maps to two different counters"
             )

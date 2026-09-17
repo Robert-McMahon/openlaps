@@ -8,14 +8,13 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 import serial
 
 from collectors.clock import Emit, MonotonicWallClock, WallClock
+from collectors.rawlog import RawLogWriter
 from collectors.serial.driver import DriverConfigurationError, SerialDriver, SerialPort
 from collectors.serial.drivers import build_driver, is_supported
-from collectors.rawlog import RawLogWriter
 from collectors.serial.nmea import NmeaDecoder
 from core.config import SerialConfig
 from core.samples import Sample
@@ -76,6 +75,9 @@ class SerialCollector:
         self._backoff_max_s = backoff_max_s
         self._active_lock = threading.Lock()
         self._active_driver: SerialDriver | None = None
+        self._raw_log_dir = raw_log_dir
+        self._raw_writer: RawLogWriter | None = None
+        self._raw_retry_mono = 0.0
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 

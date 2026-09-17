@@ -75,7 +75,10 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation_and_fix_quality() 
     topics = _all_topics(dashboard)
 
     assert dashboard["refresh"] == "1s"
-    assert len([panel for panel in panels if panel["type"] != "row"]) <= 12
+    non_row_panels = [panel for panel in panels if panel["type"] != "row"]
+    alert_strips = [panel for panel in non_row_panels if panel["type"] == "alertlist"]
+    assert len(alert_strips) == 1
+    assert len(non_row_panels) - len(alert_strips) <= 12
     assert {
         "openlaps/$vehicle/lap.number",
         "openlaps/$vehicle/timing.lap_elapsed_pit",

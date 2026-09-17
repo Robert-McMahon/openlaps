@@ -372,7 +372,11 @@ for the `strategy.*` monitors and by the watch service for the rest (P7.5);
 the table is created with `IF NOT EXISTS` by whichever migration lands
 first, in the shape declared below for both. `v_watch_findings` is the read
 surface, and the generated alert rules count its open rows by severity and
-monitor prefix.
+monitor prefix. `summary` always carries `expected`, `observed` and
+`baseline`, whichever kind of monitor wrote it (`docs/WATCH.md`), plus
+`kind` and a `message`; the watch service's `watch_baselines` checkpoints
+carry `stint_number` 0 for a session-wide baseline and the stint number
+for a `stint_start` one (P7.6).
 
 ### Field timing
 

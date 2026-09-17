@@ -35,7 +35,13 @@ def fit(samples, engine):
     if not all(m.frozen for m in engine.monitors.values()):
         raise ValueError("session lacks enough clean on-track time for every monitor")
     for name, monitor in engine.monitors.items():
-        if not any(b["count"] >= monitor.config.min_bin_samples for b in monitor.table.values()):
+        # Envelope and ratio baselines are tables of bins or groups; a table
+        # with no usable entry is a baseline that will never have an opinion.
+        table = getattr(monitor, "table", None)
+        minimum = getattr(monitor.config, "min_bin_samples", None) or getattr(
+            monitor.config, "min_group_samples", 0
+        )
+        if table is not None and not any(b["count"] >= minimum for b in table.values()):
             raise ValueError(
                 f"{name}: no bin has enough samples; extend the baseline or widen bins"
             )

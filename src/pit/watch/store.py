@@ -35,19 +35,46 @@ class WatchStore(PitMetricStore):
         )
         return row[0] if row else None
 
-    def load(self, vehicle: str, session: str) -> dict:
+    def stint(self, session: str, at: float) -> int:
+        """The open stint's number at ``at``; 0 when the session has none yet."""
+        row = (
+            self._connection()
+            .execute(
+                "SELECT stint_number FROM stints WHERE session_id=%s AND started <= %s "
+                "ORDER BY started DESC LIMIT 1",
+                (session, stamp(at)),
+            )
+            .fetchone()
+        )
+        return int(row[0]) if row else 0
+
+    def load(self, vehicle: str, session: str, stint: int = 0) -> dict:
+        """Checkpoints keyed by stint: 0 is session-wide, positive is per stint (P7.6)."""
         rows = (
             self._connection()
             .execute(
                 "SELECT monitor, model FROM watch_baselines "
-                "WHERE vehicle_id=%s AND session_id=%s AND stint_number=0",
-                (vehicle, session),
+                "WHERE vehicle_id=%s AND session_id=%s AND stint_number=%s",
+                (vehicle, session, stint),
             )
             .fetchall()
         )
         return dict(rows)
 
-    def write_tick(self, vehicle: str, session: str | None, rows: dict, models: dict) -> None:
+    def write_tick(
+        self,
+        vehicle: str,
+        session: str | None,
+        rows: dict,
+        models: dict,
+        stints: dict[str, int] | None = None,
+    ) -> None:
+        """One transaction: the scores, the finding transitions, the checkpoints.
+
+        ``stints`` names the checkpoint slot per monitor: 0 for a session-wide
+        baseline, the stint number for a ``stint_start`` one.
+        """
+        stints = stints or {}
         try:
             with self._connection().transaction():
                 for name, row in rows.items():
@@ -85,22 +112,36 @@ class WatchStore(PitMetricStore):
                         )
                     if session:
                         self._connection().execute(
-                            "INSERT INTO watch_baselines VALUES (%s,%s,%s,0,%s,%s) "
+                            "INSERT INTO watch_baselines VALUES (%s,%s,%s,%s,%s,%s) "
                             "ON CONFLICT (vehicle_id,monitor,session_id,stint_number) "
                             "DO UPDATE SET model=EXCLUDED.model",
-                            (vehicle, name, session, stamp(row["time"]), Jsonb(models[name])),
+                            (
+                                vehicle,
+                                name,
+                                session,
+                                stints.get(name, 0),
+                                stamp(row["time"]),
+                                Jsonb(models[name]),
+                            ),
                         )
         except Exception:
             self.close()
             raise
 
-    def close_previous(self, vehicle: str, monitors: list[str], at: float, keep: list[str]) -> None:
-        """End only this service's findings when the active session changes."""
+    def close_previous(
+        self,
+        vehicle: str,
+        monitors: list[str],
+        at: float,
+        keep: list[str],
+        reason: str = "session_changed",
+    ) -> None:
+        """End only this service's findings when the session or a stint changes."""
         with self._connection().transaction():
             self._connection().execute(
                 "UPDATE watch_findings SET closed_at=%s, "
-                'summary=summary || \'{"closed_reason":"session_changed"}\'::jsonb '
+                "summary=summary || jsonb_build_object('closed_reason', %s::text) "
                 "WHERE vehicle_id=%s AND monitor=ANY(%s) AND closed_at IS NULL "
                 "AND NOT (finding_id::text=ANY(%s))",
-                (stamp(at), vehicle, monitors, keep),
+                (stamp(at), reason, vehicle, monitors, keep),
             )

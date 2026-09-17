@@ -12,7 +12,15 @@ from dataclasses import dataclass
 from statistics import median
 from uuid import uuid4
 
-from pit.watch.config import EnvelopeConfig, WatchConfig
+from pit.watch.config import (
+    CounterConfig,
+    DriftConfig,
+    EnvelopeConfig,
+    RatioConfig,
+    WatchConfig,
+    WholeCarConfig,
+    channels_of,
+)
 
 
 @dataclass
@@ -33,6 +41,10 @@ class Envelope:
         self.score = 0.0
         self.finding: dict | None = None
         self.source_session: str | None = None
+
+    @property
+    def channels(self) -> list[str]:
+        return self.config.channels
 
     def snapshot(self) -> dict:
         return {
@@ -157,10 +169,27 @@ class Envelope:
         return result
 
 
+def build_monitor(config):
+    """The monitor class for a configuration, by its ``kind``."""
+    from pit.watch.monitors import Counter, Drift, Ratio, WholeCar
+
+    if isinstance(config, EnvelopeConfig):
+        return Envelope(config)
+    if isinstance(config, DriftConfig):
+        return Drift(config)
+    if isinstance(config, RatioConfig):
+        return Ratio(config)
+    if isinstance(config, CounterConfig):
+        return Counter(config)
+    if isinstance(config, WholeCarConfig):
+        return WholeCar(config)
+    raise TypeError(f"no monitor for {type(config).__name__}")
+
+
 class WatchEngine:
     def __init__(self, config: WatchConfig) -> None:
         self.config = config
-        self.monitors = {name: Envelope(cfg) for name, cfg in config.monitors.items()}
+        self.monitors = {name: build_monitor(cfg) for name, cfg in config.monitors.items()}
         self.readings: dict[str, Reading] = {}
         self.pit_status: str | None = None
         self.pit_time = float("-inf")
@@ -169,9 +198,7 @@ class WatchEngine:
     @property
     def input_channels(self) -> set[str]:
         return {"car.rpm", "lap.event"} | {
-            channel
-            for cfg in self.config.monitors.values()
-            for channel in [cfg.target, *(c.channel for c in cfg.conditioned_on)]
+            channel for cfg in self.config.monitors.values() for channel in channels_of(cfg)
         }
 
     def observe(self, channel: str, value: object, at: float, unit: str = "") -> None:
@@ -187,6 +214,7 @@ class WatchEngine:
             if isinstance(event, dict) and at >= self.pit_time:
                 self.pit_status = event.get("pit_status")
                 self.pit_time = at
+                self._lap_event(event, at)
             return
         previous = self.readings.get(channel)
         if (
@@ -196,6 +224,18 @@ class WatchEngine:
         ):
             self.readings[channel] = Reading(float(value), at, unit)
 
+    def _lap_event(self, event: dict, at: float) -> None:
+        """Tell the per-lap kinds about lap boundaries and pit visits."""
+        kind = event.get("type")
+        if kind == "lap_completed":
+            for monitor in self.monitors.values():
+                if hasattr(monitor, "on_lap"):
+                    monitor.on_lap(event, at)
+        elif kind in ("pit_entry", "pit_exit") or event.get("pit_status") == "pit":
+            for monitor in self.monitors.values():
+                if hasattr(monitor, "on_pit"):
+                    monitor.on_pit()
+
     def tick(self, at: int, active: bool = True) -> dict[str, dict]:
         if self.last_tick is not None and at <= self.last_tick:
             return {}
@@ -203,11 +243,7 @@ class WatchEngine:
         self.last_tick = at
         rows = {}
         for name, monitor in self.monitors.items():
-            needed = [
-                "car.rpm",
-                monitor.config.target,
-                *(c.channel for c in monitor.config.conditioned_on),
-            ]
+            needed = ["car.rpm", *monitor.channels]
             fresh = all(
                 c in self.readings
                 and 0 <= at - self.readings[c].time <= self.config.max_age_seconds

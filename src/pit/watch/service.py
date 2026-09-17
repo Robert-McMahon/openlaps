@@ -21,7 +21,7 @@ from nats.js import api
 from pit.db.dsn import dsn_from_env
 from pit.registry_cache import MSG_TYPE_HEADER, MSG_TYPE_REGISTRY, RegistryCache
 from pit.watch.config import load_config
-from pit.watch.engine import WatchEngine
+from pit.watch.engine import WatchEngine, build_monitor
 from pit.watch.health import Health, serve_health
 from pit.watch.store import WatchStore
 
@@ -72,6 +72,7 @@ class WatchService:
         self.cache = RegistryCache()
         self.health = Health()
         self.session: str | None = None
+        self.stint = 0
         self.initialized = False
         self.pending: list[tuple] = []
         self.sequence = 0
@@ -104,29 +105,69 @@ class WatchService:
         except (DecodeError, ValueError, TypeError):
             self.health.malformed += 1
 
+    def _stints(self) -> dict[str, int]:
+        """The checkpoint slot per monitor: the stint for stint_start baselines, else 0."""
+        return {
+            name: (self.stint if monitor.config.baseline == "stint_start" else 0)
+            for name, monitor in self.engine.monitors.items()
+        }
+
+    def _fresh_monitor(self, name: str, engine: WatchEngine, session: str | None, stint: int):
+        """Restore ``name`` from its checkpoint or stored file into ``engine``."""
+        monitor = engine.monitors[name]
+        slot = stint if monitor.config.baseline == "stint_start" else 0
+        models = self.store.load(self.settings.vehicle, session, slot) if session else {}
+        if name in models:
+            monitor.restore(models[name])
+            return models[name]
+        if monitor.config.baseline == "stored":
+            path = self.settings.config.parent / monitor.config.stored_file
+            model = json.loads(path.read_text())
+            monitor.restore(model)
+            if not monitor.frozen:
+                raise ValueError(f"{path}: stored baseline is not frozen")
+            monitor.score, monitor.finding = 0.0, None
+        if monitor.config.baseline in ("session_start", "stint_start") and session:
+            monitor.source_session = session
+        if monitor.config.baseline == "stint_start":
+            monitor.source_stint = stint
+        return None
+
     def _context(self, at: int) -> None:
         session = self.store.session(self.settings.vehicle, at)
+        stint = self.store.stint(session, at) if session else 0
         if self.initialized and session == self.session:
+            if stint == self.stint:
+                return
+            # A driver change: the stint_start monitors start again from a
+            # clean window with the new driver; everything else carries on.
+            engine = self.engine
+            changed = [
+                name
+                for name, monitor in engine.monitors.items()
+                if monitor.config.baseline == "stint_start"
+            ]
+            for name in changed:
+                engine.monitors[name] = build_monitor(engine.config.monitors[name])
+                self._fresh_monitor(name, engine, session, stint)
+            keep = [m.finding["finding_id"] for m in engine.monitors.values() if m.finding]
+            if changed:
+                self.store.close_previous(
+                    self.settings.vehicle, changed, at, keep, reason="stint_changed"
+                )
+            self.stint = stint
             return
         engine = WatchEngine(self.config)
-        models = self.store.load(self.settings.vehicle, session) if session else {}
-        for name, monitor in engine.monitors.items():
-            if name in models:
-                monitor.restore(models[name])
-            elif monitor.config.baseline == "stored":
-                path = self.settings.config.parent / monitor.config.stored_file
-                model = json.loads(path.read_text())
-                monitor.restore(model)
-                if not monitor.frozen:
-                    raise ValueError(f"{path}: stored baseline is not frozen")
-                monitor.score, monitor.finding = 0.0, None
-            if monitor.config.baseline == "session_start" and session:
-                monitor.source_session = session
+        models = {}
+        for name in engine.monitors:
+            model = self._fresh_monitor(name, engine, session, stint)
+            if model is not None:
+                models[name] = model
         keep = [m.finding["finding_id"] for m in engine.monitors.values() if m.finding]
         self.store.close_previous(self.settings.vehicle, list(engine.monitors), at, keep)
         ticks = [m["last_tick"] for m in models.values() if m.get("last_tick") is not None]
         engine.last_tick = max(ticks) if ticks else None
-        self.engine, self.session, self.initialized = engine, session, True
+        self.engine, self.session, self.stint, self.initialized = engine, session, stint, True
 
     async def tick(self, at: int) -> None:
         await asyncio.to_thread(self._context, at)
@@ -150,7 +191,12 @@ class WatchService:
         }
         try:
             await asyncio.to_thread(
-                self.store.write_tick, self.settings.vehicle, self.session, rows, models
+                self.store.write_tick,
+                self.settings.vehicle,
+                self.session,
+                rows,
+                models,
+                self._stints(),
             )
         except Exception:
             self.engine = previous

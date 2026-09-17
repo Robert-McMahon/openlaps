@@ -164,14 +164,21 @@ def replay_all(fault=None):
     return e, rows, findings
 
 
-def test_all_nine_profile_monitors_learn_clean_and_only_oil_fault_fires():
+def test_all_nine_profile_envelopes_learn_clean_and_only_oil_fault_fires():
     e, rows, findings = replay_all()
-    assert len(e.monitors) == 9
-    assert all(m.frozen for m in e.monitors.values())
-    assert all(r["baseline_status"] == "ready" for r in rows.values())
+    envelopes = {n for n, m in e.monitors.items() if m.config.kind == "envelope"}
+    assert len(envelopes) == 9
+    assert all(e.monitors[n].frozen for n in envelopes)
+    assert all(rows[n]["baseline_status"] == "ready" for n in envelopes)
     assert not findings
     e, rows, findings = replay_all(ScaleFault())
+    # Only the envelope configured for it fires. The P7.6 kinds have no
+    # opinion in this replay: no laps for the drift kinds, constant speeds
+    # and gear gating the ratios, and a whole-car baseline of fifteen
+    # minutes still learning at 300 s (tests/test_watch_monitors.py drives
+    # them properly).
     assert findings == {"oil_pressure_envelope"}
+    assert rows["whole_car"]["baseline_status"] == "learning"
 
 
 def test_registry_decode_and_out_of_order_samples(tmp_path, monkeypatch):
@@ -393,7 +400,7 @@ def test_profile_conditions_and_current_sources_exist_in_dbc():
     dbc = cantools.database.load_file(PROFILE / "dbcs/haltech-multiplexed.dbc", strict=False)
     names = {s.name for s in dbc.get_message_by_name("PD16A_OUTPUT_STATUS").signals}
     for monitor in load_config(PROFILE / "watch.yaml").monitors.values():
-        for c in [monitor.target, *(c.channel for c in monitor.conditioned_on)]:
+        for c in monitor.channels:
             source = catalog[c]["from"]
             if "PD16A_OUTPUT_STATUS." in source:
                 assert source.rsplit(".", 1)[1] in names
@@ -477,8 +484,9 @@ def test_stored_file_loads_without_relearning(tmp_path, monkeypatch):
     (tmp_path / "catalog.yaml").write_text((PROFILE / "catalog.yaml").read_text())
     service = WatchService(Settings(tmp_path / "watch.yaml", "v", "unused"))
     monkeypatch.setattr(service.store, "session", lambda *args: "current")
+    monkeypatch.setattr(service.store, "stint", lambda *args: 0)
     monkeypatch.setattr(service.store, "load", lambda *args: {})
-    monkeypatch.setattr(service.store, "close_previous", lambda *args: None)
+    monkeypatch.setattr(service.store, "close_previous", lambda *args, **kwargs: None)
     service._context(10)
     assert service.engine.monitors["oil"].frozen
     assert service.engine.monitors["oil"].learned == 5

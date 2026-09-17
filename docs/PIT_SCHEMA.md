@@ -5,7 +5,7 @@ pit keeps: decoded samples, the registry bookkeeping that makes those samples
 resolvable to channel names, the ordinary relational tables for drivers,
 sessions, stints and laps, and the pit's own health. This document is the
 reference for that schema; the normative definition is
-[`src/pit/db/migrations/`](../src/pit/db/migrations/), which this document
+[`src/pit/db/migrations/`](https://github.com/Robert-McMahon/openlaps/tree/main/src/pit/db/migrations), which this document
 describes rather than duplicates.
 
 There is no vehicle-side database — vehicle durability is the JetStream file
@@ -452,28 +452,12 @@ redelivery a no-op regardless of dedupe windows or outage length. See the
 ingest-writer's own documentation for why `Nats-Msg-Id` dedupe alone is not
 enough.
 
-### Declared for Phase 7, not yet migrated
+### Planned schema
 
-ADR 0011 has pit services that derive data write their own tables, in the
-`pit_metrics` pattern above. `docs/plan/PHASE7.md` builds several of them in
-packages that can run in parallel, so their shapes are fixed here first and
-each package's migration is expected to match this section or amend it in
-the same commit. **None of these tables exist until the migration named
-beside them lands**; a dashboard or test that reads one before then is
-reading a plan.
-
-| Table | Written by | Columns |
-| --- | --- | --- |
-| `watch_scores` (hypertable) | `watch` (P7.5) | `time, vehicle_id, monitor, score, residual, expected, observed, baseline_status` |
-| `watch_findings` | `watch` (P7.5), `strategy` (P7.9) | Landed in migration 010 (see *Watch findings* above); P7.5's migration must create it with `IF NOT EXISTS` in the same shape |
-| `watch_baselines` | `watch` (P7.5) | `vehicle_id, monitor, session_id, stint_number, learned_at, model JSONB` |
-| `strategy_state` (hypertable) | `strategy` (P7.9) | Landed in migration 010 (see *Strategy state* above), with `vehicle_id`, the fuel bounds, the re-base, the refuel clock and `plan_drift` added to the declared shape |
-| `field_session`, `field_cars`, `field_laps`, `field_passings` (hypertables) | `timing-feed` (P7.10) | Landed in migration 011 (see *Field timing* above), with `epoch`, `tod`, `car_number` and the derived `field_laps` added to the declared shape |
-| `race_forecasts` | `strategy` (P7.11) | `time, session_id, scenario, car_number, p_position JSONB, expected_position, expected_gap_ahead_s, expected_gap_behind_s, runs` |
-
-Their views — `v_watch_scores` and `v_race_forecast_latest` — join the
-stable read surface below as each lands, with the `grafana_ro` grant in the
-same migration; the five `v_field_*` views landed with migration 011.
+Watch, strategy and field-timing storage landed in migrations 007–011 and is
+described above. Race forecasting remains planned: `race_forecasts` and
+`v_race_forecast_latest` do not exist in the current migrations. Do not query
+them until the migration and read-view grant land together.
 
 ## The stable read surface
 

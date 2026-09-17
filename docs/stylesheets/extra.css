@@ -1,0 +1,27 @@
+:root {
+  --md-primary-fg-color: #111318;
+  --md-accent-fg-color: #f26a21;
+}
+
+.md-header {
+  border-bottom: 2px solid #f26a21;
+}
+
+.md-typeset h1,
+.md-typeset h2 {
+  font-weight: 700;
+}
+
+.md-typeset .md-button--primary {
+  background: #f26a21;
+  border-color: #f26a21;
+  color: #fff;
+}
+
+.md-typeset table:not([class]) th {
+  background: color-mix(in srgb, #f26a21 18%, transparent);
+}
+
+.mermaid {
+  text-align: center;
+}

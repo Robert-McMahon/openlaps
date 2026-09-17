@@ -1,0 +1,120 @@
+site_name: openlaps
+site_description: Open-source racing telemetry from vehicle to pit
+site_url: https://robert-mcmahon.github.io/openlaps/
+repo_url: https://github.com/Robert-McMahon/openlaps
+repo_name: Robert-McMahon/openlaps
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+strict: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Overview: getting-started/index.md
+      - Development: getting-started/development.md
+  - Project status: status.md
+  - Concepts:
+      - Architecture: ARCHITECTURE.md
+      - Vehicle agent: AGENT_DESIGN.md
+  - Configuration:
+      - Profiles and channel catalog: CATALOG.md
+      - Watch monitors: WATCH.md
+      - Hardware targets: hardware/index.md
+  - Operations:
+      - Deployment overview: operations/index.md
+      - Vehicle installation: operations/vehicle.md
+      - Pit installation: operations/pit.md
+      - Verify the stack: operations/verification.md
+      - NATS security: operations/nats-security.md
+      - Dashboard maintenance: operations/dashboards.md
+      - Timing feed fallbacks: operations/timing-feed.md
+      - Commissioning: CUTOVER_RUNBOOK.md
+      - Bench measurements: BENCH_RUNBOOK.md
+  - Hardware:
+      - Supported targets: hardware/index.md
+      - Radxa X4: hardware/radxa-x4.md
+      - Luckfox Omni3576: hardware/luckfox-omni3576.md
+      - RP2040 timing head: hardware/timing-head.md
+  - Reference:
+      - Reference index: reference/index.md
+      - Wire format: WIRE_FORMAT.md
+      - Pit database: PIT_SCHEMA.md
+      - Raw capture: RAW_CAPTURE.md
+      - Link budget: LINK_BUDGET.md
+  - Evidence:
+      - Bench evidence: bench/README.md
+      - Timing parity: bench/timing-parity.md
+      - Steady-state summary: bench/2026-08-21-steady-state/summary.md
+      - Steady-state notes: bench/2026-08-21-steady-state/notes.md
+  - Decisions:
+      - Index: adr/README.md
+      - ADR 0001: adr/0001-fresh-public-repo-and-big-bang-cutover.md
+      - ADR 0002: adr/0002-nats-jetstream-transport.md
+      - ADR 0003: adr/0003-timescaledb-storage.md
+      - ADR 0004: adr/0004-generic-collectors-and-channel-catalog.md
+      - ADR 0005: adr/0005-single-tele-stream-per-channel-rbe.md
+      - ADR 0006: adr/0006-pit-side-ntrip-rtcm-core-nats.md
+      - ADR 0007: adr/0007-private-companion-repo-for-proprietary-exports.md
+      - ADR 0008: adr/0008-gnss-time-reference-rp2040-timing-head.md
+      - ADR 0009: adr/0009-gnss-data-through-the-rp2040.md
+      - ADR 0010: adr/0010-vehicle-targets-and-host-hardware-overlay.md
+      - ADR 0011: adr/0011-pit-derived-data-and-the-alert-path.md
+  - Archive:
+      - Historical plans: history/index.md
+      - Phase 2: plan/PHASE2.md
+      - Phase 3: plan/PHASE3.md
+      - Phase 4: plan/PHASE4.md
+      - Phase 5: plan/PHASE5.md
+      - Phase 6: plan/PHASE6.md
+      - Phase 7: plan/PHASE7.md
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Use dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: orange
+      toggle:
+        icon: material/weather-sunny
+        name: Use light mode
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - stylesheets/extra.css

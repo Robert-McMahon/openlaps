@@ -7,11 +7,11 @@ P4.5 (range and degradation). P4.0 built the instrument
 this turns them into something a person can run twice and get comparable
 numbers from.
 
-**This document does not restate `deploy/README.md`.** Bring-up order, the
+**This document does not restate the [deployment guide](operations/index.md).** Bring-up order, the
 `OPENLAPS_NATS_URL` distinction, the subject-less sourced stream, the
 per-hop verification and the secrets rules all live there and are not
 duplicated here. What follows is the bench-specific delta plus the parts
-`deploy/README.md` has no reason to know about: clock discipline, wire
+the deployment guide has no reason to know about: clock discipline, wire
 counters, the clean-slate procedure, and what a run has to emit to count as
 a result.
 
@@ -37,8 +37,8 @@ The pit dials the vehicle and never the reverse (`deploy/README.md`), which
 is why the two `nft` rulesets in `deploy/nft/` are mirrors of each other
 rather than one shared file — see §4.
 
-The bench runs the **real deployment**, not a reduced stack: all seven pit
-services, the real agent, the real leafnode (locked decision 2). Measuring
+The bench runs the **real deployment**, not a reduced stack: all application
+services enabled for the run, the real agent and the real leafnode. Measuring
 a reduced stack would measure something we are not going to run.
 
 **Two probes, one per host, merged afterwards** (locked decision 3). Neither
@@ -339,7 +339,8 @@ unchanged, since the catalog never differed in the first place.
 
 ## 6. Bring-up for a run
 
-`deploy/README.md` → "Bring-up" is the procedure. These are the deltas.
+The [vehicle](operations/vehicle.md) and [pit](operations/pit.md) installation
+guides are the base procedure. These are the bench-specific deltas.
 
 ### Vehicle SBC
 
@@ -385,8 +386,8 @@ unchanged, since the catalog never differed in the first place.
 
 ### Pit
 
-`docker compose -f deploy/pit-compose.yaml up -d` — unchanged from
-`deploy/README.md`. The only bench-specific note is the one the bench
+`docker compose -f deploy/pit-compose.yaml up -d` — unchanged from the pit
+installation guide. The only bench-specific note is the one the bench
 profile's README raises: because the bench profile keeps
 `vehicle.id: example-club-racer` but has its **own** `.registry-state.json`
 beside it, a pit that has already seen the real profile's generations will
@@ -617,8 +618,8 @@ a first run discarded for an encoder bug; that is the standard.
 
 ## 11. Teardown
 
-Stop the probes, the agent, `canplayer` and `bench_gps`. Then
-`deploy/README.md` → "Tear-down" as written.
+Stop the probes, the agent, `canplayer` and `bench_gps`. Stop the Compose
+stacks with `docker compose ... down`; omit `-v` to preserve stored data.
 
 Unload the counters if the host is going back to normal duty:
 

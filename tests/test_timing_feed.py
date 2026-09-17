@@ -1008,7 +1008,7 @@ def test_entrypoint_compose_env_and_docs_wire_the_service():
     pyproject = (repo / "pyproject.toml").read_text(encoding="utf-8")
     compose = (repo / "deploy" / "pit-compose.yaml").read_text(encoding="utf-8")
     env = (repo / "example.env").read_text(encoding="utf-8")
-    readme = (repo / "deploy" / "README.md").read_text(encoding="utf-8")
+    operations = (repo / "docs" / "operations" / "verification.md").read_text(encoding="utf-8")
     schema = (repo / "docs" / "PIT_SCHEMA.md").read_text(encoding="utf-8")
 
     assert 'openlaps-timing-feed = "pit.timing_feed.__main__:main"' in pyproject
@@ -1018,8 +1018,7 @@ def test_entrypoint_compose_env_and_docs_wire_the_service():
     assert "timing-feed-data:/data" in compose and "\n  timing-feed-data:\n" in compose
     assert "OPENLAPS_TIMING_FEED_SOURCE=natsoft" in env
     assert "OPENLAPS_TIMING_FEED_PORT=8089" in env
-    assert "| timing-feed | 8089 |" in readme
-    assert "timing-feed" in readme.split("| Services |")[1].split("\n")[0]
+    assert "| 8089 | timing-feed |" in operations
     for view in (
         "v_field_standings",
         "v_field_laps",

@@ -1,5 +1,4 @@
-# Pit stack: nats-server, TimescaleDB, mosquitto, Grafana, and the seven pit
-# services.
+# Pit stack: infrastructure, setup jobs, Grafana, and ten application services.
 #
 #     docker compose -f deploy/pit-compose.yaml up -d
 #
@@ -11,7 +10,7 @@
 #
 # The two one-shots are the interesting part. Migrations are a bring-up
 # *step*, not a service: modelling them as an entrypoint line in each of the
-# four services would have four containers racing the same DDL on every
+# database services would otherwise race the same DDL on every
 # restart. Likewise the sourced stream is created once, by one thing.
 
 name: openlaps-pit

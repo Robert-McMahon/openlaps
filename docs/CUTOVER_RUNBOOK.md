@@ -12,7 +12,7 @@ in this document — it is not installed alongside, not kept warm, and not a
 fallback. The word "cutover" survives only in this file's name, which other
 documents already cite.
 
-**This document does not restate `deploy/README.md`.** Bring-up order, the
+**This document does not restate the [deployment guide](operations/index.md).** Bring-up order, the
 `OPENLAPS_NATS_URL` distinction, the subject-less sourced stream, per-hop
 verification and the secrets rules live there. What follows is the
 go/no-go, the sequencing for a day with a car in it, the decision points,
@@ -152,10 +152,10 @@ Durations are bench-measured where stated, otherwise honest estimates.
 
 The whole point of the fresh-stack framing: prove the complete pit stack
 end-to-end with recorded data before any of it meets a car. This is
-`deploy/README.md` → "Bringing it up without a car", run as a drill.
+the deployment guide's replay path, run as a drill.
 
-1. **Bring up the pit stack** exactly as `deploy/README.md` → "Bring-up"
-   describes (`docker compose -f deploy/pit-compose.yaml up -d`), with a
+1. **Bring up the pit stack** as described in [Pit installation](operations/pit.md)
+   (`docker compose -f deploy/pit-compose.yaml up -d`), with a
    populated `.env`. **The first bring-up needs internet** — Grafana
    fetches its one plugin into the `grafana-data` volume; a fresh volume on
    a disconnected pit is a Grafana that does not come up. Warm it now, not
@@ -186,10 +186,10 @@ end-to-end with recorded data before any of it meets a car. This is
    > `bench_gps`, the real agent), which is the configuration every P4.3
    > number was measured on.
 
-3. **Verify every hop** — `deploy/README.md` → "Verify each hop", in
+3. **Verify every hop** using [Verify the stack](operations/verification.md), in
    order: `leafs` is 1 at both ends, `TELE_VEHICLE` climbing toward `TELE`,
    `tools/decode.py` resolving real names, `mosquitto_sub` showing JSON,
-   rows landing in `v_samples_named`, all four `/health` endpoints
+   rows landing in `v_samples_named`, all enabled `/health` endpoints
    answering, Grafana and both datasources (`timescale`, `mqtt-live`)
    green. (~10 min)
 
@@ -210,7 +210,7 @@ end-to-end with recorded data before any of it meets a car. This is
 
 ### 3.2 What gets installed on the car, in what order
 
-Everything vehicle-side, per `deploy/README.md` → "1. Vehicle" — none of it
+Everything vehicle-side, per [Vehicle installation](operations/vehicle.md) — none of it
 new, all of it bench-run:
 
 1. **The SBC image**: a checkout, `uv sync`, and the docker image

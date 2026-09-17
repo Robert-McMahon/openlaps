@@ -8,13 +8,13 @@ And if it ever doesn't, what are the levers to claw margin back without
 redesigning the wire format?
 
 This is a static analysis, not a live model: it runs
-[`tools/size_batch.py`](../tools/size_batch.py) against a measured signal mix
+[`tools/size_batch.py`](https://github.com/Robert-McMahon/openlaps/blob/main/tools/size_batch.py) against a measured signal mix
 and reports the resulting bitrate, then checks that against the HaLow PHY
 rate table. It replaces the predecessor project's marimo notebook
 (`docs/mqtt_bandwidth.py` in the old repo) with real serialized protobuf
 messages instead of interactive what-if sliders — the openlaps wire format
 (`ChannelRegistry` / `SampleBatch`, see [`WIRE_FORMAT.md`](WIRE_FORMAT.md)
-and [`proto/telemetry.proto`](../proto/telemetry.proto)) is simple and small
+and [`proto/telemetry.proto`](https://github.com/Robert-McMahon/openlaps/blob/main/proto/telemetry.proto)) is simple and small
 enough that one worked example, re-run when the signal mix changes, is more
 useful than a slider panel.
 
@@ -33,7 +33,7 @@ batching tick, and measures `len(batch.SerializeToString())` directly — no
 hand-rolled tag/varint arithmetic. The signal mix modelled:
 
 - **CAN**, from measured per-message frame rates in
-  [`tests/fixtures/mqtt_payload_stats.json`](../tests/fixtures/mqtt_payload_stats.json)
+  [`tests/fixtures/mqtt_payload_stats.json`](https://github.com/Robert-McMahon/openlaps/blob/main/tests/fixtures/mqtt_payload_stats.json)
   (the same stats file WP4's round-trip tests use): **36 messages, ~853
   frames/s, ~2,962 signal updates/s**. Each signal update becomes one
   `DOUBLE` `Sample`. This is the measured donor car's real signal mix —
@@ -90,7 +90,7 @@ epoch fields, ~20 B on its own) and the ~20 B NATS framing estimate get
 paid. Both ticks land in the same ballpark — see §7 for why tick length is
 a weak lever here.
 
-## 4. RBE scenario: PD16 voltage channels
+## 4. RBE sensitivity example
 
 The channel catalog supports per-channel report-by-exception (deadband +
 `max_interval` heartbeat — see `WIRE_FORMAT.md` and the catalog schema).
@@ -98,10 +98,12 @@ The channel catalog supports per-channel report-by-exception (deadband +
 individual streams, so this is computed **analytically**, not from a tool
 run.
 
-Worked example: six 100 Hz PD16 analog-input voltage channels (the
-catalog's `pd16.*` namespace), each carrying a `{deadband: 0.05, max_interval:
-5s}` RBE policy. At full rate these are 6 channels × 100 Hz = **600
-samples/s**. Using this document's own measured per-sample cost (~15.9 B
+Hypothetical example: six 100 Hz voltage channels, each carrying a
+`{deadband: 0.05, max_interval: 5s}` RBE policy. The current example profile
+does not map these wiring-dependent inputs and has no active RBE policies;
+this calculation shows the sensitivity if they are added later. At full rate
+these are 6 channels × 100 Hz = **600 samples/s**. Using this document's own
+measured per-sample cost (~15.9 B
 marginal per `DOUBLE` sample, in line with the ~16 B planning figure — see
 §2 and the marginal-cost check in the footnote below):
 
@@ -109,7 +111,7 @@ marginal per `DOUBLE` sample, in line with the ~16 B planning figure — see
 600 samples/s × ~16 B/sample ≈ 9,600 B/s ≈ 77 kbit/s  (worst case, values changing every tick)
 ```
 
-Under RBE, once a voltage channel is steady within its 0.05 (V) deadband,
+Under that policy, once a voltage channel is steady within its 0.05 V deadband,
 it collapses to its `max_interval` heartbeat: 1 sample per 5 s per channel,
 6 channels → 1.2 samples/s ≈ 19 B/s — effectively free. So the **~77 kbit/s
 figure is the worst-case saving**, realised in full only while those

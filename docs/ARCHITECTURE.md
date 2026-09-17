@@ -58,7 +58,7 @@ the transport.
 | Layer | Owns | Knows about |
 | --- | --- | --- |
 | **Collectors** | Transport + decode: socketCAN frames → DBC signals, serial bytes → NMEA fields, host stats | Nothing about racing. A collector emits `Sample{source_ref, t, value}` where `source_ref` is `bus:device.MESSAGE.SIGNAL` |
-| **Channel catalog** | Meaning: maps source refs to canonical channels (`engine.rpm`, `position.lat`, `chassis.accel_x`) with units, types, and link policies | The profile YAML. Integer channel IDs come from here (via the `ChannelRegistry`) |
+| **Channel catalog** | Meaning: maps source refs to canonical channels (`car.rpm`, `position.lat`, `car.accel_x`) with units, types, and link policies | The profile YAML. Integer channel IDs come from here (via the `ChannelRegistry`) |
 | **Apps & consumers** | Lap timing, dashboards, exports | Canonical channel names only — never a bus, DBC, or wire detail |
 
 This is the load-bearing indirection: the timing engine subscribes to
@@ -160,11 +160,10 @@ flowchart LR
   leafnode's remote, so the pit learns the state of both ends without
   needing the vehicle reachable for monitoring.
 
-The dashed nodes are **Phase 7** (`docs/plan/PHASE7.md`, ADR 0011) and are
-drawn before they exist so a reader knows where they will sit; each one
-derives data rather than carrying it, writes its own tables in the
-pit-monitor pattern, and publishes live values only under a pit-owned
-namespace (`watch.*`, `strategy.*`, `field.*`).
+The pit-derived services follow ADR 0011: each derives data rather than
+carrying it, writes its own tables in the pit-monitor pattern, and publishes
+live values only under a pit-owned namespace (`watch.*`, `strategy.*`,
+`field.*`). The dashed lines indicate derived flow, not future work.
 
 - **watch** (landed, P7.5–P7.6) consumes the sourced stream like the
   timing extrapolator does and scores anomaly monitors — envelopes,
@@ -252,8 +251,9 @@ catalog — a config push, not a code change.
 
 ## What replaced what
 
-The predecessor system (same author, private repo) accreted seven always-on
-data services; openlaps needs four. For the curious:
+The predecessor system (same author, private repo) accreted overlapping data
+paths. openlaps replaces them with explicit vehicle, transport, storage and
+derived-service boundaries:
 
 | Before | After | Why it could be deleted |
 | --- | --- | --- |
@@ -282,10 +282,9 @@ own local server. `deploy/README.md` is the operational reference — bring-up
 order, how to verify each hop, and the one thing to get right about the
 sourced stream.
 
-Phase 7 adds `notifier`, `watch`, `strategy`, `timing-feed` and an `ntfy`
-server to the pit stack, each pinned and health-checked like the services
-above; `ntfy` is the one third-party service among them and exists so a
-phone on the pit wifi gets a push with no internet at all.
+The pit stack includes `notifier`, `watch`, `strategy`, `timing-feed` and an
+`ntfy` server, each pinned and health-checked like the services above. `ntfy`
+lets an Android phone on the pit wifi receive a push without internet access.
 
 ## Document map
 
@@ -295,4 +294,8 @@ phone on the pit wifi gets a push with no internet at all.
 - `PIT_SCHEMA.md` — the pit database: tables, registry resolution, chunking/compression, stable views
 - `LINK_BUDGET.md` — measured bandwidth model vs. radio capacity
 - `../deploy/README.md` — the two stacks, the leafnode topology, bring-up and verification
+- `operations/index.md` — current deployment and verification guides
+- `status.md` — implemented capability and outstanding validation
+- `WATCH.md` — watch configuration and monitor behaviour
+- `RAW_CAPTURE.md` — local raw-input capture
 - `adr/` — decision records with alternatives considered

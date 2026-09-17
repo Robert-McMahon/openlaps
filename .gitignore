@@ -41,3 +41,4 @@ docs/bench/**/*.log
 /runs/
 # OS
 .DS_Store
+site/

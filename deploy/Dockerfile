@@ -1,8 +1,8 @@
-# One image, six entry points.
+# One image for every openlaps entry point.
 #
-# The pit runs five long-lived services plus a one-shot migrator, and they
-# share every dependency they have. Four images would be four builds, four
-# pulls and four chances for one of them to drift a version behind; a single
+# The vehicle and pit services share their Python dependencies. Separate
+# images would mean repeated builds, repeated pulls
+# and more chances for one of them to drift a version behind; a single
 # image with `command:` selecting the entry point is simply less to keep in
 # step. `[project.scripts]` already declares them all, so nothing here needs
 # a per-service wrapper.

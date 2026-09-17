@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document id="document">
+	<name>Collie-BEERS</name>
+	<gx:CascadingStyle kml:id="__managed_style_08A84F5E8D41E50CFFA3_highlight">
+		<styleUrl>https://earth.google.com/balloon_components/base/1.1.0.0/card_template.kml#main</styleUrl>
+		<Style>
+			<IconStyle>
+				<scale>1.2</scale>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LabelStyle>
+			</LabelStyle>
+			<LineStyle>
+				<color>ff3c8e38</color>
+				<width>3.75</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<gx:CascadingStyle kml:id="__managed_style_08A84F5E8D41E50CFFA3_normal">
+		<styleUrl>https://earth.google.com/balloon_components/base/1.1.0.0/card_template.kml#main</styleUrl>
+		<Style>
+			<IconStyle>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LabelStyle>
+			</LabelStyle>
+			<LineStyle>
+				<color>ff3c8e38</color>
+				<width>2.5</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<gx:CascadingStyle kml:id="__managed_style_0416BCB3D941E5084E4C_normal">
+		<styleUrl>https://earth.google.com/balloon_components/base/1.1.0.0/card_template.kml#main</styleUrl>
+		<Style>
+			<IconStyle>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LabelStyle>
+			</LabelStyle>
+			<LineStyle>
+				<color>ff2dc0fb</color>
+				<width>2.5</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<StyleMap id="__managed_style_08A84F5E8D41E50CFFA3">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#__managed_style_08A84F5E8D41E50CFFA3_normal</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#__managed_style_08A84F5E8D41E50CFFA3_highlight</styleUrl>
+		</Pair>
+	</StyleMap>
+	<gx:CascadingStyle kml:id="__managed_style_0416BCB3D941E5084E4C_highlight">
+		<styleUrl>https://earth.google.com/balloon_components/base/1.1.0.0/card_template.kml#main</styleUrl>
+		<Style>
+			<IconStyle>
+				<scale>1.2</scale>
+				<Icon>
+					<href>https://earth.google.com/earth/document/icon?color=1976d2&amp;id=2000&amp;scale=4</href>
+				</Icon>
+				<hotSpot x="64" y="128" xunits="pixels" yunits="insetPixels"/>
+			</IconStyle>
+			<LabelStyle>
+			</LabelStyle>
+			<LineStyle>
+				<color>ff2dc0fb</color>
+				<width>3.75</width>
+			</LineStyle>
+			<PolyStyle>
+				<color>40ffffff</color>
+			</PolyStyle>
+			<BalloonStyle>
+			</BalloonStyle>
+		</Style>
+	</gx:CascadingStyle>
+	<StyleMap id="__managed_style_0416BCB3D941E5084E4C">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#__managed_style_0416BCB3D941E5084E4C_normal</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#__managed_style_0416BCB3D941E5084E4C_highlight</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Placemark id="04910B234141E5084E1F">
+		<name>StartFinish</name>
+		<LookAt>
+			<longitude>116.2428651694932</longitude>
+			<latitude>-33.43170894983437</latitude>
+			<altitude>215.6445305213025</altitude>
+			<heading>0</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>1470.264247527957</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_0416BCB3D941E5084E4C</styleUrl>
+		<LineString>
+			<coordinates>
+				116.2433995230086,-33.43022244197761,0 116.2431548919406,-33.4300521682277,0 
+			</coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark id="06558CD16041E51D1FB0">
+		<name>Sector1</name>
+		<LookAt>
+			<longitude>116.2407749361515</longitude>
+			<latitude>-33.43409635595477</latitude>
+			<altitude>213.5883144706291</altitude>
+			<heading>0</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>1909.384541817417</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_0416BCB3D941E5084E4C</styleUrl>
+		<LineString>
+			<coordinates>
+				116.2421609532744,-33.43581216341689,0 116.2414456375212,-33.43556750896823,0 
+			</coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark id="0255BCA2F641E50B4607">
+		<name>Sector2</name>
+		<LookAt>
+			<longitude>116.2437691589177</longitude>
+			<latitude>-33.43297932969317</latitude>
+			<altitude>214.8026007445239</altitude>
+			<heading>0</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>1122.014141998807</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_0416BCB3D941E5084E4C</styleUrl>
+		<LineString>
+			<coordinates>
+				116.2455524032305,-33.43465192973267,0 116.2459126976904,-33.43463647134499,0 
+			</coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark id="02E097F5F541E50CF0EC">
+		<name>PitEntry</name>
+		<LookAt>
+			<longitude>116.2438914176045</longitude>
+			<latitude>-33.43011054515677</latitude>
+			<altitude>220.7782358676158</altitude>
+			<heading>0</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>90.31973236431442</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_08A84F5E8D41E50CFFA3</styleUrl>
+		<LineString>
+			<coordinates>
+				116.2440814824654,-33.43009205721818,0 116.2439378845031,-33.43005722275363,0 
+			</coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark id="06081C92D441E50E54D8">
+		<name>PitExit</name>
+		<LookAt>
+			<longitude>116.243269741587</longitude>
+			<latitude>-33.43179286036245</latitude>
+			<altitude>215.3432696197177</altitude>
+			<heading>0</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>261.5604603653628</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_08A84F5E8D41E50CFFA3</styleUrl>
+		<LineString>
+			<coordinates>
+				116.2433039330249,-33.43205059255715,0 116.2431731594185,-33.43198136552301,0 
+			</coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark id="0A7746252F41E514C1D9">
+		<name>PitEntryRefuel</name>
+		<LookAt>
+			<longitude>116.2436699607792</longitude>
+			<latitude>-33.43151648262697</latitude>
+			<altitude>216.0633954942921</altitude>
+			<heading>0</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>158.0733831503676</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_08A84F5E8D41E50CFFA3</styleUrl>
+		<LineString>
+			<coordinates>
+				116.2439615052281,-33.43156056990662,0 116.2438607978653,-33.43153029213274,0 
+			</coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark id="06320745CA41E515A9F4">
+		<name>PitExitRefuel</name>
+		<LookAt>
+			<longitude>116.2436699607792</longitude>
+			<latitude>-33.43151648262697</latitude>
+			<altitude>216.0633954942921</altitude>
+			<heading>0</heading>
+			<tilt>0</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>158.0733831503676</range>
+			<altitudeMode>absolute</altitudeMode>
+		</LookAt>
+		<styleUrl>#__managed_style_08A84F5E8D41E50CFFA3</styleUrl>
+		<LineString>
+			<coordinates>
+				116.2436094231892,-33.43148277002481,0 116.2435773405896,-33.43156214406037,0 
+			</coordinates>
+		</LineString>
+	</Placemark>
+</Document>
+</kml>

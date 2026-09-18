@@ -19,7 +19,7 @@ serial:
   serial0:
     # GNSS *data*, relayed by the onboard RP2040 over its internal USB CDC
     # (ADR 0009). Not /dev/ttyS4: that is the N100<->RP2040 UART carrying the
-    # timing head's TH1 lines to tools/timing_head_shim.py, and the two paths
+    # GNSS receiver interface's TH1 lines to tools/gnss_receiver_interface_shim.py, and the two paths
     # are deliberately separate so timing keeps the UART's latency.
     #
     # An external USB-serial cable straight to the receiver is the pre-0009

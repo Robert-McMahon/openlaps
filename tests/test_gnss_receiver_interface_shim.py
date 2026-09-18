@@ -1,4 +1,4 @@
-"""RP2040 timing-head line protocol and chrony SOCK shim tests."""
+"""RP2040 GNSS receiver interface protocol and chrony SOCK shim tests."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "tools"))
 
-import timing_head_shim as shim  # noqa: E402
+import gnss_receiver_interface_shim as shim  # noqa: E402
 
 
 def test_valid_message_becomes_a_full_chrony_offset_sample():
     sink: list[bytes] = []
-    clock = shim.TimingHeadShim(sink.append)
+    clock = shim.GnssReceiverInterfaceShim(sink.append)
     arrival_ns = 1_780_000_000_020_000_000
 
     assert clock.process_line("TH1 42 1780000000 9000000 250 1", arrival_ns) is True
@@ -30,7 +30,7 @@ def test_valid_message_becomes_a_full_chrony_offset_sample():
 
 def test_bad_invalid_and_stale_lines_degrade_to_silence():
     sink: list[bytes] = []
-    clock = shim.TimingHeadShim(sink.append)
+    clock = shim.GnssReceiverInterfaceShim(sink.append)
     now = 1_780_000_000_020_000_000
 
     assert clock.process_line("not a timing message", now) is False
@@ -47,7 +47,7 @@ def test_bad_invalid_and_stale_lines_degrade_to_silence():
 
 def test_sequence_wrap_is_newer_but_impossible_firmware_delay_is_rejected():
     sink: list[bytes] = []
-    clock = shim.TimingHeadShim(sink.append)
+    clock = shim.GnssReceiverInterfaceShim(sink.append)
     now = 1_780_000_000_020_000_000
 
     assert clock.process_line("TH1 4294967295 1780000000 1 1 1", now) is True

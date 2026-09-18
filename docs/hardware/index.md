@@ -7,7 +7,7 @@ to it: device names, CAN link settings, host sensors and video encoding.
 
 | Target | Architecture | CAN | GNSS and clock | Video |
 | --- | --- | --- | --- | --- |
-| [Radxa X4](radxa-x4.md) | Intel N100, x86-64 | USB/CAN `can0` | UM980 through RP2040 timing head | VAAPI H.265 and H.264 |
+| [Radxa X4](radxa-x4.md) | Intel N100, x86-64 | USB/CAN `can0` | UM980 through RP2040 GNSS receiver interface | VAAPI H.265 and H.264 |
 | [Luckfox Omni3576](luckfox-omni3576.md) | Rockchip RK3576, aarch64 | on-SoC CAN FD controller | UM980 UART plus GPIO PPS | Rockchip MPP H.264 |
 
 ## Target directory

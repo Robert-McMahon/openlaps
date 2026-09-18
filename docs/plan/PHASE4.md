@@ -673,7 +673,7 @@ back to the raw data for each.
 
 ---
 
-## P4.8 — GNSS time reference: the RP2040 timing head
+## P4.8 — GNSS time reference: the RP2040 GNSS receiver interface
 
 **Specs:** ADR 0008 (the decision and its accuracy ceiling);
 `docs/ARCHITECTURE.md` → "Link dropout and recovery" (why absolute latency
@@ -696,7 +696,7 @@ shim are part of the deliverable, not an afterthought.
 
 **Deliverables:**
 
-- **`firmware/timing-head/`** — RP2040 firmware, pico-sdk, one `.uf2`.
+- **`firmware/gnss-receiver-interface/`** — RP2040 firmware, pico-sdk, one `.uf2`.
 
   - **PPS capture** on a GPIO, timestamped in hardware. Resolution here is
     far below the transport noise that dominates; do not gold-plate it.
@@ -715,20 +715,20 @@ shim are part of the deliverable, not an afterthought.
     edge, **the firmware's own edge→transmit interval**, and a validity
     flag. The host must never have to estimate the part of the delay the
     firmware already knows.
-  - **No fix, no message.** A timing head that emits a plausible-looking
+  - **No fix, no message.** A GNSS receiver interface that emits a plausible-looking
     sample from a stale or void fix is worse than one that emits nothing.
   - **Both host transports, selectable at build time** — USB CDC and the
     RP2040↔N100 UART. Building both is not indecision; measuring them
     against each other is a deliverable of this package.
 
-- **`tools/timing_head_shim.py`** — reads the message, timestamps arrival
+- **`tools/gnss_receiver_interface_shim.py`** — reads the message, timestamps arrival
   against `CLOCK_REALTIME`, subtracts the firmware's edge→transmit interval,
   and offers the result to `chrony` over the **SOCK refclock** protocol.
   Degrades to silence: a malformed line, a stale sequence, a cleared
   validity flag or a vanished device yields no sample and a counter, never a
   wrong sample and never an exception.
 
-- **`deploy/chrony/vehicle.conf`** — the timing head as a `prefer`red
+- **`deploy/chrony/vehicle.conf`** — the GNSS receiver interface as a `prefer`red
   refclock, internet NTP sources alongside it, `local stratum 10` so the pit
   can still discipline against the SBC when the SBC itself is free-running,
   and `allow` for the bench subnet. **The primary/fallback behaviour is
@@ -774,7 +774,7 @@ shim are part of the deliverable, not an afterthought.
 
 **Acceptance:**
 
-- With the internet unplugged, `chronyc sources` shows the timing head
+- With the internet unplugged, `chronyc sources` shows the GNSS receiver interface
   selected and the system clock disciplined from a cold start with no RTC.
 - Pulling the PPS lead falls back to internet NTP **by slew, without a
   step**, and `sys.host.clock_source` shows the transition on the dashboard

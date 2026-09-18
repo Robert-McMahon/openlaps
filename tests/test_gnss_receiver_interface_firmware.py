@@ -1,4 +1,4 @@
-"""Host-native tests for the timing-head's edge/sentence association."""
+"""Host-native tests for the GNSS receiver interface's edge/sentence association."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
-FIRMWARE = ROOT / "firmware" / "timing-head"
+FIRMWARE = ROOT / "firmware" / "gnss-receiver-interface"
 
 
 def test_edge_sentence_association_rejects_late_missing_and_preceding_sentences(tmp_path: Path):

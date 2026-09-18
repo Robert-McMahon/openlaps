@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 
 include(pico_sdk_import.cmake)
 
-project(openlaps_timing_head C CXX ASM)
+project(openlaps_gnss_receiver_interface C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -15,13 +15,13 @@ endif()
 
 pico_sdk_init()
 
-add_executable(openlaps-timing-head
+add_executable(openlaps-gnss-receiver-interface
     main.c
     association.c
     nmea.c
 )
-target_compile_options(openlaps-timing-head PRIVATE -Wall -Wextra -Werror)
-target_link_libraries(openlaps-timing-head PRIVATE pico_stdlib hardware_gpio hardware_timer hardware_uart)
+target_compile_options(openlaps-gnss-receiver-interface PRIVATE -Wall -Wextra -Werror)
+target_link_libraries(openlaps-gnss-receiver-interface PRIVATE pico_stdlib hardware_gpio hardware_timer hardware_uart)
 
 # The data relay carries the receiver's NMEA to the host and the host's RTCM
 # and startup commands back, over the RP2040's internal USB CDC. It is a
@@ -34,20 +34,20 @@ if(TIMING_TRANSPORT STREQUAL "USB")
     if(GNSS_DATA_RELAY)
         message(FATAL_ERROR "GNSS_DATA_RELAY requires TIMING_TRANSPORT=UART")
     endif()
-    target_compile_definitions(openlaps-timing-head PRIVATE TIMING_TRANSPORT_USB=1)
-    target_link_libraries(openlaps-timing-head PRIVATE pico_stdio_usb)
-    pico_enable_stdio_usb(openlaps-timing-head 1)
-    pico_enable_stdio_uart(openlaps-timing-head 0)
+    target_compile_definitions(openlaps-gnss-receiver-interface PRIVATE TIMING_TRANSPORT_USB=1)
+    target_link_libraries(openlaps-gnss-receiver-interface PRIVATE pico_stdio_usb)
+    pico_enable_stdio_usb(openlaps-gnss-receiver-interface 1)
+    pico_enable_stdio_uart(openlaps-gnss-receiver-interface 0)
 else()
-    target_compile_definitions(openlaps-timing-head PRIVATE TIMING_TRANSPORT_UART=1)
-    pico_enable_stdio_uart(openlaps-timing-head 0)
+    target_compile_definitions(openlaps-gnss-receiver-interface PRIVATE TIMING_TRANSPORT_UART=1)
+    pico_enable_stdio_uart(openlaps-gnss-receiver-interface 0)
     if(GNSS_DATA_RELAY)
-        target_compile_definitions(openlaps-timing-head PRIVATE GNSS_DATA_RELAY=1)
-        target_link_libraries(openlaps-timing-head PRIVATE pico_stdio_usb)
-        pico_enable_stdio_usb(openlaps-timing-head 1)
+        target_compile_definitions(openlaps-gnss-receiver-interface PRIVATE GNSS_DATA_RELAY=1)
+        target_link_libraries(openlaps-gnss-receiver-interface PRIVATE pico_stdio_usb)
+        pico_enable_stdio_usb(openlaps-gnss-receiver-interface 1)
     else()
-        pico_enable_stdio_usb(openlaps-timing-head 0)
+        pico_enable_stdio_usb(openlaps-gnss-receiver-interface 0)
     endif()
 endif()
 
-pico_add_extra_outputs(openlaps-timing-head)
+pico_add_extra_outputs(openlaps-gnss-receiver-interface)

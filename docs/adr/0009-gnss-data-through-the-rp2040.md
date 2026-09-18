@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted, 2026-08-31. Extends [0008](0008-gnss-time-reference-rp2040-timing-head.md).
+Accepted, 2026-08-31. Extends [0008](0008-rp2040-gnss-receiver-interface.md).
 
 ## Context
 
@@ -98,7 +98,7 @@ explicit port argument.
   view, against a 1.1 W manufacturer figure.
 - **The receiver's port configuration is applied by the agent**, so a receiver
   that power-cycles while the agent is down emits nothing on COM2 — and since
-  ZDA/GGA gate the timing head, chrony loses its refclock too. Time would then
+  ZDA/GGA gate the GNSS receiver interface, chrony loses its refclock too. Time would then
   depend on the telemetry agent having run, which 0008 did not intend. Found
   the hard way on 2026-08-31: the receiver had never actually lost power, so
   the agent had been silently re-applying the configuration on every start.

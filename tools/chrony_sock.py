@@ -1,14 +1,14 @@
 """chrony's SOCK refclock wire format, shared by every openlaps time source.
 
 Two shims feed chronyd the same way and must agree byte for byte on how a
-sample is built: `timing_head_shim.py` (an RP2040 that captured the PPS edge
+sample is built: `gnss_receiver_interface_shim.py` (an RP2040 that captured the PPS edge
 itself) and `pps_gpio_shim.py` (a PPS wire straight onto a SoC GPIO). The
 thing they have to agree on is not the struct layout -- that is easy to get
 right -- but the **sign of the offset**, which is easy to get backwards and
 whose failure mode is a clock disciplined confidently in the wrong direction.
 
 So it lives once, here, with the tests that pin the sign in
-`tests/test_timing_head_shim.py` and `tests/test_pps_gpio_shim.py`.
+`tests/test_gnss_receiver_interface_shim.py` and `tests/test_pps_gpio_shim.py`.
 
 Both shims are installed side by side into the same directory
 (`deploy/README.md`), which is what lets them import this.

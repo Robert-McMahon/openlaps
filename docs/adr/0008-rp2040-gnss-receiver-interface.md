@@ -1,4 +1,4 @@
-# 0008: GNSS time reference via an RP2040 timing head
+# 0008: GNSS time reference via an RP2040 GNSS receiver interface
 
 ## Status
 
@@ -41,13 +41,13 @@ cross a link before it reaches the kernel**, and the properties of that link
 
 ## Decision
 
-Build a **GNSS timing head** on the RP2040 and discipline the host clock
-from it with `chrony`.
+Build a **GNSS receiver interface** on the RP2040 and discipline the host
+clock from it with `chrony`.
 
 - The UM980's **PPS output** goes to an RP2040 GPIO, captured in hardware.
 - A **spare UM980 COM port** feeds 1 Hz `ZDA` into an RP2040 UART, so the
-  timing head can name the second the edge belongs to without depending on
-  the host, the agent, or the internet.
+  GNSS receiver interface can name the second the edge belongs to without
+  depending on the host, the agent, or the internet.
 - Firmware emits one message per second carrying the UTC second, the
   captured edge, and **its own edge→transmit interval**, so the host
   subtracts the part of the delay that is known rather than estimating all
@@ -55,8 +55,9 @@ from it with `chrony`.
 - A host shim feeds those samples to `chrony` as a **SOCK refclock**, which
   carries a full offset sample where SHM would carry less.
 - `chrony` also holds internet NTP sources. **Its ordinary source selection
-  is the primary/fallback behaviour** — the timing head is `prefer`red, and
-  NTP takes over when it is absent. No custom failover code exists.
+  is the primary/fallback behaviour** — the GNSS receiver interface is
+  `prefer`red, and NTP takes over when it is absent. No custom failover code
+  exists.
 - The system clock becomes the vehicle's single time authority.
   `SteeredClock`'s GNSS steering is **retired rather than repaired**.
 - Clock health is published as telemetry (`host:clock_*` through the host

@@ -7,7 +7,7 @@
 5. [0005 — Single TELE stream with per-channel RBE, no live/batch split](0005-single-tele-stream-per-channel-rbe.md)
 6. [0006 — Pit-side NTRIP client, RTCM over core NATS](0006-pit-side-ntrip-rtcm-core-nats.md)
 7. [0007 — Private companion repo for proprietary-format exports and live vehicle profile](0007-private-companion-repo-for-proprietary-exports.md)
-8. [0008 — GNSS time reference via an RP2040 timing head](0008-gnss-time-reference-rp2040-timing-head.md)
+8. [0008 — GNSS time reference via an RP2040 GNSS receiver interface](0008-rp2040-gnss-receiver-interface.md)
 9. [0009 — GNSS data through the RP2040, sharing one receiver port](0009-gnss-data-through-the-rp2040.md)
 10. [0010 — Vehicle targets, and a host-hardware overlay on the profile](0010-vehicle-targets-and-host-hardware-overlay.md)
 11. [0011 — Pit-derived data: namespaces, storage, and the alert path](0011-pit-derived-data-and-the-alert-path.md)

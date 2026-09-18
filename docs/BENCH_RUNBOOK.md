@@ -156,10 +156,11 @@ position source, not a time source: `rmc_sentence` writes a fixed
 `000000.00` time field and a fixed date (`tools/_bench.py`), and feeding it
 to `gpsd` as a reference clock would be circular as well as wrong.
 
-### Buildable preferred configuration: RP2040 timing head
+### Buildable preferred configuration: RP2040 GNSS receiver interface
 
-Wire and flash the timing head exactly as `firmware/timing-head/README.md`
-describes. The UM980 driver configures fix-gated, active-high GPS PPS per the
+Wire and flash the GNSS receiver interface exactly as
+`firmware/gnss-receiver-interface/README.md` describes. The UM980 driver
+configures fix-gated, active-high GPS PPS per the
 receiver manual's `CONFIG PPS` options and sends 1 Hz ZDA plus GGA on COM2.
 The RP2040 pairs each edge only with the sentence that follows it; a sentence
 over 900 ms late is rejected. The host shim subtracts the firmware-known
@@ -173,25 +174,27 @@ getent group openlaps >/dev/null || sudo groupadd --system openlaps
 id -u openlaps >/dev/null 2>&1 || \
   sudo useradd --system --gid openlaps --home-dir /opt/openlaps --shell /usr/sbin/nologin openlaps
 sudo install -m 0644 deploy/chrony/vehicle.conf /etc/chrony/chrony.conf
-sudo install -D -o root -g root -m 0755 tools/timing_head_shim.py \
-  /usr/local/libexec/openlaps/timing_head_shim.py
+sudo install -D -o root -g root -m 0755 tools/gnss_receiver_interface_shim.py \
+  /usr/local/libexec/openlaps/gnss_receiver_interface_shim.py
 # chrony's SOCK wire format lives beside it, shared with the GPIO PPS shim.
 sudo install -D -o root -g root -m 0644 tools/chrony_sock.py \
   /usr/local/libexec/openlaps/chrony_sock.py
-sudo install -m 0644 deploy/systemd/timing-head-shim.service /etc/systemd/system/
+sudo install -m 0644 deploy/systemd/gnss-receiver-interface-shim.service \
+  /etc/systemd/system/
 sudo install -d /etc/systemd/system/chrony.service.d
 sudo install -m 0644 deploy/systemd/chrony-openlaps-sock.conf \
   /etc/systemd/system/chrony.service.d/openlaps-sock.conf
 sudo install -d /etc/openlaps
-printf '%s\n' 'TIMING_HEAD_ARGS=--device /dev/ttyACM0 --chrony-socket /run/chrony/openlaps-timing.sock' \
-  | sudo tee /etc/openlaps/timing-head.env
+printf '%s\n' \
+  'GNSS_RECEIVER_INTERFACE_ARGS=--device /dev/ttyACM0 --chrony-socket /run/chrony/openlaps-timing.sock' \
+  | sudo tee /etc/openlaps/gnss-receiver-interface.env
 sudo systemctl daemon-reload
 sudo systemctl restart chrony
-sudo systemctl enable --now timing-head-shim
+sudo systemctl enable --now gnss-receiver-interface-shim
 ```
 
-For the UART build, change the device in `TIMING_HEAD_ARGS` to the X4 UART
-node and retain 115200 baud. On the pit:
+For the UART build, change the device in `GNSS_RECEIVER_INTERFACE_ARGS` to
+the X4 UART node and retain 115200 baud. On the pit:
 
 ```bash
 sudo apt-get install chrony
@@ -232,7 +235,7 @@ not as proof of microsecond absolute accuracy.
 Pass both into every probe invocation for the run:
 
 ```bash
---clock-method "chrony SOCK timing head on vehicle; pit to 192.168.12.176" \
+--clock-method "chrony SOCK GNSS receiver interface on vehicle; pit to 192.168.12.176" \
 --clock-offset-ms 0.42 \
 --clock-source GPS
 ```

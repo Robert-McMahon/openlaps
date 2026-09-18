@@ -1,4 +1,4 @@
-"""Static checks for the P4.8 chrony and timing-head deployment contract."""
+"""Static checks for the P4.8 GNSS receiver-interface deployment contract."""
 
 from pathlib import Path
 
@@ -26,13 +26,15 @@ def test_pit_install_docs_install_and_restart_chrony():
     assert "sudo systemctl restart chrony" in instructions
 
 
-def test_timing_head_service_waits_for_chrony_and_restarts():
-    unit = (ROOT / "deploy" / "systemd" / "timing-head-shim.service").read_text(encoding="utf-8")
+def test_gnss_receiver_interface_service_waits_for_chrony_and_restarts():
+    unit = (
+        ROOT / "deploy" / "systemd" / "gnss-receiver-interface-shim.service"
+    ).read_text(encoding="utf-8")
     assert "After=chrony.service" in unit
     assert "Requires=chrony.service" in unit
     assert "PartOf=chrony.service" in unit
     assert "Restart=always" in unit
-    assert "/usr/bin/python3 /usr/local/libexec/openlaps/timing_head_shim.py" in unit
+    assert "/usr/bin/python3 /usr/local/libexec/openlaps/gnss_receiver_interface_shim.py" in unit
 
     drop_in = (ROOT / "deploy" / "systemd" / "chrony-openlaps-sock.conf").read_text(
         encoding="utf-8"
@@ -45,8 +47,10 @@ def test_timing_head_service_waits_for_chrony_and_restarts():
 
 
 def test_uart_build_uses_the_x4_internal_uart_and_leaves_uart1_for_the_um980():
-    source = (ROOT / "firmware" / "timing-head" / "main.c").read_text(encoding="utf-8")
-    readme = (ROOT / "docs" / "hardware" / "timing-head.md").read_text(encoding="utf-8")
+    source = (ROOT / "firmware" / "gnss-receiver-interface" / "main.c").read_text(
+        encoding="utf-8"
+    )
+    readme = (ROOT / "docs" / "hardware" / "radxa-x4.md").read_text(encoding="utf-8")
 
     assert "#define TIMING_HOST_UART uart0" in source
     assert "#define TIMING_HOST_TX_GPIO 0" in source
@@ -57,16 +61,16 @@ def test_uart_build_uses_the_x4_internal_uart_and_leaves_uart1_for_the_um980():
 
 
 def test_the_timing_shim_install_carries_the_module_it_imports():
-    """`timing_head_shim.py` alone is no longer a complete install.
+    """`gnss_receiver_interface_shim.py` alone is no longer a complete install.
 
     The chrony SOCK wire format moved to `chrony_sock.py` when a second time
     source (`pps_gpio_shim.py`) started feeding the same socket -- one copy of
     the offset's sign, not two. Python finds it because both land in the same
     directory, which only happens if the runbook says to put them there.
     """
-    doc = ROOT / "docs" / "hardware" / "timing-head.md"
+    doc = ROOT / "docs" / "hardware" / "radxa-x4.md"
     text = doc.read_text()
-    assert "/usr/local/libexec/openlaps/timing_head_shim.py" in text
+    assert "/usr/local/libexec/openlaps/gnss_receiver_interface_shim.py" in text
     assert "/usr/local/libexec/openlaps/chrony_sock.py" in text
 
 
@@ -79,7 +83,7 @@ def test_the_two_time_sources_refuse_to_run_together():
     """
     unit = (ROOT / "deploy" / "systemd" / "openlaps-pps-gpio.service").read_text()
 
-    assert "Conflicts=timing-head-shim.service" in unit
+    assert "Conflicts=gnss-receiver-interface-shim.service" in unit
     assert "/usr/local/libexec/openlaps/pps_gpio_shim.py" in unit
     assert "EnvironmentFile=/etc/openlaps/pps-gpio.env" in unit
 

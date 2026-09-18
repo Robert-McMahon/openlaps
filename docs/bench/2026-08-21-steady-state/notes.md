@@ -39,8 +39,9 @@ starting. `pit_offset_s` for this run is −0.094 s.
   `--nft-command ""` and `--interface`, which is the tool's supported
   degradation and records `wire_source=procnetdev`.
 - **No GNSS discipline.** P4.8's chain is installed and working end to end —
-  `deploy/chrony/vehicle.conf` in place, `timing_head_shim` running, the
-  RP2040 emitting `TH1` at 1 Hz with the valid flag set — but the UM980 held
+  `deploy/chrony/vehicle.conf` in place, `gnss_receiver_interface_shim`
+  running, the RP2040 emitting `TH1` at 1 Hz with the valid flag set — but
+  the UM980 held
   no fix for the whole run. RMC status `V`, one satellite (PRN 18) at
   22 dB-Hz with no elevation or azimuth, i.e. noise-floor pickup rather than
   tracking. The PPS is fix-gated by design, so no fix means no pulse, and
@@ -60,10 +61,10 @@ starting. `pit_offset_s` for this run is −0.094 s.
 - `vcan0` did not survive a host reboot and had to be recreated; a first
   attempt at this run started without it, produced a GPS-only load, and was
   aborted 45 s in. Making the interface persistent is still outstanding.
-- The timing-head shim was pointed at `/dev/ttyACM0` while the RP2040 had the
-  **UART** firmware, which presents at `/dev/ttyS4`
-  (`firmware/timing-head/README.md`). Corrected in
-  `/etc/openlaps/timing-head.env`.
+- The GNSS receiver interface shim was pointed at `/dev/ttyACM0` while the
+  RP2040 had the **UART** firmware, which presents at `/dev/ttyS4`
+  (`firmware/gnss-receiver-interface/README.md`). Corrected in
+  `/etc/openlaps/gnss-receiver-interface.env`.
 - The bench profile's `catalog.yaml` had drifted from the example profile's
   again (PR #18); the pit was running two uncommitted local fixes that were
   not on `main` (PR #17). Both merged before this run.

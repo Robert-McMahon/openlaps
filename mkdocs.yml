@@ -36,7 +36,6 @@ nav:
       - Supported targets: hardware/index.md
       - Radxa X4: hardware/radxa-x4.md
       - Luckfox Omni3576: hardware/luckfox-omni3576.md
-      - RP2040 timing head: hardware/timing-head.md
   - Reference:
       - Reference index: reference/index.md
       - Wire format: WIRE_FORMAT.md
@@ -57,7 +56,7 @@ nav:
       - ADR 0005: adr/0005-single-tele-stream-per-channel-rbe.md
       - ADR 0006: adr/0006-pit-side-ntrip-rtcm-core-nats.md
       - ADR 0007: adr/0007-private-companion-repo-for-proprietary-exports.md
-      - ADR 0008: adr/0008-gnss-time-reference-rp2040-timing-head.md
+      - ADR 0008: adr/0008-rp2040-gnss-receiver-interface.md
       - ADR 0009: adr/0009-gnss-data-through-the-rp2040.md
       - ADR 0010: adr/0010-vehicle-targets-and-host-hardware-overlay.md
       - ADR 0011: adr/0011-pit-derived-data-and-the-alert-path.md

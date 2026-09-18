@@ -13,7 +13,7 @@
   "interval_s": 1.0,
   "nats_monitor": "http://127.0.0.1:8222",
   "notes": [
-    "P4.3 steady state, tick 20 ms. Probes phase-aligned to a common epoch. No radio in path (vehicle enp2s0 wired; pit reaches it via NAT on eth0). nft unavailable on both hosts (sudo denied), wire_source=procnetdev. Clock: NOT GNSS-traceable for this run -- vehicle chrony has the GPS refclock configured and the RP2040 timing head feeding it, but the UM980 reports fix void (RMC status V) so the fix-gated PPS is silent and the last GPS sample is stale; vehicle is on GPS holdover with NTP fallback. Pit chrony selects radx4.lan but WSL2 host clock overrides it. Measured inter-host offset 51.9 ms +/-9.0."
+    "P4.3 steady state, tick 20 ms. Probes phase-aligned to a common epoch. No radio in path (vehicle enp2s0 wired; pit reaches it via NAT on eth0). nft unavailable on both hosts (sudo denied), wire_source=procnetdev. Clock: NOT GNSS-traceable for this run -- vehicle chrony has the GPS refclock configured and the RP2040 GNSS receiver interface feeding it, but the UM980 reports fix void (RMC status V) so the fix-gated PPS is silent and the last GPS sample is stale; vehicle is on GPS holdover with NTP fallback. Pit chrony selects radx4.lan but WSL2 host clock overrides it. Measured inter-host offset 51.9 ms +/-9.0."
   ],
   "profile": {
     "catalog_sha256": "3abb3d5af9bc37053ff4816ee44274aff4dbfede3efcad0a8f72f391fa77ff6e",

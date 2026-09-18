@@ -125,7 +125,7 @@ class PpsConfig(StrictModel):
 
 
 class TimingOutputConfig(StrictModel):
-    """Spare UM980 serial port feeding the RP2040 timing head."""
+    """Spare UM980 serial port feeding the RP2040 GNSS receiver interface."""
 
     port: Literal["COM1", "COM2", "COM3"] = "COM2"
     baud: Literal[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600] = 115200

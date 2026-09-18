@@ -12,8 +12,9 @@
 #     sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=gpio
 #     sudo systemctl daemon-reload && sudo systemctl enable --now openlaps-pps-gpio
 #
-# **Run this or `timing-head-shim.service`, never both.** They feed the same
-# chrony SOCK refclock, and two sources on one socket is not redundancy: it is
+# **Run this or `gnss-receiver-interface-shim.service`, never both.** They
+# feed the same chrony SOCK refclock, and two sources on one socket is not
+# redundancy: it is
 # two opinions about the same second arriving interleaved, which chrony has no
 # way to separate. Pick the one the board is wired for.
 #
@@ -29,7 +30,7 @@ After=chrony.service
 Requires=chrony.service
 PartOf=chrony.service
 # Refuse to co-exist with the RP2040 bridge rather than quietly double-feeding.
-Conflicts=timing-head-shim.service
+Conflicts=gnss-receiver-interface-shim.service
 
 [Service]
 Type=simple

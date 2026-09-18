@@ -1,5 +1,5 @@
 [Unit]
-Description=openlaps RP2040 timing-head to chrony bridge
+Description=openlaps RP2040 GNSS receiver interface to chrony bridge
 Documentation=https://github.com/Robert-McMahon/openlaps
 After=chrony.service
 Requires=chrony.service
@@ -10,8 +10,8 @@ Type=simple
 User=openlaps
 Group=openlaps
 SupplementaryGroups=dialout
-EnvironmentFile=-/etc/openlaps/timing-head.env
-ExecStart=/usr/bin/python3 /usr/local/libexec/openlaps/timing_head_shim.py $TIMING_HEAD_ARGS
+EnvironmentFile=-/etc/openlaps/gnss-receiver-interface.env
+ExecStart=/usr/bin/python3 /usr/local/libexec/openlaps/gnss_receiver_interface_shim.py $GNSS_RECEIVER_INTERFACE_ARGS
 Restart=always
 RestartSec=1s
 NoNewPrivileges=true

@@ -216,7 +216,7 @@ new, all of it bench-run:
 1. **The SBC image**: a checkout, `uv sync`, and the docker image
    (`docker build -f deploy/Dockerfile -t openlaps:local .`). (~5 min)
 2. **Clock chain**: chrony (`deploy/chrony/vehicle.conf`), the flashed
-   RP2040 timing head (`firmware/timing-head/README.md`), and the shim
+   RP2040 GNSS receiver interface (`firmware/gnss-receiver-interface/README.md`), and the shim
    unit. Bench-verified — but **the fix-gated PPS has never had a fix**;
    the first sky view is the first real test of it (§5).
 3. **CAN**: `can0` up on the host before the agent —

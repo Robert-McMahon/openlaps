@@ -745,7 +745,7 @@
     },
     {
       "id": 109,
-      "title": "Vehicle clock — chrony and the GNSS timing head",
+      "title": "Vehicle clock — chrony and the GNSS receiver interface",
       "type": "row",
       "gridPos": {
         "x": 0,
@@ -844,7 +844,7 @@
           "rawSql": "SELECT now() AS \"time\",\n       (SELECT value_text\n          FROM v_samples_named\n         WHERE vehicle_id = '$vehicle' AND channel = 'sys.host.clock_source'\n           AND time >= now() - interval '30 seconds'\n           AND time <= now() + interval '1 second'\n         ORDER BY time DESC\n         LIMIT 1) AS \"value\""
         }
       ],
-      "description": "chrony's currently selected reference. GPS means the RP2040 timing head's PPS refclock is selected; anything else means it fell back to network NTP.",
+      "description": "chrony's currently selected reference. GPS means the RP2040 GNSS receiver interface's PPS refclock is selected; anything else means it fell back to network NTP.",
       "timeFrom": "5m",
       "hideTimeOverride": true,
       "transformations": [

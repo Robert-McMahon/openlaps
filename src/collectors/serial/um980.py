@@ -209,6 +209,6 @@ def _startup_commands(settings: Um980Settings) -> tuple[str, ...]:
         )
     if timing is not None:
         # ZDA names the PPS second. GGA supplies explicit fix validity so the
-        # timing head can stop immediately instead of trusting PPS holdover.
+        # GNSS receiver interface can stop immediately instead of trusting PPS holdover.
         commands.extend((f"GPZDA {timing.port} 1", f"GPGGA {timing.port} 1"))
     return tuple(commands)

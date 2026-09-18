@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bridge RP2040 timing-head samples into chrony's SOCK refclock protocol."""
+"""Bridge RP2040 GNSS receiver interface samples to chrony's SOCK refclock."""
 
 from __future__ import annotations
 
@@ -29,14 +29,14 @@ from chrony_sock import (  # noqa: E402
 
 MAX_FIRMWARE_DELAY_US = 900_000
 UINT32_MASK = (1 << 32) - 1
-logger = logging.getLogger("timing-head-shim")
+logger = logging.getLogger("gnss-receiver-interface-shim")
 
 __all__ = [
     "SOCK_MAGIC",
     "SOCK_SAMPLE",
     "ChronySocket",
     "ShimStats",
-    "TimingHeadShim",
+    "GnssReceiverInterfaceShim",
     "TimingMessage",
     "main",
     "pack_sock_sample",
@@ -65,7 +65,7 @@ class ShimStats:
 
 
 def parse_message(line: str | bytes) -> TimingMessage:
-    """Parse one versioned, whitespace-delimited timing-head message."""
+    """Parse one versioned, whitespace-delimited receiver-interface message."""
     if isinstance(line, bytes):
         line = line.decode("ascii", errors="strict")
     fields = line.strip().split()
@@ -84,8 +84,8 @@ def _is_newer_sequence(sequence: int, previous: int) -> bool:
     return 0 < difference < (1 << 31)
 
 
-class TimingHeadShim:
-    """Validate timing-head lines and send only trustworthy chrony samples."""
+class GnssReceiverInterfaceShim:
+    """Validate receiver-interface lines and send trustworthy chrony samples."""
 
     def __init__(self, sink: Callable[[bytes], object]) -> None:
         self._sink = sink
@@ -122,7 +122,7 @@ class TimingHeadShim:
 def run(device: str, baud: int, chrony_socket: str, *, reconnect_s: float = 1.0) -> None:
     """Read forever, degrading unplugged hardware and bad data to silence."""
     destination = ChronySocket(chrony_socket)
-    shim = TimingHeadShim(destination.send)
+    shim = GnssReceiverInterfaceShim(destination.send)
     try:
         while True:
             try:
@@ -138,7 +138,7 @@ def run(device: str, baud: int, chrony_socket: str, *, reconnect_s: float = 1.0)
                         shim.process_line(line, arrival_ns)
             except (OSError, serial.SerialException) as exc:
                 shim.stats.device_errors += 1
-                logger.warning("timing head unavailable: %s", exc)
+                logger.warning("GNSS receiver interface unavailable: %s", exc)
                 time.sleep(reconnect_s)
     finally:
         destination.close()

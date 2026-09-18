@@ -57,7 +57,7 @@ and needs a dedicated 3.3 V LDO rated about twice its draw
 
 **Signal levels are 3.3 V TTL**, so `TXD` and `PPS` go straight to pins 10
 and 11 with no level shifting — the same receiver drives RP2040 GPIOs
-directly on the X4 (`firmware/timing-head/README.md`, which also has the
+directly on the X4 (`firmware/gnss-receiver-interface/README.md`, which also has the
 WTRTK-980's connector pinout). Put bulk decoupling at the connector; the run
 to the receiver is not short.
 
@@ -232,7 +232,7 @@ for why that is not optional.
 ### 3. Clock: PPS into chrony
 
 `deploy/chrony/vehicle-pps.conf` is `vehicle.conf` with
-`refclock PPS /dev/pps0` in place of the SOCK refclock the X4's timing head
+`refclock PPS /dev/pps0` in place of the SOCK refclock the X4's GNSS receiver interface
 needs.
 
 ```bash

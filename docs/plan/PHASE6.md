@@ -565,7 +565,7 @@ when its parent changes.
 
 **Specs:** `src/agent/timing_app.py:186-192` (`timing.lap_elapsed`),
 `src/timing/timing_core.py` → `TimingEvent.time`, `docs/WIRE_FORMAT.md` →
-`lap.event`, `adr/0008-gnss-time-reference-rp2040-timing-head.md`,
+`lap.event`, `adr/0008-rp2040-gnss-receiver-interface.md`,
 `deploy/pit-config/live-decoder.yaml`.
 
 A pit-side clock that runs up smoothly from the last line crossing and is

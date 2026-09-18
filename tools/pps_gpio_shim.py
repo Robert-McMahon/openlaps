@@ -32,7 +32,7 @@ Samples go to chrony's SOCK refclock in the same `struct sock_sample` the
 RP2040 shim beside this one sends, through the same socket contract
 (`deploy/systemd/chrony-openlaps-sock.conf`). Chrony cannot tell the two
 apart, which is the point: `docs/BENCH_RUNBOOK.md`'s comparison can put this
-against a timing head on the same box and read one number.
+against a GNSS receiver interface on the same box and read one number.
 """
 
 from __future__ import annotations

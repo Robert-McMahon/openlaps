@@ -17,6 +17,7 @@ openlaps has two independently managed stacks joined by one NATS leafnode.
 4. Install and start the [vehicle](vehicle.md).
 5. Install and start the [pit](pit.md).
 6. Run every check in [Verify the stack](verification.md).
+7. Before an event without internet, fill the [pit image registry](registry.md).
 
 ## Network direction
 

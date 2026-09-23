@@ -26,6 +26,7 @@ nav:
       - Deployment overview: operations/index.md
       - Vehicle installation: operations/vehicle.md
       - Pit installation: operations/pit.md
+      - Pit image registry: operations/registry.md
       - Verify the stack: operations/verification.md
       - NATS security: operations/nats-security.md
       - Dashboard maintenance: operations/dashboards.md

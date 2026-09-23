@@ -18,6 +18,10 @@ docker build -f deploy/Dockerfile -t openlaps:local .
 cp example.env deploy/.env
 ```
 
+Or skip the build: point the vehicle's daemon at the
+[pit image registry](registry.md) and set `OPENLAPS_IMAGE` to the pit's
+`openlaps` image, which needs no internet on the car.
+
 Edit `deploy/.env`. At minimum, set the TLS directory, leafnode password,
 vehicle identifier and target-specific device paths. Keep comments on separate
 lines when copying values: Compose treats text after some blank assignments as

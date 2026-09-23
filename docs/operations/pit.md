@@ -44,6 +44,10 @@ Compose waits for TimescaleDB and NATS, runs the database migrations and stream
 provisioner once, then starts their dependants. The first Grafana start needs
 internet to download pinned plugins; later starts use the named volume.
 
+For an event with no uplink, start the [pit image registry](registry.md) and
+fill it while the pit is still online; every image the stack needs, and the
+openlaps image the vehicles pull, then comes from the pit.
+
 ## 4. Operator surfaces
 
 | Surface | URL |

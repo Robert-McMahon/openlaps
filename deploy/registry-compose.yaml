@@ -1,0 +1,62 @@
+# Pit image registry: the images the whole stack runs from, served on the
+# pit LAN, so nothing needs the internet to (re)start.
+#
+#     docker compose -f deploy/registry-compose.yaml up -d
+#     uv run tools/registry_sync.py            # fill it, while online
+#
+# Its own stack rather than a service in pit-compose.yaml because its
+# lifecycle is different: it has to be up before the pit stack is pulled,
+# it must survive `docker compose -f deploy/pit-compose.yaml down`, and it
+# needs none of the secrets pit-compose.yaml refuses to start without.
+#
+# Two uses, one registry (docs/operations/registry.md):
+#
+#   * A Docker Hub mirror. Every host's daemon lists it under
+#     `registry-mirrors`, so `nats:2.12-alpine` in a compose file resolves
+#     here first and only falls through to Docker Hub on a miss. That is
+#     why no `image:` line anywhere names this registry: the names stay the
+#     upstream ones and the mirror is a daemon-side detail. A plain
+#     registry can serve as a mirror because the daemon treats any mirror
+#     error, including "unknown manifest", as "try the next endpoint" --
+#     it does not have to be a pull-through cache, and deliberately is not
+#     one: a pull-through cache refuses pushes (so openlaps:local would
+#     need a second registry) and expires content on a timer, which is
+#     precisely what an offline pit cannot afford.
+#   * The home of the openlaps image the pit builds. The vehicles never
+#     build it -- the build needs PyPI and ghcr.io -- they pull
+#     `<pit>:5000/openlaps:<tag>` via OPENLAPS_IMAGE in their .env.
+#
+# Plain HTTP on the pit LAN, the same trust boundary the rest of the stack's
+# published ports already sit on; the daemons that use it list it under
+# `insecure-registries`. There is no authentication: anything on the LAN can
+# push. Put a TLS cert and htpasswd in front of it before exposing it any
+# wider than the pit network.
+#
+# The registry image itself cannot come from the registry. It lives in the
+# pit daemon's local cache like any other image; `docker save` it somewhere
+# if the pit might have to rebuild its Docker install with no uplink.
+
+name: openlaps-registry
+
+services:
+  registry:
+    image: registry:${REGISTRY_IMAGE_TAG:-3.1.1}
+    ports:
+      - "${OPENLAPS_REGISTRY_PORT:-5000}:5000"
+    environment:
+      # Lets `registry garbage-collect` reclaim the layers of openlaps tags
+      # that have been superseded; without it deletes are refused.
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - registry-data:/var/lib/registry
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:5000/v2/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  # Every layer the stack needs, once. `docker compose down` keeps it;
+  # `down -v` is the one command that empties the pit's offline supply.
+  registry-data:

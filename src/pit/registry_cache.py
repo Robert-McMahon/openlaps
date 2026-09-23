@@ -118,6 +118,15 @@ class RegistryCache:
         """
         batch = pb.SampleBatch()
         batch.ParseFromString(payload)
+        return self.decode_batch(batch)
+
+    def decode_batch(self, batch: pb.SampleBatch) -> tuple[DecodedBatch | None, str | None]:
+        """`decode_or_reason` for a batch the caller has already parsed.
+
+        Consumers that gate on a header field first -- the watch drops a
+        stale batch on `batch_epoch_unix_ms` before caring which generation
+        it belongs to -- parse once and pass the message in here.
+        """
         if batch.format_version not in SUPPORTED_FORMAT_VERSIONS:
             self.bad_version_batches += 1
             if batch.format_version not in self.bad_versions:

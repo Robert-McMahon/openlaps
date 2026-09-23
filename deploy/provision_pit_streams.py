@@ -51,13 +51,57 @@ DEFAULT_SOURCE_STREAM = os.environ.get("OPENLAPS_VEHICLE_STREAM", "TELE")
 DEFAULT_DOMAIN = os.environ.get("OPENLAPS_VEHICLE_JS_DOMAIN", "veh")
 
 # The pit stream is a buffer in front of Timescale, not an archive -- ADR
-# 0003 makes the database the archive. It has to hold everything ingest
-# might miss while it is down (a service restart, a schema migration, a
-# machine reboot), and no more. A day covers all of those with room to
-# spare; the size cap is the backstop for a runaway producer and should be
+# 0003 makes the database the archive. Even so its age cap must be at least
+# the vehicle's (OPENLAPS_TELE_MAX_AGE_H, 72 h), and the reason is how
+# nats-server resumes a source. It keeps no separate cursor: on restart it
+# finds where it was by scanning the pit stream for the newest message
+# carrying a `Nats-Stream-Source` header, and an *empty* pit stream resumes
+# from the vehicle's oldest message. With a shorter pit cap, a pit outage
+# longer than that cap but shorter than the vehicle's empties the pit
+# stream and re-pulls the vehicle's whole window -- including the part the
+# pit had already archived. Those messages arrive under new pit sequence
+# numbers, above the ingest cursor that is the writer's only idempotency
+# (`src/pit/ingest_writer/writer.py`), and `samples` has no unique key, so
+# they land as duplicate rows. Matching the vehicle closes both cases: an
+# outage shorter than the cap leaves messages to resume from, and one
+# longer than the vehicle's window means everything it still holds is new.
+# The size cap remains the backstop for a runaway producer and should be
 # set from the pit's actual free disk.
-DEFAULT_MAX_AGE_H = float(os.environ.get("OPENLAPS_PIT_STREAM_MAX_AGE_H", "24"))
+DEFAULT_MAX_AGE_H = float(os.environ.get("OPENLAPS_PIT_STREAM_MAX_AGE_H", "72"))
 DEFAULT_MAX_BYTES = int(os.environ.get("OPENLAPS_PIT_STREAM_MAX_BYTES", str(32 * 1024**3)))
+
+
+def retention_shortfall(pit_max_age_s: float, vehicle_max_age_s: float) -> str | None:
+    """Why the pit's age cap is unsafe against the vehicle's, or None if it is not.
+
+    A `max_age` of 0 means unlimited on both sides.
+    """
+    pit_unlimited = pit_max_age_s <= 0
+    vehicle_unlimited = vehicle_max_age_s <= 0
+    if pit_unlimited or (not vehicle_unlimited and pit_max_age_s >= vehicle_max_age_s):
+        return None
+    vehicle = "unlimited" if vehicle_unlimited else f"{vehicle_max_age_s / 3600:g} h"
+    return (
+        f"pit stream max_age {pit_max_age_s / 3600:g} h is shorter than the vehicle "
+        f"stream's {vehicle}: a pit outage longer than the pit cap empties the pit "
+        "stream, and the source then resumes from the vehicle's oldest message, "
+        "re-ingesting data Timescale already holds as duplicate rows. Set "
+        "OPENLAPS_PIT_STREAM_MAX_AGE_H to at least OPENLAPS_TELE_MAX_AGE_H."
+    )
+
+
+async def source_max_age_s(client, source_stream: str, domain: str) -> float | None:
+    """The vehicle stream's age cap in seconds, read across the leafnode.
+
+    None when the vehicle is not reachable right now (leafnode down, stream
+    not yet created): the check is advisory and must not block bring-up.
+    """
+    try:
+        info = await client.jetstream(domain=domain).stream_info(source_stream)
+    except Exception as exc:  # noqa: BLE001 - any failure means "cannot tell"
+        logger.info("could not read %s over $JS.%s.API: %s", source_stream, domain, exc)
+        return None
+    return float(info.config.max_age or 0)
 
 
 def pit_stream_config(
@@ -135,6 +179,7 @@ async def run(args: argparse.Namespace) -> int:
     client = await nats.connect(args.server, user_credentials=args.creds or None)
     try:
         info = await ensure_pit_stream(client.jetstream(), config)
+        vehicle_max_age = await source_max_age_s(client, args.source_stream, args.domain)
     finally:
         await client.close()
     print(
@@ -143,6 +188,11 @@ async def run(args: argparse.Namespace) -> int:
         f"{info.state.bytes} bytes",
         file=sys.stderr,
     )
+    if vehicle_max_age is not None:
+        shortfall = retention_shortfall(float(info.config.max_age or 0), vehicle_max_age)
+        if shortfall:
+            # Advisory: bring-up continues, but every run says so until fixed.
+            print(f"WARNING: {shortfall}", file=sys.stderr)
     if info.config.subjects:
         # Refuse to leave a double-capturing stream in place silently.
         print(

@@ -16,7 +16,7 @@ def test_vehicle_chrony_prefers_sock_refclock_and_keeps_ntp_fallback():
 
 def test_pit_chrony_uses_the_vehicle_sbc():
     config = (ROOT / "deploy" / "chrony" / "pit.conf").read_text(encoding="utf-8")
-    assert "server 192.168.12.176 iburst prefer" in config
+    assert "server 192.168.12.222 iburst prefer" in config
 
 
 def test_pit_install_docs_install_and_restart_chrony():
@@ -27,9 +27,9 @@ def test_pit_install_docs_install_and_restart_chrony():
 
 
 def test_gnss_receiver_interface_service_waits_for_chrony_and_restarts():
-    unit = (
-        ROOT / "deploy" / "systemd" / "gnss-receiver-interface-shim.service"
-    ).read_text(encoding="utf-8")
+    unit = (ROOT / "deploy" / "systemd" / "gnss-receiver-interface-shim.service").read_text(
+        encoding="utf-8"
+    )
     assert "After=chrony.service" in unit
     assert "Requires=chrony.service" in unit
     assert "PartOf=chrony.service" in unit
@@ -47,9 +47,7 @@ def test_gnss_receiver_interface_service_waits_for_chrony_and_restarts():
 
 
 def test_uart_build_uses_the_x4_internal_uart_and_leaves_uart1_for_the_um980():
-    source = (ROOT / "firmware" / "gnss-receiver-interface" / "main.c").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "firmware" / "gnss-receiver-interface" / "main.c").read_text(encoding="utf-8")
     readme = (ROOT / "docs" / "hardware" / "radxa-x4.md").read_text(encoding="utf-8")
 
     assert "#define TIMING_HOST_UART uart0" in source

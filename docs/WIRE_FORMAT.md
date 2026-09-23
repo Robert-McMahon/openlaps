@@ -120,7 +120,7 @@ name is deploy-time configuration on each of them
 | Subjects | **none** | See below — a sourced stream that also declares `tele.<vehicle>.>` captures every message twice |
 | Sources | `TELE`, `external.api = "$JS.veh.API"` | Cross-domain sourcing over the leafnode; `veh` is the vehicle server's JetStream domain |
 | Storage | File | Survives a pit reboot without re-sourcing from the start |
-| Retention | Limits, age ~24 h and a size cap from pit disk | A buffer in front of Timescale, not an archive — the database is the archive (ADR 0003), so the vehicle's 72 h does not apply |
+| Retention | Limits, age ≥ the vehicle's 72 h and a size cap from pit disk | A buffer in front of Timescale, not an archive — the database is the archive (ADR 0003). The age cap still matches the vehicle's because nats-server resumes a source from the newest sourced message it holds: an empty pit stream restarts from the vehicle's oldest message and re-ingests data already archived (duplicate `samples` rows — the writer's idempotency is its stream-sequence cursor, and re-sourced messages get new sequences). The provisioner warns when the pit's cap is the shorter |
 | Replicas | 1 | Single pit node |
 
 **Why it declares no subjects.** The leafnode propagates

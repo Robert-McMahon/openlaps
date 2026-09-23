@@ -14,10 +14,12 @@ from pathlib import Path
 
 import aiomqtt
 from google.protobuf.message import DecodeError
+from nats import errors as nats_errors
 from nats.aio.client import Client as NatsClient
 from nats.aio.msg import Msg
 from nats.js import api
 
+from core.pb import telemetry_pb2 as pb
 from pit.db.dsn import dsn_from_env
 from pit.registry_cache import MSG_TYPE_HEADER, MSG_TYPE_REGISTRY, RegistryCache
 from pit.watch.config import load_config
@@ -26,6 +28,15 @@ from pit.watch.health import Health, serve_health
 from pit.watch.store import WatchStore
 
 log = logging.getLogger(__name__)
+
+# The live window. A batch whose epoch is older than this is backfill -- a
+# source catch-up after a pit outage arrives as "new" messages and can run
+# at thousands per second for minutes -- and is skipped before any registry
+# lookup or decode. Newer than the future tolerance is a clock fault.
+BACKFILL_MAX_AGE_S = 30.0
+FUTURE_TOLERANCE_S = 5.0
+# How often, at most, a burst of slow-consumer drops is written to the log.
+DROP_LOG_INTERVAL_S = 60.0
 
 
 @dataclass
@@ -77,13 +88,28 @@ class WatchService:
         self.pending: list[tuple] = []
         self.sequence = 0
         self.outbox: asyncio.Queue = asyncio.Queue(maxsize=2 * len(self.config.monitors))
+        # Set once startup registry hydration is done; the subscription
+        # callback holds every batch behind it so none meets an empty cache.
+        self.ready = asyncio.Event()
+        self._last_drop_log = -DROP_LOG_INTERVAL_S
 
     def handle(self, message: Msg) -> None:
         try:
             if (message.headers or {}).get(MSG_TYPE_HEADER) == MSG_TYPE_REGISTRY:
                 self.cache.add(message.data)
                 return
-            batch = self.cache.decode(message.data)
+            raw = pb.SampleBatch()
+            raw.ParseFromString(message.data)
+            now = time.time()
+            epoch = raw.batch_epoch_unix_ms / 1000
+            if epoch < now - BACKFILL_MAX_AGE_S or epoch > now + FUTURE_TOLERANCE_S:
+                # Bounded live consumer: backfill is archived by ingest-writer,
+                # never learned as today's operating condition. Decided on the
+                # batch header so a replay costs one parse per batch, not a
+                # registry lookup and a per-sample loop.
+                self.health.backfill_skipped += 1
+                return
+            batch, _ = self.cache.decode_batch(raw)
             self.health.unknown_registry = self.cache.unknown_seq_batches
             self.health.bad_version = self.cache.bad_version_batches
             if batch is None:
@@ -92,9 +118,8 @@ class WatchService:
                 if sample.channel.name not in self.engine.input_channels:
                     continue
                 at = sample.capture_unix_ms / 1000
-                # Bounded live consumer: radio backfill is archived by ingest-writer,
-                # never learned as today's current operating condition.
-                if at < time.time() - 30 or at > time.time() + 5:
+                # Samples carry their own capture time within the batch.
+                if at < now - BACKFILL_MAX_AGE_S or at > now + FUTURE_TOLERANCE_S:
                     self.health.dropped += 1
                     continue
                 if len(self.pending) >= 50000:
@@ -104,6 +129,39 @@ class WatchService:
                 heapq.heappush(self.pending, (at, self.sequence, sample))
         except (DecodeError, ValueError, TypeError):
             self.health.malformed += 1
+
+    async def _on_message(self, message: Msg) -> None:
+        """Subscription callback: nats-py drains its queue through here.
+
+        A callback subscription is what keeps this service afloat under a
+        flood. With `next_msg` the consumer took one message per event-loop
+        turn while the reader appended a whole socket read per turn, so any
+        sustained burst filled the client buffer and every later message was
+        dropped; the callback task drains the queue without yielding between
+        messages, so `handle` sets the ceiling, not loop fairness.
+        """
+        await self.ready.wait()
+        self.handle(message)
+
+    async def _nats_error(self, exc: Exception) -> None:
+        """nats-py error callback: count drops, log everything else.
+
+        The client's default callback logs every discarded message with a
+        traceback, from inside the read loop, on the event loop. During a
+        replay that is thousands of blocking stderr writes a second, which
+        starved the consumer and the tick loop and made the flood worse.
+        """
+        if isinstance(exc, nats_errors.SlowConsumerError):
+            self.health.slow_consumer_drops += 1
+            now = time.monotonic()
+            if now - self._last_drop_log >= DROP_LOG_INTERVAL_S:
+                self._last_drop_log = now
+                log.warning(
+                    "watch is behind its NATS subscription: %d messages dropped so far",
+                    self.health.slow_consumer_drops,
+                )
+            return
+        log.error("watch NATS error: %r", exc)
 
     def _stints(self) -> dict[str, int]:
         """The checkpoint slot per monitor: the stint for stint_start baselines, else 0."""
@@ -269,6 +327,7 @@ class WatchService:
                 max_reconnect_attempts=-1,
                 disconnected_cb=disconnected,
                 reconnected_cb=reconnected,
+                error_cb=self._nats_error,
             )
             if self.settings.nats_creds:
                 options["user_credentials"] = self.settings.nats_creds
@@ -276,10 +335,11 @@ class WatchService:
             self.health.nats_connected = True
             js = client.jetstream()
             # Subscribe first so telemetry arriving during registry hydration is
-            # queued rather than falling into a startup gap.
-            sub = await js.subscribe(
+            # queued (behind `ready`) rather than falling into a startup gap.
+            await js.subscribe(
                 f"tele.{self.settings.vehicle}.>",
                 stream=self.settings.stream,
+                cb=self._on_message,
                 ordered_consumer=True,
                 deliver_policy=api.DeliverPolicy.NEW,
             )
@@ -297,12 +357,9 @@ class WatchService:
                         break
             finally:
                 await registries.unsubscribe()
+            self.ready.set()
             tasks = [asyncio.create_task(self._ticks(stop)), asyncio.create_task(self._mqtt(stop))]
-            while not stop.is_set():
-                try:
-                    self.handle(await sub.next_msg(timeout=0.2))
-                except TimeoutError:
-                    pass
+            await stop.wait()
         finally:
             stop.set()
             # Let the DB worker complete its transaction before closing its

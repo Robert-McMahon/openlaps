@@ -196,6 +196,17 @@ at `http://localhost:8090/health`. Repeat into a new test session with
 The injector changes only replayed oil pressure, before mapping/RBE, by 0.7;
 it never edits the recording. It applies per replay cycle.
 
+`/health` also carries the consumer's own counters. `backfill_skipped` is
+batches whose epoch is older than 30 s, skipped on the batch header before
+any registry lookup: a source catch-up after a pit outage arrives as new
+messages, at thousands per second, and is the ingest-writer's to archive, not
+the watch's to learn. `slow_consumer_drops` is messages the NATS client
+discarded because the service fell behind; it is logged at most once a
+minute, and a value that keeps rising means the watch cannot keep up with the
+stream. `dropped` counts individual samples outside the live window inside an
+otherwise live batch; `unknown_registry`, `bad_version` and `malformed` are
+the decode refusals from `docs/WIRE_FORMAT.md`.
+
 `watch-critical` and `watch-warning` in `alarms.yaml` select open findings by
 exact severity, avoiding duplicate warning notifications for a critical fault.
 The generator preserves its existing `severity_at_least` option for callers

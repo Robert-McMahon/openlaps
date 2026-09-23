@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import json
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -491,3 +492,72 @@ def test_stored_file_loads_without_relearning(tmp_path, monkeypatch):
     assert service.engine.monitors["oil"].frozen
     assert service.engine.monitors["oil"].learned == 5
     assert service.engine.monitors["oil"].source_session == "past-event"
+
+
+def test_backfill_is_skipped_on_the_batch_header_before_any_registry_lookup(monkeypatch):
+    """A source catch-up after a pit outage arrives as "new" messages, at rate.
+
+    The gate is the batch epoch, read from the header of a single parse, so a
+    replay of days-old data never reaches the registry cache, never logs an
+    unknown generation and never loops over samples.
+    """
+    service = WatchService(Settings(PROFILE / "watch.yaml", "test", "unused"))
+    monkeypatch.setattr("pit.watch.service.time.time", lambda: 100)
+    stale = pb.SampleBatch(registry_seq=9, batch_epoch_unix_ms=40_000)  # a minute old
+    service.handle(SimpleNamespace(headers={}, data=stale.SerializeToString()))
+    future = pb.SampleBatch(registry_seq=9, batch_epoch_unix_ms=110_000)  # clock fault
+    service.handle(SimpleNamespace(headers={}, data=future.SerializeToString()))
+    assert service.health.backfill_skipped == 2
+    assert service.health.unknown_registry == 0, "the cache was never consulted"
+    assert service.cache.unknown_seqs == set()
+    live = pb.SampleBatch(registry_seq=9, batch_epoch_unix_ms=99_000)
+    service.handle(SimpleNamespace(headers={}, data=live.SerializeToString()))
+    assert service.health.unknown_registry == 1
+    assert service.health.backfill_skipped == 2
+    assert service.health.snapshot()["backfill_skipped"] == 2
+
+
+def test_slow_consumer_drops_are_counted_and_logged_at_most_once_a_minute(monkeypatch, caplog):
+    """nats-py's default callback logs a traceback per dropped message.
+
+    Under a flood that was thousands of blocking stderr writes a second from
+    inside the read loop, which starved the consumer and made the flood
+    worse. Drops are a counter on /health and one warning per minute.
+    """
+    from nats import errors as nats_errors
+
+    service = WatchService(Settings(PROFILE / "watch.yaml", "test", "unused"))
+    clock = [1000.0]
+    monkeypatch.setattr("pit.watch.service.time.monotonic", lambda: clock[0])
+    drop = nats_errors.SlowConsumerError(subject="tele.test.serial0", reply="", sid=2, sub=None)
+    with caplog.at_level(logging.WARNING, logger="pit.watch.service"):
+        for _ in range(500):
+            asyncio.run(service._nats_error(drop))
+        clock[0] += 61
+        asyncio.run(service._nats_error(drop))
+        asyncio.run(service._nats_error(RuntimeError("handler bug")))
+    assert service.health.slow_consumer_drops == 501
+    assert service.health.snapshot()["slow_consumer_drops"] == 501
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings == [
+        "watch is behind its NATS subscription: 1 messages dropped so far",
+        "watch is behind its NATS subscription: 501 messages dropped so far",
+    ]
+    errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert errors == ["watch NATS error: RuntimeError('handler bug')"]
+
+
+def test_batches_wait_behind_startup_registry_hydration():
+    service = WatchService(Settings(PROFILE / "watch.yaml", "test", "unused"))
+    handled = []
+    service.handle = handled.append
+
+    async def scenario():
+        task = asyncio.create_task(service._on_message("batch"))
+        await asyncio.sleep(0)
+        assert handled == [], "held until the registry cache is hydrated"
+        service.ready.set()
+        await task
+        assert handled == ["batch"]
+
+    asyncio.run(scenario())

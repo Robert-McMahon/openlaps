@@ -16,6 +16,12 @@ class Health:
         self.dropped = 0
         self.unknown_registry = 0
         self.bad_version = 0
+        # Batches older than the live window, skipped before any decode: a
+        # source catch-up after a pit outage arrives as "new" messages.
+        self.backfill_skipped = 0
+        # Messages the NATS client discarded because this service fell
+        # behind. Counted, not logged per message: see WatchService._nats_error.
+        self.slow_consumer_drops = 0
 
     def snapshot(self) -> dict:
         return dict(
@@ -32,6 +38,8 @@ class Health:
             dropped=self.dropped,
             unknown_registry=self.unknown_registry,
             bad_version=self.bad_version,
+            backfill_skipped=self.backfill_skipped,
+            slow_consumer_drops=self.slow_consumer_drops,
         )
 
 

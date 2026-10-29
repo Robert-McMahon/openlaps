@@ -193,7 +193,7 @@ def _nats_server(*docker_args: str, server_args: tuple[str, ...] = ("-js",)):
             pytest.skip("nats container did not become ready")
         yield f"nats://127.0.0.1:{port}"
     finally:
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+        subprocess.run(["docker", "rm", "-fv", name], capture_output=True)
 
 
 @pytest.fixture
@@ -272,7 +272,10 @@ def timescale_dsn():
             pytest.skip("timescale container did not become ready")
         yield dsn
     finally:
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+        # `-v` matters: a forced remove skips `--rm`'s own cleanup, and the
+        # image's anonymous data volume (~70 MB of Postgres) would be left
+        # behind on every run.
+        subprocess.run(["docker", "rm", "-fv", name], capture_output=True)
 
 
 @pytest.fixture
@@ -324,7 +327,7 @@ def mosquitto_url():
             pytest.skip("mosquitto container did not become ready")
         yield f"mqtt://127.0.0.1:{port}"
     finally:
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+        subprocess.run(["docker", "rm", "-fv", name], capture_output=True)
 
 
 # --- the leafnode pair (P3.6) ------------------------------------------------
@@ -499,6 +502,6 @@ def leafnode_pair():
         )
     finally:
         for name in (pit, vehicle):
-            _docker("rm", "-f", name)
+            _docker("rm", "-fv", name)
         for network in (leaf_net, client_net):
             _docker("network", "rm", network)

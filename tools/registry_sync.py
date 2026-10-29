@@ -186,7 +186,11 @@ def compose_images(stack: Stack) -> list[str]:
         cmd += ["-f", str(path)]
     if stack.all_profiles:
         cmd += ["--profile", "*"]
-    cmd += ["config", "--images"]
+    # `--no-env-resolution`: image names never come from a service's
+    # `env_file`, and a fresh checkout (CI) has no deploy/.env. Compose 5
+    # refuses `config --images` when that file is missing; older versions
+    # did not read it for this subcommand at all.
+    cmd += ["config", "--images", "--no-env-resolution"]
     env = os.environ | required_placeholders(list(stack.files))
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if result.returncode != 0:

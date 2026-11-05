@@ -16,16 +16,26 @@ class NmeaDecodeStats:
 
     sentences: int = 0
     rmc_sentences: int = 0
+    gga_sentences: int = 0
+    gst_sentences: int = 0
     ignored_sentences: int = 0
     malformed_sentences: int = 0
 
 
 class NmeaDecoder:
-    """Decode NMEA RMC sentences into source-native telemetry values."""
+    """Decode NMEA RMC, GGA and GST sentences into source-native values.
+
+    RMC carries the high-rate fix (position, speed over ground, course).
+    GGA adds altitude, satellite count, HDOP and the numeric fix quality;
+    GST adds the receiver's own 1-sigma position error estimates. The
+    sensor-fusion app weights fixes by GST and takes altitude from GGA.
+    """
 
     def __init__(self, source_name: str, device: str) -> None:
         self.stats = NmeaDecodeStats()
         self._prefix = f"{source_name}:{device}.RMC."
+        self._gga_prefix = f"{source_name}:{device}.GGA."
+        self._gst_prefix = f"{source_name}:{device}.GST."
 
     def decode(self, sentence: bytes | str) -> list[tuple[str, SampleValue]]:
         """Decode one complete sentence, returning no values for bad input."""
@@ -38,7 +48,12 @@ class NmeaDecoder:
             ).strip()
             body = _validated_body(text)
             fields = body.split(",")
-            if not fields or not fields[0].endswith("RMC"):
+            talker_type = fields[0][-3:] if fields else ""
+            if talker_type == "GGA":
+                return self._decode_gga(fields)
+            if talker_type == "GST":
+                return self._decode_gst(fields)
+            if talker_type != "RMC":
                 self.stats.ignored_sentences += 1
                 return []
             if len(fields) < 12:
@@ -68,6 +83,59 @@ class NmeaDecoder:
             (self._prefix + "speed", speed),
             (self._prefix + "heading", heading),
             (self._prefix + "mode", mode),
+        ]
+
+    def _decode_gga(self, fields: list[str]) -> list[tuple[str, SampleValue]]:
+        # $xxGGA,time,lat,N,lon,E,quality,numSV,HDOP,alt,M,sep,M,diffAge,diffStation
+        try:
+            if len(fields) < 12:
+                raise ValueError("GGA sentence has too few fields")
+            quality = int(fields[6])
+            if quality == 0:
+                raise ValueError("GGA reports no fix")
+            satellites = int(fields[7])
+            hdop = float(fields[8])
+            altitude = float(fields[9])
+            separation = float(fields[11]) if fields[11] else 0.0
+            if not all(math.isfinite(v) for v in (hdop, altitude, separation)):
+                raise ValueError("GGA contains a non-finite number")
+            if satellites < 0 or hdop < 0:
+                raise ValueError("GGA value is out of range")
+        except (ValueError, IndexError):
+            self.stats.malformed_sentences += 1
+            return []
+        self.stats.gga_sentences += 1
+        prefix = self._gga_prefix
+        return [
+            (prefix + "alt", altitude),
+            (prefix + "geoid_sep", separation),
+            (prefix + "sats", satellites),
+            (prefix + "hdop", hdop),
+            (prefix + "quality", quality),
+        ]
+
+    def _decode_gst(self, fields: list[str]) -> list[tuple[str, SampleValue]]:
+        # $xxGST,time,rms,stdMajor,stdMinor,orient,stdLat,stdLon,stdAlt
+        try:
+            if len(fields) < 9:
+                raise ValueError("GST sentence has too few fields")
+            if not (fields[6] and fields[7] and fields[8]):
+                raise ValueError("GST has no error estimate")
+            std_lat = float(fields[6])
+            std_lon = float(fields[7])
+            std_alt = float(fields[8])
+            values = (std_lat, std_lon, std_alt)
+            if not all(math.isfinite(v) and v >= 0 for v in values):
+                raise ValueError("GST error estimate is out of range")
+        except (ValueError, IndexError):
+            self.stats.malformed_sentences += 1
+            return []
+        self.stats.gst_sentences += 1
+        prefix = self._gst_prefix
+        return [
+            (prefix + "lat_std", std_lat),
+            (prefix + "lon_std", std_lon),
+            (prefix + "alt_std", std_alt),
         ]
 
 

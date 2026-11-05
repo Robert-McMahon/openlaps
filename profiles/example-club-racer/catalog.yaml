@@ -222,6 +222,19 @@ channels:
   position.speed: { from: "serial0:um980.RMC.speed", units: "km/h" }
   position.heading: { from: "serial0:um980.RMC.heading", units: "deg" }
   position.fix_quality: { from: "serial0:um980.RMC.mode", type: string }
+  # GGA at 10 Hz: altitude above mean sea level (the geoid separation turns it
+  # into ellipsoidal height), satellites used, HDOP and the numeric fix quality
+  # (1=SPP, 2=DGPS, 4=RTK fixed, 5=RTK float, 6=dead reckoning).
+  position.alt: { from: "serial0:um980.GGA.alt", units: "m" }
+  position.geoid_sep: { from: "serial0:um980.GGA.geoid_sep", units: "m" }
+  position.sats: { from: "serial0:um980.GGA.sats", type: int }
+  position.hdop: { from: "serial0:um980.GGA.hdop" }
+  position.gga_quality: { from: "serial0:um980.GGA.quality", type: int }
+  # GST at 10 Hz: the receiver's own 1-sigma position error, which the fusion
+  # app uses to weight each fix instead of guessing from the fix mode.
+  position.lat_std: { from: "serial0:um980.GST.lat_std", units: "m" }
+  position.lon_std: { from: "serial0:um980.GST.lon_std", units: "m" }
+  position.alt_std: { from: "serial0:um980.GST.alt_std", units: "m" }
 
   # ---- Clock health: chrony's selected source and current error bound ----
   sys.host.clock_offset_s: { from: "host:clock_offset_s", units: "s" }

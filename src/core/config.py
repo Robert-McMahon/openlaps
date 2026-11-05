@@ -142,9 +142,23 @@ class Um980Settings(StrictModel):
 
     rate_hz: Annotated[int, Field(gt=0)]
     sentences: list[_NON_EMPTY] = Field(min_length=1)
+    # Per-sentence overrides of `rate_hz`, e.g. {GGA: 10, GST: 10}. At
+    # 115200 baud, RMC + GGA + GST all at 50 Hz would fill ~95% of the link;
+    # the accuracy and altitude sentences don't need the full fix rate.
+    sentence_rates_hz: dict[_NON_EMPTY, Annotated[int, Field(gt=0)]] = Field(default_factory=dict)
     configure_on_start: bool
     pps: PpsConfig | None = None
     timing_output: TimingOutputConfig | None = None
+
+    @model_validator(mode="after")
+    def rate_overrides_name_configured_sentences(self) -> Um980Settings:
+        configured = {sentence.upper() for sentence in self.sentences}
+        unknown = sorted(s for s in self.sentence_rates_hz if s.upper() not in configured)
+        if unknown:
+            raise ValueError(
+                f"sentence_rates_hz names sentences not in `sentences`: {', '.join(unknown)}"
+            )
+        return self
 
 
 class Um980DriverConfig(StrictModel):

@@ -42,7 +42,11 @@ serial:
       name: um980
       config:
         rate_hz: 50
-        sentences: [RMC]
+        # RMC is the high-rate fix. GGA (altitude, sats, HDOP) and GST (the
+        # receiver's 1-sigma position error) feed the sensor-fusion app; at
+        # 10 Hz they add ~1.5 kB/s, keeping the 115200 link under half full.
+        sentences: [RMC, GGA, GST]
+        sentence_rates_hz: { GGA: 10, GST: 10 }
         configure_on_start: true
         # UM980 command manual §4.32 (printed p56): GPS-referenced, active-high
         # 1 Hz PPS. ENABLE suppresses output until the receiver has a fix.

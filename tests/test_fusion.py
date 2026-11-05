@@ -184,3 +184,99 @@ def test_latency_compensation_matters_at_speed():
     rms = lambda r: float(np.sqrt(np.mean(r.pos_err[w] ** 2)))  # noqa: E731
     assert rms(compensated) < 0.05
     assert rms(naive) > 3 * rms(compensated)
+
+
+# ---- IMU failover -----------------------------------------------------------
+
+
+def _track(sensors: SensorModel, duration: float, mutate=None):
+    """Run the engine, recording (t, status, IMU-position error) per output."""
+    events, truth, frame = simulate(lap_profile(), duration, sensors)
+    if mutate is not None:
+        events = mutate(events)
+    engine = FusionEngine(
+        EngineSettings(antenna_lever_arm=sensors.lever_arm, latency_s=sensors.gnss_latency_s)
+    )
+    rows: list[tuple[float, str, float]] = []
+
+    def record(t: float) -> None:
+        out = engine.output()
+        if out is None or out.lat is None:
+            return
+        i = truth.at(t)
+        ned = frame.to_ned(out.lat, out.lon)
+        rows.append((t, out.status, float(np.linalg.norm(ned[:2] - truth.p[i, :2]))))
+
+    for event in events:
+        if event.kind == "imu":
+            engine.imu(event.t, *event.data)
+        elif event.kind == "fix":
+            engine.gnss_fix(event.t, *event.data)
+            record(event.t)  # outputs sampled at the fix rate in every mode
+        elif event.kind == "alt":
+            engine.gnss_alt(event.t, *event.data)
+        else:
+            engine.gnss_std(event.t, *event.data)
+    return engine, rows
+
+
+def _in(rows, lo, hi):
+    return [r for r in rows if lo <= r[0] < hi]
+
+
+def test_silent_imu_fails_over_to_gnss_and_realigns_when_it_returns():
+    engine, rows = _track(replace(SENSORS, imu_outages=((40.0, 50.0),)), 65.0)
+
+    during = _in(rows, 40.5, 50.0)
+    assert {r[1] for r in during} == {"gnss_only"}
+    # Passthrough has no attitude: moving a 1.2 m lever arm by course alone
+    # ignores ~3.5 deg of sideslip and ~2.7 deg of roll at 1.5 g, worth
+    # 10-15 cm on top of receiver noise. Still far better than the metre-
+    # plus a raw fix would be off at speed without latency projection.
+    assert max(r[2] for r in during) < 0.25
+    assert engine.stats.imu_failovers == 1
+    assert engine.stats.alignments == 2
+    after = _in(rows, 55.0, 65.0)
+    assert {r[1] for r in after} == {"rtk_fixed"}
+    assert max(r[2] for r in after) < 0.1
+
+
+def test_frozen_imu_is_detected_while_moving():
+    engine, rows = _track(replace(SENSORS, imu_frozen=((40.0, 46.0),)), 46.0)
+    assert engine.stats.imu_failovers == 1
+    assert {r[1] for r in _in(rows, 41.0, 46.0)} == {"gnss_only"}
+
+
+def test_impossible_imu_values_trigger_failover():
+    def corrupt(events):
+        out = []
+        for e in events:
+            if e.kind == "imu" and 40.0 <= e.t < 42.0:
+                f, w = e.data
+                e = SimEvent(e.t, "imu", (np.array([np.nan, f[1], f[2]]), w))
+            out.append(e)
+        return out
+
+    engine, rows = _track(SENSORS, 45.0, mutate=corrupt)
+    assert engine.stats.imu_failovers == 1
+    assert engine.stats.imu_bad_samples > 100
+    assert {r[1] for r in _in(rows, 40.5, 42.0)} == {"gnss_only"}
+
+
+def test_no_imu_at_all_still_reports_gnss_position():
+    engine, rows = _track(SENSORS, 30.0, mutate=lambda ev: [e for e in ev if e.kind != "imu"])
+    assert engine.stats.alignments == 0
+    assert rows and {r[1] for r in rows} == {"gnss_only"}
+    # From the launch on (heading known), until the run's last fix.
+    assert max(r[2] for r in rows if 8.0 < r[0] < 29.9) < 0.25
+
+
+def test_parked_quantised_imu_is_not_mistaken_for_frozen():
+    # A quiet sensor parked can repeat one CAN value indefinitely.
+    engine = FusionEngine()
+    f, w = np.array([0.0, 0.0, -9.79]), np.zeros(3)
+    engine.gnss_fix(0.0, -31.67, 115.78, 0.0, 0.0, "R")
+    for k in range(1, 1000):
+        engine.imu(k * 0.01, f, w)
+    assert engine.imu_healthy(10.0)
+    assert engine.stats.imu_failovers == 0 and engine.stats.imu_bad_samples == 0

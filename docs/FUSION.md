@@ -36,7 +36,8 @@ generates synthetic drives with truth for testing and tuning.
   observable at rest, so the filter initialises on the first fix above
   `align_speed_kmh` (default 18) with heading from GNSS course. Heading
   tightens to a fraction of a degree in the first corners. The status
-  channel reads `aligning` until then.
+  channel reads `aligning` until then, and position passes through from
+  the receiver meanwhile (see IMU failure below).
 - **Weighting.** Each fix is weighted by the receiver's own GST 1-sigma
   estimate when one is less than 1 s old, otherwise by its RMC mode
   (RTK fixed 3 cm, float 0.4 m, DGNSS 0.8 m, autonomous 2.5 m).
@@ -51,13 +52,28 @@ generates synthetic drives with truth for testing and tuning.
   reporting position and re-aligns when GNSS returns. There is
   deliberately no "car goes where it points" constraint: it would erase
   the sideslip this exists to measure.
+- **IMU failure.** The IMU is treated as failed when its frames stop for
+  more than 250 ms, when a reading is non-finite or beyond any automotive
+  range (30 g, 1800 °/s), or when it repeats bit-identical readings for
+  0.5 s while the car is moving (a frozen sensor or stuck CAN frames;
+  parked, a quiet sensor can legitimately repeat). The filter drops to
+  status `gnss_only`:
+    - `fused.lat`/`lon`/`alt`, `speed`, `course`, `pos_std` and `gnss_age`
+      pass through from the receiver at the fix rate, projected forward by
+      `latency_ms` and moved from the antenna to the IMU position using the
+      last course seen above 2 m/s. Lap timing on `fused.*` keeps running.
+    - Attitude-derived channels (roll, pitch, yaw, yaw rate, accelerations,
+      sideslip, grade, vertical velocity) stop, rather than freeze on
+      stale values.
+    - Once the IMU has been healthy for 1 s the filter re-aligns as at
+      startup (status `aligning`, then the fix status).
 
 ## Output channels
 
 | Channel | Units | |
 |---|---|---|
-| `fused.status` | | `aligning`, `rtk_fixed`, `rtk_float`, `dgnss`, `gnss`, `dead_reckoning` (on change) |
-| `fused.lat`, `fused.lon` | deg | IMU position; same capture stamp, so lap timing can pair them |
+| `fused.status` | | `aligning`, `rtk_fixed`, `rtk_float`, `dgnss`, `gnss`, `dead_reckoning`, `gnss_only` (on change) |
+| `fused.lat`, `fused.lon` | deg | IMU position; same capture stamp, so lap timing can pair them. GNSS passthrough while `aligning` or `gnss_only` |
 | `fused.alt` | m | Once GGA has given a height reference |
 | `fused.speed` | km/h | 3D speed |
 | `fused.course` | deg | Direction of travel over ground |
@@ -140,17 +156,19 @@ sentence_rates_hz: { GGA: 10, GST: 10 }
 ## Expected accuracy
 
 From the simulator (`tests/test_fusion.py`): RTK, 100 Hz IMU with
-realistic biases, 30 ms GNSS latency, a lap with 1.2 g corners, braking,
-sideslip and ±4 % grade.
+realistic biases, 30 ms GNSS latency, a 1.2 m antenna lever arm, and a lap
+at 100–165 km/h with corners up to 1.5 g (3.6° sideslip, 2.7° roll),
+0.9 g braking and ±4 % grade.
 
 | | After first corners |
 |---|---|
-| Horizontal position | ~1 cm RMS |
-| Height | < 7 cm |
-| Roll / pitch / yaw | < 0.5° |
+| Horizontal position | < 1 cm RMS |
+| Height | < 5 cm |
+| Roll / pitch / yaw | < 0.3° |
 | Sideslip | < 0.3° |
-| Gyro z bias | within 0.01°/s |
-| 5 s GNSS outage | < 0.2 m drift |
+| Gyro z bias | within 0.015°/s |
+| 5 s GNSS outage | < 0.3 m drift |
+| IMU failed (`gnss_only`) | < 0.25 m, receiver noise plus the lever arm without attitude |
 
 The real car will be worse than the simulator, mainly from vibration and
 unmodelled timing jitter. Treat these as a ceiling to tune towards.

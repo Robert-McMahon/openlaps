@@ -16,6 +16,13 @@ the bare filter:
 * **Outages.** Through a dropout the filter dead-reckons on the IMU alone.
   Past ``max_outage_s`` it stops reporting position and re-aligns when
   GNSS returns.
+* **IMU failure.** An IMU that goes silent, freezes, or reports impossible
+  values drops the filter to ``gnss_only``: position, speed and course pass
+  straight through from the receiver (moved from the antenna to the IMU
+  position by course), and the attitude-derived outputs go quiet. Once the
+  IMU has been healthy for ``imu_recovery_s`` the filter re-aligns.
+  Before the first alignment the same passthrough runs with status
+  ``aligning``, so fused position exists from the first fix.
 
 Everything is driven by the caller's timestamps (seconds, monotonic).
 """
@@ -44,6 +51,17 @@ MODE_SIGMAS = {
 }
 MODE_STATUS = {"R": "rtk_fixed", "F": "rtk_float", "D": "dgnss", "A": "gnss", "E": "gnss"}
 
+# Beyond any automotive IMU's range: a reading past these is a fault, not a
+# hard kerb strike (the FDI's DBC range is +/-33 g and +/-1877 deg/s).
+MAX_SPECIFIC_FORCE = 30.0 * 9.80665
+MAX_RATE = math.radians(1800.0)
+# On a moving car, vibration keeps every axis changing; this many
+# bit-identical readings in a row means the sensor (or the frames carrying
+# it) has frozen. Parked, a quiet sensor can legitimately repeat the same
+# quantised CAN value, so the check only runs above FROZEN_CHECK_SPEED.
+FROZEN_SAMPLES = 50
+FROZEN_CHECK_SPEED = 3.0  # m/s
+
 CHI2_2DOF = 13.8  # 99.9 %
 CHI2_1DOF = 10.8
 
@@ -56,6 +74,8 @@ class EngineSettings:
     max_outage_s: float = 10.0
     gst_max_age_s: float = 1.0
     min_course_speed_mps: float = 1.0
+    imu_timeout_s: float = 0.25
+    imu_recovery_s: float = 1.0
     noise: ImuNoise = field(default_factory=ImuNoise)
     # Floors on reported receiver error: GST is often optimistic.
     min_horizontal_sigma: float = 0.015
@@ -64,7 +84,10 @@ class EngineSettings:
 
 @dataclass(frozen=True, slots=True)
 class FusionOutput:
-    """One snapshot of the fused state for a vehicle-dynamics consumer."""
+    """
+    One snapshot of the fused state. In ``gnss_only`` and ``aligning``
+    (passthrough) the attitude-derived fields are None.
+    """
 
     status: str
     lat: float | None
@@ -72,20 +95,20 @@ class FusionOutput:
     alt: float | None
     speed_mps: float
     course_deg: float
-    vel_up_mps: float
-    roll_deg: float
-    pitch_deg: float
-    yaw_deg: float
-    yaw_rate_dps: float
-    accel_long_g: float
-    accel_lat_g: float
-    accel_vert_g: float
+    vel_up_mps: float | None
+    roll_deg: float | None
+    pitch_deg: float | None
+    yaw_deg: float | None
+    yaw_rate_dps: float | None
+    accel_long_g: float | None
+    accel_lat_g: float | None
+    accel_vert_g: float | None
     slip_angle_deg: float | None
     grade_pct: float | None
     pos_std_m: float
-    yaw_std_deg: float
+    yaw_std_deg: float | None
     gnss_age_s: float
-    gyro_bias_dps: tuple[float, float, float]
+    gyro_bias_dps: tuple[float, float, float] | None
 
 
 @dataclass(slots=True)
@@ -97,6 +120,8 @@ class EngineStats:
     forced_reanchors: int = 0
     alignments: int = 0
     outages_lost: int = 0
+    imu_failovers: int = 0
+    imu_bad_samples: int = 0
 
 
 class FusionEngine:
@@ -121,6 +146,15 @@ class FusionEngine:
         self._level_n = 0
         self._gyro_sum = np.zeros(3)
         self._still = False
+        # IMU health: a fault latches until this many seconds of good data.
+        self._imu_fault = False
+        self._imu_good_since: float | None = None
+        self._frozen_run = 0
+        self._prev_raw: tuple[bytes, bytes] | None = None
+        # Last raw fix and height, for passthrough output.
+        self._fix: tuple[float, float, float, float, float, str] | None = None
+        self._last_alt: float | None = None
+        self._heading_deg: float | None = None
 
     # ---- state --------------------------------------------------------------
 
@@ -132,11 +166,25 @@ class FusionEngine:
     def ins(self) -> ErrorStateIns | None:
         return self._ins
 
+    def imu_healthy(self, now: float) -> bool:
+        """IMU data is current, plausible and not latched faulty."""
+        if self._imu_fault or self._t_imu is None:
+            return False
+        return now - self._t_imu <= self.settings.imu_timeout_s
+
     # ---- inputs -------------------------------------------------------------
 
     def imu(self, t: float, f_b: np.ndarray, w_b: np.ndarray) -> None:
         """One IMU sample: specific force m/s^2 and body rate rad/s (FRD)."""
+        if not self._imu_sample_ok(t, f_b, w_b):
+            return
         previous, self._t_imu = self._t_imu, t
+        if previous is not None and t - previous > self.settings.imu_timeout_s:
+            # Back from silence: the gap is not something to integrate across,
+            # and recovery time counts from now.
+            self._fail_over()
+            self._imu_good_since = t
+            previous = None
         self._last_f = f_b
         self._track_stillness(f_b, w_b)
         ins = self._ins
@@ -175,10 +223,16 @@ class FusionEngine:
         """One horizontal fix with Doppler speed and course (RMC)."""
         mode = mode if mode in MODE_SIGMAS else "A"
         self._last_mode = mode
+        self._fix = (t, lat, lon, speed_mps, course_deg, mode)
+        if speed_mps > 2.0:
+            self._heading_deg = course_deg  # course is noise when crawling
         if self._frame is None:
             self._frame = LocalFrame(lat, lon, 0.0)
+        if self._ins is not None and not self.imu_healthy(t):
+            self._fail_over()
         if self._ins is None:
-            self._try_align(t, lat, lon, speed_mps, course_deg, mode)
+            if self.imu_healthy(t) and self._imu_recovered(t):
+                self._try_align(t, lat, lon, speed_mps, course_deg, mode)
             return
         self.stats.fixes += 1
         ins = self._ins
@@ -221,6 +275,7 @@ class FusionEngine:
 
     def gnss_alt(self, t: float, alt: float) -> None:
         """Height from GGA (any consistent datum; the frame is relative)."""
+        self._last_alt = alt
         ins = self._ins
         if ins is None or self._frame is None:
             return
@@ -242,8 +297,8 @@ class FusionEngine:
 
     def output(self) -> FusionOutput | None:
         ins = self._ins
-        if ins is None or self._frame is None or self._t_imu is None:
-            return None
+        if ins is None or self._t_imu is None:
+            return self._passthrough()
         gnss_age = self._t_imu - self._last_fix_t if self._last_fix_t is not None else math.inf
         r = ins.dcm
         roll, pitch, yaw = dcm_to_euler(r)
@@ -286,7 +341,105 @@ class FusionEngine:
             gyro_bias_dps=tuple(math.degrees(b) for b in ins.bg),  # type: ignore[arg-type]
         )
 
+    def _passthrough(self) -> FusionOutput | None:
+        """GNSS-only output: the last fix, moved to the IMU and to the present."""
+        fix = self._fix
+        if fix is None or self._frame is None:
+            return None
+        t, lat, lon, speed, course_deg, mode = fix
+        if self._t_imu is not None and self._t_imu - t > 0.5:
+            return None  # no current fix to pass through
+        # The fix is ``latency_s`` old on arrival: project it along its own
+        # velocity to the time it is reported at (~1.2 m at 40 m/s, 30 ms).
+        course = math.radians(course_deg)
+        lead = speed * self.settings.latency_s
+        ned = self._frame.to_ned(lat, lon) + lead * np.array(
+            [math.cos(course), math.sin(course), 0]
+        )
+        # Without attitude, take heading from the last course seen at speed
+        # (sideslip ignored) and the car as level: a few cm on a ~1 m arm.
+        # Before the car has ever moved, heading is unknown: stay on the antenna.
+        arm = self._arm
+        if self._heading_deg is not None:
+            heading = math.radians(self._heading_deg)
+            cy, sy = math.cos(heading), math.sin(heading)
+            ned -= np.array([cy * arm[0] - sy * arm[1], sy * arm[0] + cy * arm[1], 0.0])
+        lat_i, lon_i, _ = self._frame.to_geodetic(np.array([ned[0], ned[1], 0.0]))
+        alt = self._last_alt + arm[2] if self._last_alt is not None else None
+        sig_h, _, _ = self._sigmas(t, mode)
+        status = "aligning" if self.imu_healthy(t) else "gnss_only"
+        return FusionOutput(
+            status=status,
+            lat=lat_i,
+            lon=lon_i,
+            alt=alt,
+            speed_mps=speed,
+            course_deg=course_deg % 360.0,
+            vel_up_mps=None,
+            roll_deg=None,
+            pitch_deg=None,
+            yaw_deg=None,
+            yaw_rate_dps=None,
+            accel_long_g=None,
+            accel_lat_g=None,
+            accel_vert_g=None,
+            slip_angle_deg=None,
+            grade_pct=None,
+            pos_std_m=sig_h * math.sqrt(2.0),
+            yaw_std_deg=None,
+            gnss_age_s=0.0,
+            gyro_bias_dps=None,
+        )
+
     # ---- internals ----------------------------------------------------------
+
+    def _imu_sample_ok(self, t: float, f_b: np.ndarray, w_b: np.ndarray) -> bool:
+        """Screen one IMU reading; latch a fault on impossible or frozen data."""
+        bad = not (np.all(np.isfinite(f_b)) and np.all(np.isfinite(w_b)))
+        if not bad:
+            bad = (
+                float(np.linalg.norm(f_b)) > MAX_SPECIFIC_FORCE
+                or float(np.linalg.norm(w_b)) > MAX_RATE
+            )
+        raw = (np.asarray(f_b).tobytes(), np.asarray(w_b).tobytes())
+        moving = self._fix is not None and self._fix[3] > FROZEN_CHECK_SPEED
+        if not bad and moving and raw == self._prev_raw:
+            self._frozen_run += 1
+            bad = self._frozen_run >= FROZEN_SAMPLES
+        else:
+            self._frozen_run = 0
+        self._prev_raw = raw
+        if bad:
+            self.stats.imu_bad_samples += 1
+            self._imu_good_since = None
+            if not self._imu_fault:
+                self._imu_fault = True
+                self._fail_over()
+            return False
+        if self._imu_good_since is None:
+            self._imu_good_since = t
+        if self._imu_fault and t - self._imu_good_since >= self.settings.imu_recovery_s:
+            logger.info("fusion: IMU healthy again; re-aligning")
+            self._imu_fault = False
+        return True
+
+    def _imu_recovered(self, now: float) -> bool:
+        since = self._imu_good_since
+        return since is not None and (
+            self.stats.imu_failovers == 0 or now - since >= self.settings.imu_recovery_s
+        )
+
+    def _fail_over(self) -> None:
+        """Drop the inertial solution; output falls back to GNSS passthrough."""
+        if self._ins is None:
+            return
+        logger.warning("fusion: IMU lost; falling back to GNSS only")
+        self._ins = None
+        self._have_alt_ref = False
+        self._level_sum[:] = 0.0
+        self._gyro_sum[:] = 0.0
+        self._level_n = 0
+        self.stats.imu_failovers += 1
 
     def _lag(self, t_meas: float) -> float:
         """How far the filter's state is ahead of the measurement epoch."""

@@ -133,9 +133,12 @@ class FusionApp:
                 return self._maybe_step()
             return []
         try:
-            self._observe_gnss(role, sample)
+            fix_done = self._observe_gnss(role, sample)
         except (TypeError, ValueError):
-            pass  # a mis-typed value costs one fix, never the pipeline
+            return []  # a mis-typed value costs one fix, never the pipeline
+        if fix_done and not self.engine.aligned:
+            # Passthrough (aligning, or the IMU has failed): GNSS drives output.
+            return self._outputs(sample.t_mono_ns, sample.t_wall_ms)
         return []
 
     # ---- IMU ----------------------------------------------------------------
@@ -153,9 +156,9 @@ class FusionApp:
         f = self._mount @ (np.asarray(accel.values) * self._accel_scale)
         w = self._mount @ (np.asarray(gyro.values) * self._gyro_scale)
         self.engine.imu(later.t_mono_ns / 1e9, f, w)
-        return self._outputs(later.t_mono_ns, later.t_wall_ms)
+        return self._outputs(later.t_mono_ns, later.t_wall_ms, full=self.engine.aligned)
 
-    def _outputs(self, t_mono_ns: int, t_wall_ms: float) -> list[Sample]:
+    def _outputs(self, t_mono_ns: int, t_wall_ms: float, *, full: bool = True) -> list[Sample]:
         emitted: list[Sample] = []
 
         def emit(name: str, value: object) -> None:
@@ -166,7 +169,7 @@ class FusionApp:
         if status != self._last_status:
             self._last_status = status
             emit("status", status)
-        if out is None:
+        if out is None or not full:
             return emitted
         last = self._last_emit_ns
         if last is not None and t_mono_ns - last < self._emit_period_ns - 1_000_000:
@@ -177,22 +180,23 @@ class FusionApp:
 
     # ---- GNSS ---------------------------------------------------------------
 
-    def _observe_gnss(self, role: str, sample: Sample) -> None:
+    def _observe_gnss(self, role: str, sample: Sample) -> bool:
+        """Route one GNSS sample; True when it completed a fix."""
         t = sample.t_mono_ns / 1e9
         if role == "alt":
             self.engine.gnss_alt(t, float(sample.value))  # type: ignore[arg-type]
-            return
+            return False
         if role in _STD_ROLES:
             self._std[role] = sample
             if _complete(self._std, _STD_ROLES, sample.t_mono_ns):
                 values = [float(self._std[r].value) for r in _STD_ROLES]  # type: ignore[arg-type]
                 self.engine.gnss_std(t, *values)
                 self._std.clear()
-            return
+            return False
         self._fix[role] = sample
         roles = (*_FIX_ROLES, "mode") if self._needs_mode else _FIX_ROLES
         if not _complete(self._fix, roles, sample.t_mono_ns):
-            return
+            return False
         fix = self._fix
         self.engine.gnss_fix(
             t,
@@ -203,6 +207,7 @@ class FusionApp:
             str(fix["mode"].value) if self._needs_mode else "A",
         )
         self._fix = {}
+        return True
 
 
 def _complete(parts: dict[str, Sample], roles: tuple[str, ...], t_mono_ns: int) -> bool:
@@ -214,25 +219,28 @@ def _emit_output(out: FusionOutput, emit) -> None:
         # Same stamp on both: lap timing pairs lat/lon by capture time.
         emit("lat", out.lat)
         emit("lon", out.lon)
-    if out.alt is not None:
-        emit("alt", out.alt)
-    emit("speed", out.speed_mps * 3.6)
-    emit("course", out.course_deg)
-    emit("vel_up", out.vel_up_mps)
-    emit("roll", out.roll_deg)
-    emit("pitch", out.pitch_deg)
-    emit("yaw", out.yaw_deg)
-    emit("yaw_rate", out.yaw_rate_dps)
-    emit("accel_long", out.accel_long_g)
-    emit("accel_lat", out.accel_lat_g)
-    emit("accel_vert", out.accel_vert_g)
-    if out.slip_angle_deg is not None:
-        emit("slip_angle", out.slip_angle_deg)
-    if out.grade_pct is not None:
-        emit("grade", out.grade_pct)
-    emit("pos_std", out.pos_std_m)
-    if math.isfinite(out.gnss_age_s):
-        emit("gnss_age", out.gnss_age_s)
+    values = (
+        ("alt", out.alt),
+        ("speed", out.speed_mps * 3.6),
+        ("course", out.course_deg),
+        ("vel_up", out.vel_up_mps),
+        ("roll", out.roll_deg),
+        ("pitch", out.pitch_deg),
+        ("yaw", out.yaw_deg),
+        ("yaw_rate", out.yaw_rate_dps),
+        ("accel_long", out.accel_long_g),
+        ("accel_lat", out.accel_lat_g),
+        ("accel_vert", out.accel_vert_g),
+        ("slip_angle", out.slip_angle_deg),
+        ("grade", out.grade_pct),
+        ("pos_std", out.pos_std_m),
+        ("gnss_age", out.gnss_age_s if math.isfinite(out.gnss_age_s) else None),
+    )
+    # In passthrough the attitude-derived channels go quiet rather than
+    # reporting stale or invented values.
+    for name, value in values:
+        if value is not None:
+            emit(name, value)
 
 
 def _imu_to_vehicle(axes: tuple[str, str, str], mount_rpy_deg: tuple[float, float, float]):

@@ -201,3 +201,25 @@ def test_fused_output_reenters_the_pipeline_for_lap_timing(profile, catalog):
         pipeline.ingest("sim", replace(sample, source_ref=source_ref))
     assert len(timing.seen) > 100
     assert {s.source_ref for s in timing.seen} == {"derived:fused.lat", "derived:fused.lon"}
+
+
+def test_imu_failure_keeps_fused_position_flowing_at_the_fix_rate(profile, catalog):
+    sensors = replace(SENSORS, imu_outages=((25.0, 35.0),))
+    app, emitted, truth, frame = _run_app(catalog, profile.catalog, sensors, duration=40.0)
+
+    statuses = [s.value for s in emitted if s.source_ref == "derived:fused.status"]
+    # Back from the fault it re-aligns (GNSS passthrough meanwhile), then fuses.
+    assert statuses == ["aligning", "rtk_fixed", "gnss_only", "aligning", "rtk_fixed"]
+    window = [
+        s
+        for s in emitted
+        if s.source_ref == "derived:fused.lat" and 26.0 <= s.t_mono_ns / 1e9 < 34.0
+    ]
+    assert len(window) / 8.0 == pytest.approx(50.0, rel=0.05)
+    # Attitude-derived channels go quiet rather than freezing on stale values.
+    quiet = {
+        s.source_ref
+        for s in emitted
+        if 26.0 <= s.t_mono_ns / 1e9 < 34.0 and s.source_ref.endswith(("roll", "slip_angle"))
+    }
+    assert quiet == set()

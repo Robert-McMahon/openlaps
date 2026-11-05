@@ -54,6 +54,9 @@ class SensorModel:
     )
     lever_arm: tuple[float, float, float] = (-0.8, 0.0, -0.9)
     gnss_outages: tuple[tuple[float, float], ...] = ()
+    # IMU fault windows: silent (no frames), frozen (last frame repeated).
+    imu_outages: tuple[tuple[float, float], ...] = ()
+    imu_frozen: tuple[tuple[float, float], ...] = ()
     seed: int = 7
 
 
@@ -103,18 +106,18 @@ def lap_profile(duration_s: float = 150.0, still_s: float = 6.0) -> DriveCommand
             return 2.0  # exit and fast sweeper
         if ph < 21.0:
             return -4.0
-        return 1.5
+        return 0.9  # net zero over the loop: lap speed stays constant
 
     def curvature(t: float) -> float:
         if t < still_s + 7.0:
             return 0.0
         ph = phase(t)
         if 6.0 <= ph < 12.0:
-            return _bump(ph, 6.0, 12.0) / 22.0  # slow right-hander
+            return _bump(ph, 6.0, 12.0) / 55.0  # tight right-hander
         if 14.0 <= ph < 21.0:
-            return -_bump(ph, 14.0, 21.0) / 70.0  # fast left sweeper
+            return -_bump(ph, 14.0, 21.0) / 115.0  # fast left sweeper
         if 23.0 <= ph < 28.0:
-            return _bump(ph, 23.0, 28.0) / 45.0
+            return _bump(ph, 23.0, 28.0) / 80.0
         return 0.0
 
     def grade(t: float) -> float:
@@ -190,6 +193,7 @@ def simulate(
     bg = np.asarray(s.gyro_bias)
 
     step = round(1.0 / (s.imu_rate_hz * dt))
+    frozen: tuple | None = None
     for k in range(0, n - step, step):
         r0, r1 = dcm[k], dcm[k + step]
         h = step * dt
@@ -197,7 +201,15 @@ def simulate(
         w_b = _rotvec(r0.T @ r1) / h
         f_m = f_b + ba + rng.normal(0.0, s.accel_noise, 3)
         w_m = w_b + bg + rng.normal(0.0, s.gyro_noise, 3)
-        events.append(SimEvent(t[k + step], "imu", (f_m, w_m)))
+        t_k = t[k + step]
+        if any(a <= t_k < b for a, b in s.imu_outages):
+            continue
+        if any(a <= t_k < b for a, b in s.imu_frozen):
+            frozen = frozen or (f_m, w_m)
+            f_m, w_m = frozen
+        else:
+            frozen = None
+        events.append(SimEvent(t_k, "imu", (f_m, w_m)))
 
     def in_outage(time: float) -> bool:
         return any(a <= time < b for a, b in s.gnss_outages)

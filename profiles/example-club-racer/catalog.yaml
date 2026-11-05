@@ -318,9 +318,9 @@ apps:
     imu:
       accel: [car.accel_x, car.accel_y, car.accel_z]
       gyro: [car.gyro_x, car.gyro_y, car.gyro_z]
-      # IMU axis (with sign) along vehicle forward, right, down. Verify on
-      # the bench: parked level, the agent logs a warning if the down axis
-      # reads +1 g, which means it is mounted (or reports) the other way up.
+      # IMU axis (with sign) along vehicle forward, right, down. The FDI is
+      # mounted x forward, y right, z down, so no remap. If it is ever
+      # remounted: parked level, the agent warns if the down axis reads +1 g.
       axes: [x, y, z]
       mount_rpy_deg: [0.0, 0.0, 0.0]
     gnss:

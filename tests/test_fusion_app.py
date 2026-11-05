@@ -84,7 +84,15 @@ def _samples(catalog, events, *, imu_rotation: np.ndarray | None = None):
     return out
 
 
-SENSORS = SensorModel(lever_arm=(0.0, 0.0, 0.0))
+# Simulate the antenna where the example profile says it is, so these tests
+# follow the profile's lever arm rather than assume one.
+SENSORS = SensorModel(
+    lever_arm=tuple(
+        yaml.safe_load((EXAMPLE / "catalog.yaml").read_text(encoding="utf-8"))["apps"]["fusion"][
+            "gnss"
+        ]["lever_arm_m"]
+    )
+)
 
 
 def test_example_profile_configures_fusion_and_registers_fused_channels(profile, catalog):

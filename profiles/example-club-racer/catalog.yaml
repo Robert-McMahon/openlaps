@@ -334,7 +334,9 @@ apps:
       lon_std: position.lon_std
       alt_std: position.alt_std
       latency_ms: 30
-      # Antenna relative to the IMU: forward, right, down, metres. Measure
-      # it -- a 1 m error here is 1 m of position error through corners.
-      lever_arm_m: [0.0, 0.0, 0.0]
+      # Antenna relative to the IMU: forward, right, down, metres. ESTIMATE
+      # (2026-11-05): antenna 0.3 m behind and 1.1 m above the IMU, on the
+      # centreline. Replace with a tape measurement -- an error here shows
+      # up as position and heading error that grows with yaw rate.
+      lever_arm_m: [-0.3, 0.0, -1.1]
     output_rate_hz: 50

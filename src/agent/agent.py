@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent.clock import SystemClock
+from agent.fusion_app import FUSION_DERIVED_CHANNELS, FusionApp
 from agent.pipeline import DERIVED_SOURCE_CLASS, Pipeline
 from agent.publisher import (
     DEFAULT_BUFFER_BYTES,
@@ -148,7 +149,9 @@ class _SessionInbox:
             return pending
 
 
-def agent_derived_channels(collector_names: list[str]) -> tuple[DerivedChannel, ...]:
+def agent_derived_channels(
+    collector_names: list[str], *, fusion: bool = False
+) -> tuple[DerivedChannel, ...]:
     """The derived-channel set this agent adds to the registry."""
     channels = list(DEFAULT_DERIVED_CHANNELS)
     channels += [
@@ -160,6 +163,8 @@ def agent_derived_channels(collector_names: list[str]) -> tuple[DerivedChannel, 
         DerivedChannel("sys.agent.publish_lag_ms", pb.DOUBLE, "ms"),
     ]
     channels += [DerivedChannel(f"sys.agent.drops.{name}", pb.INT64) for name in collector_names]
+    if fusion:
+        channels += FUSION_DERIVED_CHANNELS
     return tuple(channels)
 
 
@@ -204,11 +209,19 @@ class VehicleAgent:
         self.catalog: RuntimeCatalog = build_runtime_catalog(
             self.profile,
             state_path=registry_state,
-            derived_channels=agent_derived_channels(collector_names),
+            derived_channels=agent_derived_channels(
+                collector_names, fusion=self.profile.catalog.apps.fusion is not None
+            ),
         )
         self.clock = SystemClock()
         self.session_store = SessionStore(session_state)
         self._session_inbox = _SessionInbox()
+
+        # Built before timing: timing may subscribe to fusion's fused.* output.
+        self.fusion_app: FusionApp | None = None
+        fusion = self.profile.catalog.apps.fusion
+        if fusion is not None:
+            self.fusion_app = FusionApp(self.catalog, self.profile.catalog, fusion)
 
         self.timing_app: LapTimingApp | None = None
         lap_timing = self.profile.catalog.apps.lap_timing
@@ -225,6 +238,7 @@ class VehicleAgent:
             self.catalog,
             tick_ms=settings.tick_ms,
             timing_app=self.timing_app,
+            fusion_app=self.fusion_app,
         )
         self.publisher = JetStreamPublisher(
             nats_url=settings.nats_url,

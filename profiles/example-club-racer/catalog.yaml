@@ -305,5 +305,36 @@ channels:
 
 apps:
   lap_timing:
+    # `fused.*` times on the IMU/GNSS fusion output instead: IMU-rate
+    # position that bridges short GNSS dropouts. Switch once the fusion
+    # block below is verified on the car (docs/FUSION.md -> Bring-up).
     position: position.*
     track: Wanneroo
+
+  # IMU/GNSS fusion (docs/FUSION.md): a 15-state error-state INS emitting
+  # fused.* channels -- position, speed, attitude, sideslip, body-frame
+  # acceleration, grade. Runs on the pre-RBE tap at full IMU rate.
+  fusion:
+    imu:
+      accel: [car.accel_x, car.accel_y, car.accel_z]
+      gyro: [car.gyro_x, car.gyro_y, car.gyro_z]
+      # IMU axis (with sign) along vehicle forward, right, down. Verify on
+      # the bench: parked level, the agent logs a warning if the down axis
+      # reads +1 g, which means it is mounted (or reports) the other way up.
+      axes: [x, y, z]
+      mount_rpy_deg: [0.0, 0.0, 0.0]
+    gnss:
+      lat: position.lat
+      lon: position.lon
+      speed: position.speed
+      course: position.heading
+      mode: position.fix_quality
+      alt: position.alt
+      lat_std: position.lat_std
+      lon_std: position.lon_std
+      alt_std: position.alt_std
+      latency_ms: 30
+      # Antenna relative to the IMU: forward, right, down, metres. Measure
+      # it -- a 1 m error here is 1 m of position error through corners.
+      lever_arm_m: [0.0, 0.0, 0.0]
+    output_rate_hz: 50

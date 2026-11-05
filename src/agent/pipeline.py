@@ -1,4 +1,4 @@
-"""The single-consumer sample pipeline: mapper -> timing tap -> RBE -> batcher.
+"""The single-consumer sample pipeline: mapper -> app taps -> RBE -> batcher.
 
 ``docs/AGENT_DESIGN.md`` -> Sample lifecycle steps 2-5. Everything
 ordering-sensitive lives here and runs on one thread, so no shared mutable
@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from agent.fusion_app import FusionApp
 from agent.timing_app import LapTimingApp
 from collectors.clock import WallClock
 from core.batcher import Batcher
@@ -45,12 +46,14 @@ class Pipeline:
         *,
         tick_ms: int = 20,
         timing_app: LapTimingApp | None = None,
+        fusion_app: FusionApp | None = None,
     ) -> None:
         self._source_map = catalog.source_map
         self._rbe = RbeFilter()
         self._batcher = Batcher(catalog.registry.registry_seq, catalog.policies_by_id, tick_ms)
         self._tick_ns = tick_ms * 1_000_000
         self._timing_app = timing_app
+        self._fusion_app = fusion_app
         self._staged: list[tuple[str, int, Sample]] = []
         self._reported_unmapped: set[str] = set()
         self._reported_failures: set[str] = set()
@@ -78,6 +81,13 @@ class Pipeline:
                 logger.info("pipeline: no catalog mapping for %s", sample.source_ref)
             return
         channel_id, policy = mapping
+        fusion = self._fusion_app
+        if fusion is not None and channel_id in fusion.subscribed_channel_ids:
+            # Pre-RBE for the same reason as timing: the filter integrates
+            # every IMU frame and must see each fix. Its fused.* output
+            # re-enters here, so timing can subscribe to fused position.
+            for derived in fusion.observe(channel_id, sample):
+                self.ingest(DERIVED_SOURCE_CLASS, derived)
         timing = self._timing_app
         if timing is not None and channel_id in timing.subscribed_channel_ids:
             # Pre-RBE is non-negotiable: timing interpolates line crossings

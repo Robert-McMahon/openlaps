@@ -22,6 +22,7 @@ Everything is driven by the caller's timestamps (seconds, monotonic).
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass, field
 
@@ -30,7 +31,7 @@ import numpy as np
 from fusion.geodesy import LocalFrame
 from fusion.ins import BG, ErrorStateIns, ImuNoise, V, dcm_to_euler, quat_from_euler
 
-KMH = 1.0 / 3.6
+logger = logging.getLogger(__name__)
 
 # RMC posMode -> (horizontal 1-sigma m, vertical 1-sigma m, velocity 1-sigma m/s)
 # when no fresh GST estimate is available. Deliberately conservative.
@@ -324,6 +325,12 @@ class FusionEngine:
         assert self._frame is not None
         if self._level_n >= 50:
             f = self._level_sum / self._level_n
+            if f[2] > 0.5 * self._frame.gravity:
+                logger.warning(
+                    "fusion: IMU down axis reads %+.2f g parked; expected about -1 g. "
+                    "Check apps.fusion.imu.axes",
+                    f[2] / 9.80665,
+                )
             roll = math.atan2(-f[1], -f[2])
             pitch = math.atan2(f[0], math.hypot(f[1], f[2]))
             sig_tilt = math.radians(1.0)

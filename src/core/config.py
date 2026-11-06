@@ -142,9 +142,23 @@ class Um980Settings(StrictModel):
 
     rate_hz: Annotated[int, Field(gt=0)]
     sentences: list[_NON_EMPTY] = Field(min_length=1)
+    # Per-sentence overrides of `rate_hz`, e.g. {GGA: 10, GST: 10}. At
+    # 115200 baud, RMC + GGA + GST all at 50 Hz would fill ~95% of the link;
+    # the accuracy and altitude sentences don't need the full fix rate.
+    sentence_rates_hz: dict[_NON_EMPTY, Annotated[int, Field(gt=0)]] = Field(default_factory=dict)
     configure_on_start: bool
     pps: PpsConfig | None = None
     timing_output: TimingOutputConfig | None = None
+
+    @model_validator(mode="after")
+    def rate_overrides_name_configured_sentences(self) -> Um980Settings:
+        configured = {sentence.upper() for sentence in self.sentences}
+        unknown = sorted(s for s in self.sentence_rates_hz if s.upper() not in configured)
+        if unknown:
+            raise ValueError(
+                f"sentence_rates_hz names sentences not in `sentences`: {', '.join(unknown)}"
+            )
+        return self
 
 
 class Um980DriverConfig(StrictModel):
@@ -320,10 +334,108 @@ class LapTimingConfig(StrictModel):
     track: _NON_EMPTY
 
 
+_Axis = Literal["x", "-x", "y", "-y", "z", "-z"]
+_Vec3 = tuple[float, float, float]
+ACCEL_UNITS = {"g": 9.80665, "m/s^2": 1.0, "m/s2": 1.0}
+GYRO_UNITS = {"deg/s": math.pi / 180.0, "rad/s": 1.0}
+SPEED_UNITS = {"km/h": 1.0 / 3.6, "m/s": 1.0, "kn": 1852.0 / 3600.0}
+
+
+class FusionImuConfig(StrictModel):
+    """Which catalog channels carry the IMU, and how it sits in the car.
+
+    `axes` names the IMU axis (with sign) that points along the vehicle's
+    forward, right and down axes, in that order: an IMU mounted upside down
+    with its x forward is `[x, -y, -z]`. `mount_rpy_deg` then removes a
+    small residual mounting misalignment (vehicle-from-IMU, ZYX degrees).
+    """
+
+    accel: tuple[_NON_EMPTY, _NON_EMPTY, _NON_EMPTY]
+    gyro: tuple[_NON_EMPTY, _NON_EMPTY, _NON_EMPTY]
+    axes: tuple[_Axis, _Axis, _Axis] = ("x", "y", "z")
+    mount_rpy_deg: _Vec3 = (0.0, 0.0, 0.0)
+
+    @model_validator(mode="after")
+    def axes_are_a_permutation(self) -> FusionImuConfig:
+        if sorted(axis[-1] for axis in self.axes) != ["x", "y", "z"]:
+            raise ValueError("axes must use each of x, y and z exactly once")
+        if not all(-15.0 <= angle <= 15.0 for angle in self.mount_rpy_deg):
+            raise ValueError("mount_rpy_deg is for small corrections; remap gross ones via axes")
+        return self
+
+
+class FusionGnssConfig(StrictModel):
+    """Which catalog channels carry the GNSS fix, and where the antenna is."""
+
+    lat: _NON_EMPTY
+    lon: _NON_EMPTY
+    speed: _NON_EMPTY
+    course: _NON_EMPTY
+    mode: _NON_EMPTY | None = None
+    alt: _NON_EMPTY | None = None
+    # The receiver's 1-sigma error estimates (GST): all three or none.
+    lat_std: _NON_EMPTY | None = None
+    lon_std: _NON_EMPTY | None = None
+    alt_std: _NON_EMPTY | None = None
+    # Time from the fix epoch to the agent reading it (receiver compute +
+    # serial transfer). At 40 m/s every 10 ms unmodelled is 0.4 m of error.
+    latency_ms: Annotated[float, Field(ge=0.0, le=500.0)] = 30.0
+    # Antenna position relative to the IMU, vehicle frame (forward, right, down), m.
+    lever_arm_m: _Vec3 = (0.0, 0.0, 0.0)
+
+    @model_validator(mode="after")
+    def std_channels_come_together(self) -> FusionGnssConfig:
+        given = [self.lat_std, self.lon_std, self.alt_std]
+        if any(given) and not all(given):
+            raise ValueError("lat_std, lon_std and alt_std must be given together")
+        return self
+
+
+class FusionNoiseConfig(StrictModel):
+    """Filter noise densities; see fusion.ins.ImuNoise for units and defaults."""
+
+    accel_noise: Annotated[float, Field(gt=0)] = 0.05
+    gyro_noise: Annotated[float, Field(gt=0)] = 0.002
+    accel_bias_rw: Annotated[float, Field(gt=0)] = 2e-3
+    gyro_bias_rw: Annotated[float, Field(gt=0)] = 5e-5
+
+
+class FusionConfig(StrictModel):
+    """IMU/GNSS fusion app (docs/FUSION.md)."""
+
+    imu: FusionImuConfig
+    gnss: FusionGnssConfig
+    output_rate_hz: Annotated[int, Field(ge=1, le=200)] = 50
+    align_speed_kmh: Annotated[float, Field(gt=0.0)] = 18.0
+    max_outage_s: Annotated[float, Field(gt=0.0)] = 10.0
+    noise: FusionNoiseConfig = Field(default_factory=FusionNoiseConfig)
+
+    def input_channels(self) -> dict[str, str]:
+        """Role -> catalog channel name for every configured input."""
+        roles = {f"accel.{i}": name for i, name in enumerate(self.imu.accel)}
+        roles |= {f"gyro.{i}": name for i, name in enumerate(self.imu.gyro)}
+        for role in (
+            "lat",
+            "lon",
+            "speed",
+            "course",
+            "mode",
+            "alt",
+            "lat_std",
+            "lon_std",
+            "alt_std",
+        ):
+            name = getattr(self.gnss, role)
+            if name is not None:
+                roles[role] = name
+        return roles
+
+
 class AppsConfig(StrictModel):
     """In-agent application configuration."""
 
     lap_timing: LapTimingConfig | None = None
+    fusion: FusionConfig | None = None
 
 
 class CatalogConfig(StrictModel):
@@ -339,9 +451,30 @@ class CatalogConfig(StrictModel):
             if not _CHANNEL_RE.fullmatch(name):
                 raise ValueError(
                     f"channel {name!r} uses an invalid or reserved namespace; "
-                    "expected car.*, position.*, or sys.* (lap.* and timing.* are reserved)"
+                    "expected car.*, position.*, or sys.* "
+                    "(lap.*, timing.* and fused.* are reserved)"
                 )
         return channels
+
+    @model_validator(mode="after")
+    def fusion_inputs_exist_with_usable_units(self) -> CatalogConfig:
+        fusion = self.apps.fusion
+        if fusion is None:
+            return self
+        unit_tables = {"accel": ACCEL_UNITS, "gyro": GYRO_UNITS, "speed": SPEED_UNITS}
+        for role, name in fusion.input_channels().items():
+            channel = self.channels.get(name)
+            if channel is None:
+                raise ValueError(f"apps.fusion: {role} channel {name!r} is not in channels")
+            table = unit_tables.get(role.split(".")[0])
+            if table is not None and channel.units not in table:
+                raise ValueError(
+                    f"apps.fusion: {role} channel {name!r} has units {channel.units!r}; "
+                    f"expected one of {', '.join(table)}"
+                )
+            if role == "course" and channel.units != "deg":
+                raise ValueError(f"apps.fusion: course channel {name!r} must be in deg")
+        return self
 
 
 class ProfileConfig(StrictModel):

@@ -54,6 +54,7 @@ packages = [
     "src/collectors",
     "src/core",
     "src/timing",
+    "src/fusion",
     "src/agent",
     "src/pit",
 ]

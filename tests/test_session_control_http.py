@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import http.client
 import json
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -551,6 +552,12 @@ def test_backdated_transitions_over_http(tmp_path: Path):
             )
             assert code == 200
             session_start = body["session_start"]
+            # The backdated `at` values below sit a few ms after
+            # session_start, and the server refuses an `at` ahead of its own
+            # clock. A fast runner reaches them inside that window, so let the
+            # clock move past the latest one first.
+            while int(time.time() * 1000) <= session_start + 6:
+                await asyncio.sleep(0.005)
 
             code, body = await asyncio.to_thread(
                 _request,

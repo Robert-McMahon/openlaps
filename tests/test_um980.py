@@ -291,3 +291,30 @@ def test_commands_are_checksummed_over_the_nmea_span():
     """
     assert _checksummed_command("CONFIG CMDFORMAT 1") == "$CONFIG CMDFORMAT 1*72"
     assert _checksummed_command("UNLOG") == "$UNLOG*5F"
+
+
+def test_sentence_rate_overrides_set_per_sentence_intervals():
+    settings = Um980Settings(
+        rate_hz=50,
+        sentences=["RMC", "GGA", "GST"],
+        sentence_rates_hz={"GGA": 10, "gst": 10},
+        configure_on_start=True,
+    )
+
+    assert _startup_commands(settings) == ("UNLOG", "GPRMC 0.02", "GPGGA 0.1", "GPGST 0.1")
+
+
+def test_sentence_rate_override_must_name_a_configured_sentence():
+    with pytest.raises(ValueError, match="GST"):
+        Um980Settings(
+            rate_hz=50, sentences=["RMC"], sentence_rates_hz={"GST": 10}, configure_on_start=True
+        )
+
+
+def test_unsupported_override_rate_is_rejected():
+    settings = Um980Settings(
+        rate_hz=50, sentences=["RMC", "GGA"], sentence_rates_hz={"GGA": 7}, configure_on_start=True
+    )
+
+    with pytest.raises(ValueError, match="7 Hz"):
+        _startup_commands(settings)

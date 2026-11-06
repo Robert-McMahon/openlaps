@@ -181,15 +181,19 @@ def _xor_checksum(body: str) -> int:
     return checksum
 
 
-def _startup_commands(settings: Um980Settings) -> tuple[str, ...]:
+def _interval(rate_hz: int) -> str:
     try:
-        interval = SUPPORTED_RATES_HZ[settings.rate_hz]
+        return SUPPORTED_RATES_HZ[rate_hz]
     except KeyError:
         supported = ", ".join(str(rate) for rate in SUPPORTED_RATES_HZ)
         raise ValueError(
-            f"unsupported UM980 rate {settings.rate_hz} Hz; supported rates: {supported}"
+            f"unsupported UM980 rate {rate_hz} Hz; supported rates: {supported}"
         ) from None
 
+
+def _startup_commands(settings: Um980Settings) -> tuple[str, ...]:
+    _interval(settings.rate_hz)
+    overrides = {name.upper(): rate for name, rate in settings.sentence_rates_hz.items()}
     commands = ["UNLOG"]
     for configured_sentence in settings.sentences:
         sentence = configured_sentence.upper()
@@ -197,6 +201,7 @@ def _startup_commands(settings: Um980Settings) -> tuple[str, ...]:
             command = SENTENCE_COMMANDS[sentence]
         except KeyError:
             raise ValueError(f"unsupported UM980 NMEA sentence {configured_sentence!r}") from None
+        interval = _interval(overrides.get(sentence, settings.rate_hz))
         commands.append(f"{command} {interval}")
     timing = settings.timing_output
     if timing is not None:

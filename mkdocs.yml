@@ -20,6 +20,7 @@ nav:
   - Configuration:
       - Profiles and channel catalog: CATALOG.md
       - Track timing lines: TRACK_SETUP.md
+      - Sensor fusion: FUSION.md
       - Watch monitors: WATCH.md
       - Hardware targets: hardware/index.md
   - Operations:

@@ -222,6 +222,19 @@ channels:
   position.speed: { from: "serial0:um980.RMC.speed", units: "km/h" }
   position.heading: { from: "serial0:um980.RMC.heading", units: "deg" }
   position.fix_quality: { from: "serial0:um980.RMC.mode", type: string }
+  # GGA at 10 Hz: altitude above mean sea level (the geoid separation turns it
+  # into ellipsoidal height), satellites used, HDOP and the numeric fix quality
+  # (1=SPP, 2=DGPS, 4=RTK fixed, 5=RTK float, 6=dead reckoning).
+  position.alt: { from: "serial0:um980.GGA.alt", units: "m" }
+  position.geoid_sep: { from: "serial0:um980.GGA.geoid_sep", units: "m" }
+  position.sats: { from: "serial0:um980.GGA.sats", type: int }
+  position.hdop: { from: "serial0:um980.GGA.hdop" }
+  position.gga_quality: { from: "serial0:um980.GGA.quality", type: int }
+  # GST at 10 Hz: the receiver's own 1-sigma position error, which the fusion
+  # app uses to weight each fix instead of guessing from the fix mode.
+  position.lat_std: { from: "serial0:um980.GST.lat_std", units: "m" }
+  position.lon_std: { from: "serial0:um980.GST.lon_std", units: "m" }
+  position.alt_std: { from: "serial0:um980.GST.alt_std", units: "m" }
 
   # ---- Clock health: chrony's selected source and current error bound ----
   sys.host.clock_offset_s: { from: "host:clock_offset_s", units: "s" }
@@ -292,5 +305,38 @@ channels:
 
 apps:
   lap_timing:
+    # `fused.*` times on the IMU/GNSS fusion output instead: IMU-rate
+    # position that bridges short GNSS dropouts. Switch once the fusion
+    # block below is verified on the car (docs/FUSION.md -> Bring-up).
     position: position.*
     track: Wanneroo
+
+  # IMU/GNSS fusion (docs/FUSION.md): a 15-state error-state INS emitting
+  # fused.* channels -- position, speed, attitude, sideslip, body-frame
+  # acceleration, grade. Runs on the pre-RBE tap at full IMU rate.
+  fusion:
+    imu:
+      accel: [car.accel_x, car.accel_y, car.accel_z]
+      gyro: [car.gyro_x, car.gyro_y, car.gyro_z]
+      # IMU axis (with sign) along vehicle forward, right, down. The FDI is
+      # mounted x forward, y right, z down, so no remap. If it is ever
+      # remounted: parked level, the agent warns if the down axis reads +1 g.
+      axes: [x, y, z]
+      mount_rpy_deg: [0.0, 0.0, 0.0]
+    gnss:
+      lat: position.lat
+      lon: position.lon
+      speed: position.speed
+      course: position.heading
+      mode: position.fix_quality
+      alt: position.alt
+      lat_std: position.lat_std
+      lon_std: position.lon_std
+      alt_std: position.alt_std
+      latency_ms: 30
+      # Antenna relative to the IMU: forward, right, down, metres. ESTIMATE
+      # (2026-11-05): antenna 0.3 m behind and 1.1 m above the IMU, on the
+      # centreline. Replace with a tape measurement -- an error here shows
+      # up as position and heading error that grows with yaw rate.
+      lever_arm_m: [-0.3, 0.0, -1.1]
+    output_rate_hz: 50

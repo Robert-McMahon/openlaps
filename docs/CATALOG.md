@@ -138,6 +138,10 @@ apps:
   lap_timing:
     position: <channel-glob>     # e.g. "position.*" -- which channels feed the timing engine
     track: <string>              # track definition name, resolved under profiles/<profile>/tracks/
+  fusion:                        # optional IMU/GNSS fusion -> fused.* channels; see FUSION.md
+    imu: {accel: [x, y, z channels], gyro: [x, y, z channels], axes: [x, y, z], mount_rpy_deg: [0, 0, 0]}
+    gnss: {lat, lon, speed, course, mode?, alt?, lat_std?, lon_std?, alt_std?, latency_ms, lever_arm_m}
+    output_rate_hz: 50
 ```
 
 See [Track setup](TRACK_SETUP.md) for preparing the KML timing lines and
@@ -278,9 +282,10 @@ Reserved namespaces, unchanged and outside `car.*`:
 | Namespace | Covers |
 |---|---|
 | `car.*` | Every on-vehicle sensor/actuator reading: ECU engine/drivetrain state, IMU/dynamics, wheel speeds, fuel system, electrics, power-distribution/keypad device health. Flat, one level, snake_case. |
-| `position.*` | GNSS: lat, lon, speed, heading, fix quality |
+| `position.*` | GNSS: lat, lon, speed, heading, fix quality; altitude, satellites and HDOP (GGA); 1-sigma error (GST) |
 | `sys.*` | Host metrics and vehicle-agent health (queue depths, dropped-sample counters, link status) -- not populated via `catalog.yaml`; these are internal agent/host channels, not mapped source signals |
 | `lap.*`, `timing.*` | **Reserved, derived.** Produced by the timing engine from `apps.lap_timing`'s output (lap/sector events, `delta_best`, `predicted_lap`, distance, `lap_elapsed`). Never appear as a `from:` target in `catalog.yaml` -- they are channels the timing engine *writes*, re-entering the sample bus like any other channel. |
+| `fused.*` | **Reserved, derived.** IMU/GNSS fusion output from `apps.fusion` (position, speed, attitude, sideslip, body-frame acceleration, grade, status). See [Sensor fusion](FUSION.md). |
 
 Pit-owned namespaces, which are not vehicle channels at all (ADR 0011):
 

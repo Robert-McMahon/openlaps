@@ -357,17 +357,30 @@ the containers are `--restart unless-stopped`, and linger brings up the
 Pulse socket. `docker stop` is remembered across reboots; `docker start`
 undoes it.
 
-**Update** a changed checkout in `~/openlaps` (or files tarred over from the
-pit) into the installed tree, then restart what reads them:
+**Update** from the pit, where the git checkout lives (the board has no
+`.git` — `/opt/openlaps` is a plain tree, and `cat /opt/openlaps/.deployed-rev`
+says which commit it holds):
 
 ```bash
-cd ~/openlaps && tar cf - --exclude=.venv --exclude=.git . | sudo -u openlaps tar xf - -C /opt/openlaps
-sudo systemctl restart openlaps-agent          # profile, hardware.yaml, src
+tools/deploy_vehicle.sh                        # HEAD → /opt/openlaps, uv sync if the lock changed, restart agent
+```
+
+It ships committed files only, needs no internet unless `uv.lock` changed,
+and restarts only the agent. Restart the containers by hand when their
+config is what changed:
+
+```bash
 docker restart openlaps-vehicle-go2rtc         # go2rtc.yaml
 docker restart openlaps-vehicle-nats           # nats/vehicle.conf
 ```
 
-Re-run `uv sync` in `/opt/openlaps` if `pyproject.toml` changed.
+The same thing without the script, from a checkout on the board:
+
+```bash
+cd ~/openlaps && tar cf - --exclude=.venv --exclude=.git . | sudo -u openlaps tar xf - -C /opt/openlaps
+sudo -u openlaps uv sync --frozen              # only if pyproject.toml / uv.lock changed
+sudo systemctl restart openlaps-agent          # profile, hardware.yaml, src
+```
 
 **Tear down** (destructive — the JetStream store and the agent's registry
 and session state go with it; pit history is unaffected, see

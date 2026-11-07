@@ -180,23 +180,29 @@ RequiresMountsFor=/srv/openlaps
 
 ## Install
 
-Two trees. `~/openlaps` is the checkout, with `deploy/.env` and the TLS
-material in `~/openlaps-secrets/tls` beside it (`deploy/README.md` →
-Secrets). `/opt/openlaps` is the installed copy the services run from, owned
-by the `openlaps` system user with its own venv. Both containers mount their
-config from `/opt/openlaps`, so an update is one copy plus restarts (see
-Operating).
+No checkout on the board. The git checkout stays on the pit; the board holds
+`/opt/openlaps`, a plain copy of the tree the services run from, owned by the
+`openlaps` system user with its own venv (`tools/deploy_vehicle.sh` refreshes
+it, see Operating). Secrets live outside that tree in `~/openlaps-secrets`:
+`vehicle.env` (the NATS container's `--env-file`) and `tls/` (the leaf's
+certificates, `docs/operations/nats-security.md`). Both containers mount their
+config from `/opt/openlaps`, so an update is one copy plus restarts.
 
-### 1. Checkout, env, venv
+### 1. Secrets
+
+On the pit, build the env file from `example.env` as
+`docs/operations/vehicle.md` describes, append this target's overrides, and
+copy it over with the TLS material:
 
 ```bash
-git clone <this repo> ~/openlaps && cd ~/openlaps     # or tar a checkout over
 cat deploy/targets/luckfox-omni3576/target.env >> deploy/.env
-uv python install 3.13 && uv sync                     # Debian ships 3.11; pyproject needs 3.13
+ssh luckfox 'install -d -m 0700 ~/openlaps-secrets/tls'
+scp deploy/.env luckfox:openlaps-secrets/vehicle.env
+scp <ca.pem server-cert.pem server-key.pem> luckfox:openlaps-secrets/tls/
 ```
 
-`.env` is read only by the NATS container here (`--env-file`); the go2rtc
-device path is given on its `docker run` line and the agent reads
+`vehicle.env` is read only by the NATS container here; the go2rtc device
+path is given on its `docker run` line and the agent reads
 `/etc/openlaps/agent.env`. Set `OPENLAPS_VIDEO_DEVICE` to the camera's
 `/dev/v4l/by-id/` path anyway, so the file states the truth.
 
@@ -207,7 +213,7 @@ getent group openlaps >/dev/null || sudo groupadd --system openlaps
 id -u openlaps >/dev/null 2>&1 || \
   sudo useradd --system --gid openlaps --home-dir /opt/openlaps --shell /usr/sbin/nologin openlaps
 sudo install -d -o openlaps -g openlaps /opt/openlaps
-tar cf - --exclude=.venv --exclude=.git . | sudo -u openlaps tar xf - -C /opt/openlaps
+# from the pit checkout:  git archive HEAD | ssh luckfox 'sudo -u openlaps tar xf - -C /opt/openlaps'
 (cd /opt/openlaps && sudo -u openlaps uv python install 3.13 && sudo -u openlaps uv sync)
 
 sudo install -d /etc/openlaps
@@ -253,7 +259,7 @@ refclock sits at `Reach 0` forever with nothing in the journal, while
 
 ```bash
 docker run -d --name openlaps-vehicle-nats --network host --restart unless-stopped \
-  --env-file ~/openlaps/deploy/.env \
+  --env-file ~/openlaps-secrets/vehicle.env \
   -v /opt/openlaps/deploy/nats/vehicle.conf:/etc/nats/nats.conf:ro \
   -v ~/openlaps-secrets/tls:/etc/nats/tls:ro \
   -v /srv/openlaps/nats:/data \
@@ -357,17 +363,30 @@ the containers are `--restart unless-stopped`, and linger brings up the
 Pulse socket. `docker stop` is remembered across reboots; `docker start`
 undoes it.
 
-**Update** a changed checkout in `~/openlaps` (or files tarred over from the
-pit) into the installed tree, then restart what reads them:
+**Update** from the pit, where the git checkout lives (the board has no
+`.git` — `/opt/openlaps` is a plain tree, and `cat /opt/openlaps/.deployed-rev`
+says which commit it holds):
 
 ```bash
-cd ~/openlaps && tar cf - --exclude=.venv --exclude=.git . | sudo -u openlaps tar xf - -C /opt/openlaps
-sudo systemctl restart openlaps-agent          # profile, hardware.yaml, src
+tools/deploy_vehicle.sh                        # HEAD → /opt/openlaps, uv sync if the lock changed, restart agent
+```
+
+It ships committed files only, needs no internet unless `uv.lock` changed,
+and restarts only the agent. Restart the containers by hand when their
+config is what changed:
+
+```bash
 docker restart openlaps-vehicle-go2rtc         # go2rtc.yaml
 docker restart openlaps-vehicle-nats           # nats/vehicle.conf
 ```
 
-Re-run `uv sync` in `/opt/openlaps` if `pyproject.toml` changed.
+The same thing without the script, from the pit checkout:
+
+```bash
+git archive HEAD | ssh luckfox 'sudo -u openlaps tar xf - -C /opt/openlaps'
+ssh luckfox 'cd /opt/openlaps && sudo -u openlaps uv sync --frozen'   # only if pyproject.toml / uv.lock changed
+ssh luckfox 'sudo systemctl restart openlaps-agent'                  # profile, hardware.yaml, src
+```
 
 **Tear down** (destructive — the JetStream store and the agent's registry
 and session state go with it; pit history is unaffected, see

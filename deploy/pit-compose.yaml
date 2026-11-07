@@ -622,7 +622,61 @@ services:
       # First start downloads and unpacks a plugin.
       start_period: 60s
 
+  # --- remote ECU tuning (opt-in) ---------------------------------------------
+
+  ecu-windows:
+    # A Windows guest for the ECU vendor's tuning software (Haltech NSP),
+    # driving the car's ECU over USB/IP: docs/operations/remote-ecu.md.
+    # Behind a profile so a plain `up -d` never boots a Windows VM:
+    #
+    #     docker compose -f deploy/pit-compose.yaml --profile ecu up -d ecu-windows
+    #
+    # dockur/windows is QEMU/KVM in a container, so the pit host needs
+    # /dev/kvm. First start downloads and installs Windows into the volume
+    # below unattended; watch it on http://<pit-host>:8006.
+    #
+    # Pin the tag after the first pull (`docker image inspect`), like ntfy's.
+    image: dockurr/windows:${ECU_WINDOWS_IMAGE_TAG:-latest}
+    profiles: ["ecu"]
+    environment:
+      VERSION: ${ECU_WINDOWS_VERSION:-11}
+      RAM_SIZE: ${ECU_WINDOWS_RAM_SIZE:-6G}
+      CPU_CORES: ${ECU_WINDOWS_CPU_CORES:-4}
+      DISK_SIZE: ${ECU_WINDOWS_DISK_SIZE:-64G}
+      USERNAME: ${ECU_WINDOWS_USERNAME:-openlaps}
+      PASSWORD: ${ECU_WINDOWS_PASSWORD:-}
+      # The ECU, matched by VID:PID rather than by bus/device number: the
+      # number changes every time the ECU resets, the VID:PID never does, and
+      # QEMU's usb-host matching by ID is what lets the guest get the ECU back
+      # after a key-off without restarting the VM. The same two values, in
+      # the same 4-hex-digit form, as /etc/default/openlaps-ecu.
+      ARGUMENTS: "-device usb-host,vendorid=0x${OPENLAPS_ECU_USB_VID:-0000},productid=0x${OPENLAPS_ECU_USB_PID:-0000}"
+    devices:
+      - /dev/kvm:/dev/kvm
+      - /dev/net/tun:/dev/net/tun
+    # USB, as a bind mount plus a cgroup rule rather than a `devices:` entry.
+    # `devices:` copies the nodes that exist at container start and allows
+    # exactly those, so the node the ECU gets after it re-enumerates (a new
+    # /dev/bus/usb/BBB/DDD) would be both missing and denied. The bind mount
+    # shows the host's live devtmpfs; 189 is the USB device major.
+    volumes:
+      - ecu-windows-storage:/storage
+      - /dev/bus/usb:/dev/bus/usb
+    device_cgroup_rules:
+      - "c 189:* rmw"
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "${ECU_WINDOWS_WEB_PORT:-8006}:8006"   # browser console (noVNC)
+      - "${ECU_WINDOWS_RDP_PORT:-3389}:3389/tcp"
+      - "${ECU_WINDOWS_RDP_PORT:-3389}:3389/udp"
+    # Windows needs time to shut down cleanly; the default 10 s would pull
+    # the plug on it, and on NSP mid-write.
+    stop_grace_period: 2m
+    restart: "no"
+
 volumes:
+  ecu-windows-storage:
   nats-data:
   timescale-data:
   session-data:

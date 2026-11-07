@@ -87,7 +87,15 @@ leaves out. One build covers all three:
   ```
   CONFIG_PPS_CLIENT_GPIO=y
   CONFIG_NVME_HWMON=y
+  CONFIG_USBIP_CORE=y
+  CONFIG_USBIP_HOST=y
   ```
+
+  The two USBIP lines are only for remote ECU tuning
+  (`docs/operations/remote-ecu.md`): they let the board export the ECU's USB
+  port to the pit. Built in rather than `=m` because this procedure writes
+  only `boot.img` and never installs a matching module tree, so a module
+  would have nothing to load from.
 
   Not `.config` directly: the SDK regenerates that from the board defconfig on
   every build, so a hand edit is discarded.
@@ -132,8 +140,9 @@ Then, **before believing it**:
 
 ```bash
 uname -v                                   # build number and date must be the new ones
-zcat /proc/config.gz | grep -E 'NVME_HWMON|PPS_CLIENT_GPIO'
+zcat /proc/config.gz | grep -E 'NVME_HWMON|PPS_CLIENT_GPIO|USBIP_HOST'
 ls /dev/ttyS2 /dev/pps0
+ls -d /sys/bus/usb/drivers/usbip-host      # remote ECU tuning only
 ```
 
 A `boot.img` copied to the board but not written boots the old kernel with

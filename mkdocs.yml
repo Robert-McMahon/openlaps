@@ -32,6 +32,7 @@ nav:
       - NATS security: operations/nats-security.md
       - Dashboard maintenance: operations/dashboards.md
       - Timing feed fallbacks: operations/timing-feed.md
+      - Remote ECU tuning: operations/remote-ecu.md
       - Commissioning: CUTOVER_RUNBOOK.md
       - Bench measurements: BENCH_RUNBOOK.md
   - Hardware:

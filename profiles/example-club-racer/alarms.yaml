@@ -140,6 +140,26 @@ alarms:
     summary: Publish lag high
     panel: 7
 
+  # The vehicle box's CAN controller counting frames that nobody receives
+  # (collectors/can_stall.py): on 2026-11-08 the Luckfox's rk3576_canfd sat
+  # in that state for hours, and the agent reports it as the seconds it has
+  # lasted. The box's own watchdog (deploy/systemd/openlaps-can-watchdog.service)
+  # reboots it after 10 s of this, so the rule fires on a shorter stall and
+  # stays firing until the agent is back and reporting 0 -- which is the
+  # crew's notice that the box is rebooting, about 75 s of lost data.
+  # Always, not on track: a stall in the paddock still needs the reboot.
+  can-bus-stalled:
+    channel: sys.agent.stall_s.can0
+    units: s
+    above: 3
+    clear_below: 1
+    for: 2s                      # the stall itself is the hold; act on the first report
+    severity: warning
+    gate: always
+    resting: 0
+    summary: CAN bus stalled on the vehicle box (watchdog rebooting it)
+    panel: 7
+
   # Always firing, on purpose. Grafana re-sends it every minute (its own
   # notification route in the generated file) and the notifier's annunciator
   # goes red when it stops arriving: the only way to tell a quiet night from

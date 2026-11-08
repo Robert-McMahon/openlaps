@@ -38,6 +38,26 @@ sudo ./.venv/bin/python tools/can_up.py \
 The systemd `openlaps-can.service` performs the same privileged host action at
 boot. The agent itself does not need `CAP_NET_ADMIN`.
 
+### CAN stall watchdog
+
+A CAN controller can wedge: the kernel keeps counting frames while delivering
+none to any socket, and taking the link down to recover hangs the driver (seen
+on the Luckfox Omni3576, 2026-11-08; a vendor driver bug, fixed by the kernel
+patch under `deploy/targets/luckfox-omni3576/patches/`, so the watchdog is the
+safety net rather than the cure). The agent reports that state as
+`sys.agent.stall_s.<bus>` and the pit's `can-bus-stalled` alarm fires on it.
+On the board, `deploy/systemd/openlaps-can-watchdog.service` runs
+`tools/can_watchdog.py` as root: it watches every bus the profile names on a
+socket of its own, never touches the interface, and reboots the box when the
+stall persists for 10 s. Set `OPENLAPS_CAN_WATCHDOG_ACTION=reboot` in
+`/etc/openlaps/agent.env` for a race weekend; the default `log` only records
+the stall in the journal. Reboots are budgeted at three per hour, remembered
+in `/var/lib/openlaps/can-watchdog-reboots.json`.
+
+```bash
+sudo ./.venv/bin/python tools/can_watchdog.py --dry-run   # what it would watch, and do
+```
+
 ## 4. Start the stack
 
 Radxa X4:

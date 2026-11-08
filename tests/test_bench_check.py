@@ -45,14 +45,15 @@ def _catalog(
 ):
     """The bench rig by default -- which is what this tool is for."""
     profile = load_profile(profile_dir, hardware)
-    names = [bus.name for bus in profile.vehicle.buses]
+    bus_names = [bus.name for bus in profile.vehicle.buses]
+    names = list(bus_names)
     names += [source.name for source in profile.vehicle.serial]
     if profile.vehicle.host.enabled:
         names.append("host")
     catalog = build_runtime_catalog(
         profile,
         state_path=tmp_path / "registry-state.json",
-        derived_channels=agent_derived_channels(names),
+        derived_channels=agent_derived_channels(names, bus_names=bus_names),
     )
     return profile, catalog
 

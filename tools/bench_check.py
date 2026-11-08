@@ -580,14 +580,15 @@ def main(argv: list[str] | None = None, out=sys.stdout) -> int:
 def _prepare(args, logs: list[Path], state_dir: Path):
     """Load the profile, build the agent's own catalog, and predict the mix."""
     profile = load_profile(args.profile, args.hardware)
-    collector_names = [bus.name for bus in profile.vehicle.buses]
+    bus_names = [bus.name for bus in profile.vehicle.buses]
+    collector_names = list(bus_names)
     collector_names += [source.name for source in profile.vehicle.serial]
     if profile.vehicle.host.enabled:
         collector_names.append(HOST_CLASS)
     catalog = build_runtime_catalog(
         profile,
         state_path=state_dir / ".registry-state.json",
-        derived_channels=agent_derived_channels(collector_names),
+        derived_channels=agent_derived_channels(collector_names, bus_names=bus_names),
     )
     can_prediction = predict_can(profile, catalog, logs)
     predicted = {

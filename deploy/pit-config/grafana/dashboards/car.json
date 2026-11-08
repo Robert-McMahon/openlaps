@@ -1156,12 +1156,202 @@
       "type": "gauge"
     },
     {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "green",
+                "value": 20
+              }
+            ]
+          },
+          "unit": "litre"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 19
+      },
+      "hideTimeOverride": true,
+      "id": 42,
+      "maxDataPoints": 600,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.fuel_level"
+        }
+      ],
+      "timeFrom": "1m",
+      "title": "Fuel level",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat",
+      "description": "Haltech FUEL_LEVEL as reported by the ECU, in litres. Colour steps are a generic low-fuel warning; the strategy service on the Fuel dashboard owns the real laps-to-dry call."
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "description": "Haltech TOTAL_FUEL_USED (car.fuel_total_used), converted from cc to litres in-panel. The ECU zeroes this counter at every engine start, so it reads 0 from key-on until first fire and holds the previous run's total until the next start. Fuel out only: it knows nothing about fuel added at a stop.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "litre"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 19
+      },
+      "hideTimeOverride": true,
+      "id": 43,
+      "maxDataPoints": 600,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.fuel_total_used"
+        }
+      ],
+      "timeFrom": "1m",
+      "title": "Fuel used since engine start",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "/",
+              "right": {
+                "fixed": "1000"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 24
       },
       "id": 14,
       "panels": [],
@@ -1197,7 +1387,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 20
+        "y": 25
       },
       "hideTimeOverride": true,
       "id": 15,
@@ -1274,7 +1464,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 20
+        "y": 25
       },
       "hideTimeOverride": true,
       "id": 16,
@@ -1352,7 +1542,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 20
+        "y": 25
       },
       "hideTimeOverride": true,
       "id": 17,
@@ -1430,7 +1620,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 20
+        "y": 25
       },
       "hideTimeOverride": true,
       "id": 18,
@@ -1508,7 +1698,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 20
+        "y": 25
       },
       "hideTimeOverride": true,
       "id": 19,
@@ -1596,7 +1786,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 20
+        "y": 25
       },
       "hideTimeOverride": true,
       "id": 20,
@@ -1674,7 +1864,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 24
+        "y": 29
       },
       "hideTimeOverride": true,
       "id": 21,
@@ -1756,7 +1946,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 24
+        "y": 29
       },
       "hideTimeOverride": true,
       "id": 22,
@@ -1834,7 +2024,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 24
+        "y": 29
       },
       "hideTimeOverride": true,
       "id": 23,
@@ -1889,7 +2079,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 33
       },
       "id": 37,
       "panels": [],
@@ -1975,7 +2165,7 @@
         "h": 12,
         "w": 8,
         "x": 0,
-        "y": 29
+        "y": 34
       },
       "hideTimeOverride": true,
       "id": 40,
@@ -2161,7 +2351,7 @@
         "h": 12,
         "w": 8,
         "x": 8,
-        "y": 29
+        "y": 34
       },
       "hideTimeOverride": true,
       "id": 38,
@@ -2282,7 +2472,7 @@
         "h": 12,
         "w": 8,
         "x": 16,
-        "y": 29
+        "y": 34
       },
       "hideTimeOverride": true,
       "id": 39,
@@ -2323,7 +2513,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 46
       },
       "id": 24,
       "panels": [],
@@ -2426,7 +2616,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 42
+        "y": 47
       },
       "id": 25,
       "options": {
@@ -2600,7 +2790,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 42
+        "y": 47
       },
       "id": 26,
       "options": {
@@ -2764,7 +2954,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 50
+        "y": 55
       },
       "id": 27,
       "options": {
@@ -2906,7 +3096,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 50
+        "y": 55
       },
       "id": 28,
       "options": {
@@ -3047,7 +3237,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 58
+        "y": 63
       },
       "id": 29,
       "options": {
@@ -3188,7 +3378,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 58
+        "y": 63
       },
       "id": 30,
       "options": {
@@ -3361,7 +3551,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 66
+        "y": 71
       },
       "id": 31,
       "options": {
@@ -3524,7 +3714,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 66
+        "y": 71
       },
       "id": 32,
       "options": {
@@ -3665,7 +3855,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 74
+        "y": 79
       },
       "id": 33,
       "options": {
@@ -3806,7 +3996,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 74
+        "y": 79
       },
       "id": 34,
       "options": {
@@ -3947,7 +4137,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 82
+        "y": 87
       },
       "id": 35,
       "options": {
@@ -4088,7 +4278,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 82
+        "y": 87
       },
       "id": 36,
       "options": {
@@ -4132,6 +4322,147 @@
         }
       ],
       "title": "Fuel level",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "ECU TOTAL_FUEL_USED in litres; drops to zero at each engine start. Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "litre"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fuel used Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Fuel used Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fuel used Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 95
+      },
+      "id": 44,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) / 1000.0 AS \"Fuel used Average\", min(min) / 1000.0 AS \"Fuel used Minimum\", max(max) / 1000.0 AS \"Fuel used Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_total_used'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) / 1000.0 AS \"Fuel used Average\", min(value) / 1000.0 AS \"Fuel used Minimum\", max(value) / 1000.0 AS \"Fuel used Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_total_used'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Fuel used since engine start",
       "type": "timeseries"
     }
   ],
@@ -4220,12 +4551,12 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
         "includeAll": true,
         "label": "Stint",
         "name": "stint",
         "options": [],
-        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
         "refresh": 1,
         "regex": "",
         "regexApplyTo": "value",
@@ -4242,12 +4573,12 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "definition": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
         "includeAll": true,
         "label": "Lap",
         "name": "lap",
         "options": [],
-        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "query": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
         "refresh": 1,
         "regex": "",
         "regexApplyTo": "value",

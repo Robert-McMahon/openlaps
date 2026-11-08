@@ -237,14 +237,18 @@ OPENLAPS_STATE_DIR=/var/lib/openlaps
 OPENLAPS_TICK_MS=20
 EOF
 sudo install -m 0644 deploy/systemd/openlaps-can.service deploy/systemd/openlaps-agent.service \
-  /etc/systemd/system/
+  deploy/systemd/openlaps-can-watchdog.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now openlaps-can openlaps-agent
+sudo systemctl enable --now openlaps-can openlaps-agent openlaps-can-watchdog
 ```
 
 `openlaps-can` runs `tools/can_up.py` as root before the agent, with the
 `link: {fd: true, dbitrate: 2000000}` from `hardware.yaml` — see CAN below
-for why that is not optional.
+for why that is not optional. `openlaps-can-watchdog` runs
+`tools/can_watchdog.py`, also as root, and reboots the board when the
+controller wedges (CAN below again). It starts in `log` mode; add
+`OPENLAPS_CAN_WATCHDOG_ACTION=reboot` to `agent.env` before a race weekend,
+and `sudo systemctl restart openlaps-can-watchdog`.
 
 ### 3. Clock: PPS into chrony
 
@@ -355,7 +359,7 @@ dashboard's `camera` variable to `http://192.168.12.222:1984`.
 
 ```bash
 # status
-systemctl status openlaps-can openlaps-agent chrony
+systemctl status openlaps-can openlaps-agent openlaps-can-watchdog chrony
 docker ps
 sudo journalctl -u openlaps-agent -f
 docker logs -f openlaps-vehicle-go2rtc
@@ -404,7 +408,7 @@ and session state go with it; pit history is unaffected, see
 `deploy/README.md` → Tear-down):
 
 ```bash
-sudo systemctl disable --now openlaps-agent openlaps-can
+sudo systemctl disable --now openlaps-agent openlaps-can openlaps-can-watchdog
 docker stop openlaps-vehicle-go2rtc openlaps-vehicle-nats   # stop, then rm: `rm -f`
 docker rm openlaps-vehicle-go2rtc openlaps-vehicle-nats     # SIGKILLs nats mid-write
 sudo rm -rf /srv/openlaps/nats/* /var/lib/openlaps

@@ -762,6 +762,7 @@ the measurement below each time the Grafana pin or the path changes.
 | `knock-high` | `CALL bench_alert_sample('car.knock_level1', 90);` | `CALL bench_alert_sample('car.knock_level1', 0);` |
 | `engine-protection-active` | `CALL bench_alert_sample('car.engine_protection_severity', 2);` | `CALL bench_alert_sample('car.engine_protection_severity', 0);` |
 | `publish-lag-high` | `CALL bench_alert_sample('sys.agent.publish_lag_ms', 750);` | `CALL bench_alert_sample('sys.agent.publish_lag_ms', 0);` |
+| `can-bus-stalled` | `CALL bench_alert_sample('sys.agent.stall_s.can0', 8);` The real path needs a wedged controller and cannot be staged on a bench: the signature (kernel `rx_packets` rising, nothing delivered) is proven by `tests/test_can_stall.py`, and the agent reported it live on the Luckfox on 2026-11-08. Do **not** try to provoke it with `ip link set can0 down` -- that is what hung the board. | `CALL bench_alert_sample('sys.agent.stall_s.can0', 0);` (clears below 1) |
 | `live-feed-stale` | Stop the replay after an on-track `car.rpm` sample and wait more than 5 seconds. | Restart replay or `CALL bench_alert_sample('car.rpm', 3000);` |
 | `notifier-heartbeat` | Always firing; nothing to do. | Stop the grafana container: the annunciator's path indicator goes red within three minutes and `/health` reports `heartbeat.ok: false`. |
 | `strategy-warning` | `INSERT INTO watch_findings (finding_id, vehicle_id, monitor, opened_at, severity, peak_score, summary) VALUES (gen_random_uuid(), 'example-club-racer', 'strategy.bench_drill', now(), 'warning', 1.0, '{"message": "bench drill"}');` | `UPDATE watch_findings SET closed_at = now() WHERE monitor = 'strategy.bench_drill' AND closed_at IS NULL;` |
@@ -779,8 +780,8 @@ Finally write a `lap.event` with `"pit_status":"pit"`, repeat each car-channel
 firing sample, and verify the seven on-track-gated rules remain Normal.  Then
 restore `"track"`, `UPDATE sessions SET status = 'ended' WHERE session_id =
 'bench-drill'`, repeat the firing samples again, and verify the same seven
-stay Normal: that is the overnight case.  The `publish-lag-high` pipeline
-rule deliberately remains active in both.
+stay Normal: that is the overnight case.  The `publish-lag-high` and
+`can-bus-stalled` pipeline rules deliberately remain active in both.
 
 ### Envelope findings (P7.5)
 

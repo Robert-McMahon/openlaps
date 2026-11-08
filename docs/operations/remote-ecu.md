@@ -128,6 +128,24 @@ like any other install.
 Stop it with `docker compose ... stop ecu-windows`; the two-minute grace
 period lets Windows shut down instead of being cut off.
 
+### Using Omarchy's Windows VM instead
+
+On an Omarchy pit host that already has `omarchy-windows-vm` installed, skip
+`ecu-windows` and use that guest: its compose
+(`/var/lib/omarchy/windows/docker-compose.yml`, root-owned) already bind-mounts
+`/dev/bus/usb` and carries the `c 189:* rwm` cgroup rule, so the only change
+is one more `usb-host` device on its `ARGUMENTS` line:
+
+```text
+-device usb-host,bus=xhci.0,vendorid=0x<VID>,productid=0x<PID>
+```
+
+Keep a `.bak-*` copy beside it, as the earlier USB additions did, and restart
+the VM (`omarchy-windows-vm stop`, then `launch`) for QEMU to read the new
+arguments. The attach loop (step 3) is the same either way; it does not care
+which container takes the device from `/dev/bus/usb`. Note that
+`omarchy-windows-vm install` regenerates the compose and would drop the line.
+
 ## 5. Each session
 
 Arm, on the vehicle:

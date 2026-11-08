@@ -76,7 +76,8 @@ to the receiver is not short.
 
 `/dev/ttyS4` is the Bluetooth HCI link and every other UART is disabled in
 the stock device tree; PPS and NVMe temperature need drivers the stock config
-leaves out. One build covers all three:
+leaves out; and the stock CAN driver wedges under a busy bus. One build
+covers all four:
 
 - `openlaps.dtsi` beside this file: `uart2` on `uart2m1` (pins 8/10, becomes
   `/dev/ttyS2`) and a `pps-gpio` node on GPIO3_A2 (pin 11, becomes
@@ -91,6 +92,10 @@ leaves out. One build covers all three:
 
   Not `.config` directly: the SDK regenerates that from the board defconfig on
   every build, so a hand edit is discarded.
+- `patches/0001-can-rk3576_canfd-never-leave-NAPI-scheduled.patch`: the
+  receive-path fix for the vendor CAN driver (see *CAN: the controller can
+  wedge* below for what it fixes). The patch header carries the full
+  analysis.
 
 ### 1. Back up the boot partition
 
@@ -110,8 +115,14 @@ cp <openlaps>/deploy/targets/luckfox-omni3576/openlaps.dtsi \
   kernel-6.1/arch/arm64/boot/dts/rockchip/
 printf '\n#include "openlaps.dtsi"\n' \
   >> kernel-6.1/arch/arm64/boot/dts/rockchip/luckfox-omni3576.dts
+patch -p1 -d kernel-6.1 \
+  < <openlaps>/deploy/targets/luckfox-omni3576/patches/0001-can-rk3576_canfd-never-leave-NAPI-scheduled.patch
 ./build.sh kernel
 ```
+
+`patch` refuses an already-applied patch (answer `n` to "reversed?"), so
+re-running after an SDK update is safe; a rejected hunk means the vendor
+driver moved and the patch needs rebasing before the build is trusted.
 
 **At the end of the `.dts`, not the top** — the fragment refers to `&uart2`
 and to `RK_PA2` / `GPIO_ACTIVE_HIGH`, which only exist after the board `.dts`
@@ -418,6 +429,48 @@ Both together work, which is why `hardware.yaml` carries
 `link: {fd: true, dbitrate: 2000000}`. The car's bus is unaffected: an
 FD-mode controller receives classic frames unchanged, the data bitrate only
 governs BRS frames a classic bus never sends, and the agent transmits nothing.
+
+### CAN: the controller can wedge, and the link must not be bounced
+
+Three times on 2026-11-08, always with the engine running, `can0` stopped
+delivering frames for good: the kernel counted ~100 "frames"/s on the link
+and matched none of them to any socket (`/proc/net/can/stats` current match
+ratio 0 % while the RX counter climbed), candump saw nothing even with the
+full error mask, and the link could read ERROR-ACTIVE with zero error
+counters. `ip link set can0 down` then hung inside `rk3576_canfd` holding
+the rtnl lock, which blocked every new SSH login.
+
+The cause is in the vendor driver's DMA receive path, not on the bus. It
+masks the stream interrupts, DMAs the records waiting in the controller's
+14-record SRAM, and relies on the NAPI poll to unmask them; the poll only
+completed NAPI when it drained *fewer* than 14 records. Drain a full SRAM
+once (the host ~9 ms late at the Haltech's ~1500 frames/s) and NAPI stays
+scheduled forever: the interrupts stay masked, every later schedule is a
+no-op, and each further frame overflows the SRAM into an error frame with no
+class bits that no socket can receive. `napi_disable()` in the close path
+spins on that same bit, hence the hang. The definitive check, harmless to
+run, is the controller's interrupt mask at `0x2ac00010` via `/dev/mem`:
+`0x00028001` is wedged, `0x00000001` is healthy.
+
+`patches/0001-can-rk3576_canfd-never-leave-NAPI-scheduled.patch` fixes it
+(the poll always completes and chains another DMA while records are
+waiting; the mask can no longer be left set with nothing to clear it;
+overflow is reported as `CAN_ERR_CRTL_RX_OVERFLOW`). Build it in per
+*Kernel* above and confirm with `uname -v` after flashing.
+
+Until the patched kernel is on the board: **never take `can0` down by
+hand.** Only a reset of the controller clears it, and a reboot while the bus
+is already busy can wedge again during boot, which is why on 2026-11-08 a
+plain reboot with the engine running came back stalled while an ECU cycle
+followed by a reboot worked. So: ignition/ECU off, reboot, ECU on.
+`openlaps-can-watchdog` (`tools/can_watchdog.py`) watches for the signature
+on a socket of its own and, in `reboot` mode, reboots the board after 10 s
+of it, with `systemctl reboot` first and `/proc/sysrq-trigger` as the
+fallback (three reboots an hour, then it stops). The pit sees the same
+condition as `sys.agent.stall_s.can0` and the `can-bus-stalled` alarm. One
+gap remains on this kernel: no `/dev/watchdog` is exposed (the RK3576 has
+one; the 6.1.75 BSP does not enable it), so a full kernel hang has no
+safety net.
 
 ### Video: H.264 only
 

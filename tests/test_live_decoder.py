@@ -28,7 +28,12 @@ from pit.live_decoder.service import (
     MqttSink,
     mqtt_message,
 )
-from pit.registry_cache import MSG_TYPE_HEADER, MSG_TYPE_REGISTRY, DecodedSample
+from pit.registry_cache import (
+    MSG_TYPE_HEADER,
+    MSG_TYPE_REGISTRY,
+    REGISTRY_SOURCE_CLASS,
+    DecodedSample,
+)
 
 
 def _write(path: Path, text: str) -> Path:
@@ -658,3 +663,278 @@ def test_the_shipped_config_names_no_vehicle_at_all():
         Path(__file__).parents[1] / "deploy" / "pit-config" / "live-decoder.yaml"
     )
     assert shipped.vehicle is None
+
+
+# --- live source: pit copy or the vehicle stream across the leaf -------------
+
+
+class _FakeSub:
+    """A push subscription that never yields: the car is silent or the link is down."""
+
+    def __init__(self, record: dict) -> None:
+        self.record = record
+        self.unsubscribed = False
+
+    async def next_msg(self, timeout: float = 1.0):
+        await asyncio.sleep(min(timeout, 0.01))
+        raise TimeoutError
+
+    async def unsubscribe(self) -> None:
+        self.unsubscribed = True
+
+
+class _FakeJs:
+    def __init__(self, log: list, opts: dict, fail_first: int = 0) -> None:
+        self.log = log
+        self.opts = opts
+        self.fail_first = fail_first
+
+    async def subscribe(self, subject, **kwargs):
+        record = {"subject": subject, "domain": self.opts.get("domain"), **kwargs}
+        if self.fail_first and kwargs.get("deliver_policy") is not None:
+            self.fail_first -= 1
+            record["failed"] = True
+            self.log.append(record)
+            raise OSError("leaf down")
+        self.log.append(record)
+        return _FakeSub(record)
+
+
+class _FakeNats:
+    """Just enough of nats-py's client for LiveDecoder.run to drive."""
+
+    def __init__(self, log: list, *, fail_first_live: int = 0) -> None:
+        self.options: dict = {}
+        self.log = log
+        self.contexts: list[dict] = []
+        self.fail_first_live = fail_first_live
+
+    async def connect(self, **options) -> None:
+        return None
+
+    def jetstream(self, **opts):
+        self.contexts.append(opts)
+        fail = 0
+        if opts.get("domain"):
+            fail, self.fail_first_live = self.fail_first_live, 0
+        return _FakeJs(self.log, opts, fail_first=fail)
+
+    async def close(self) -> None:
+        return None
+
+
+class _NoSink:
+    def __init__(self) -> None:
+        self.suppressed: dict[str, int] = {}
+        self.sent: list = []
+
+    def submit(self, update) -> None:
+        self.sent.append(update)
+
+    async def run(self, stop: asyncio.Event) -> None:
+        await stop.wait()
+
+
+def _run_for(decoder: LiveDecoder, seconds: float) -> None:
+    async def go() -> None:
+        stop = asyncio.Event()
+        asyncio.get_running_loop().call_later(seconds, stop.set)
+        await decoder.run(stop)
+
+    asyncio.run(go())
+
+
+def _decoder(tmp_path: Path, monkeypatch, fake: _FakeNats, **settings) -> LiveDecoder:
+    path = _write(
+        tmp_path / "live.yaml",
+        """vehicle: car-1
+defaults: {max_hz: 10, total_max_hz: 500}
+channels: [{match: 'car.*'}]
+""",
+    )
+    monkeypatch.setattr("pit.live_decoder.service.NatsClient", lambda: fake)
+    decoder = LiveDecoder(
+        LiveDecoderSettings(config_path=path, nats_url="nats://unused", health_port=0, **settings)
+    )
+    decoder.sink = _NoSink()
+    return decoder
+
+
+def test_settings_default_to_the_pit_copy_and_can_name_the_vehicle_stream(tmp_path):
+    path = tmp_path / "live.yaml"
+    default = LiveDecoderSettings.from_env({}, config_path=path)
+    assert (default.live_source, default.live_stream) == ("pit", "TELE_VEHICLE")
+
+    vehicle = LiveDecoderSettings.from_env(
+        {
+            "OPENLAPS_LIVE_SOURCE": "vehicle",
+            "OPENLAPS_VEHICLE_JS_DOMAIN": "veh",
+            "OPENLAPS_VEHICLE_STREAM": "TELE",
+            "OPENLAPS_LIVE_RESUBSCRIBE_S": "7.5",
+        },
+        config_path=path,
+    )
+    assert (vehicle.live_source, vehicle.live_stream, vehicle.vehicle_domain) == (
+        "vehicle",
+        "TELE",
+        "veh",
+    )
+    assert vehicle.resubscribe_after_s == 7.5
+    # The pit stream is still named: the registries are scanned from it.
+    assert vehicle.stream == "TELE_VEHICLE"
+
+    with pytest.raises(ValueError, match="OPENLAPS_LIVE_SOURCE"):
+        LiveDecoderSettings.from_env({"OPENLAPS_LIVE_SOURCE": "car"}, config_path=path)
+    with pytest.raises(ValueError, match="OPENLAPS_VEHICLE_JS_DOMAIN"):
+        LiveDecoderSettings.from_env(
+            {"OPENLAPS_LIVE_SOURCE": "vehicle", "OPENLAPS_VEHICLE_JS_DOMAIN": " "},
+            config_path=path,
+        )
+    with pytest.raises(ValueError, match="RESUBSCRIBE"):
+        LiveDecoderSettings.from_env({"OPENLAPS_LIVE_RESUBSCRIBE_S": "0"}, config_path=path)
+
+
+def test_vehicle_source_reads_live_batches_across_the_leaf_and_registries_locally(
+    tmp_path, monkeypatch
+):
+    """The gauges follow the car's stream; the registry scan stays on the pit copy."""
+    log: list = []
+    fake = _FakeNats(log)
+    decoder = _decoder(tmp_path, monkeypatch, fake, live_source="vehicle", resubscribe_after_s=0.1)
+
+    _run_for(decoder, 0.45)
+
+    assert fake.contexts[0] == {}, "registries come from the pit's own JetStream"
+    assert fake.contexts[1]["domain"] == "veh", "the live consumer crosses to the vehicle domain"
+    assert fake.contexts[1]["timeout"] > 0, "API calls over the radio must be bounded"
+
+    scan = log[0]
+    assert (scan["subject"], scan["stream"], scan["domain"]) == (
+        f"tele.car-1.{REGISTRY_SOURCE_CLASS}",
+        "TELE_VEHICLE",
+        None,
+    )
+    live = [entry for entry in log[1:] if entry["deliver_policy"].name == "NEW"]
+    assert live, "no live consumer was created"
+    assert {(entry["stream"], entry["domain"]) for entry in live} == {("TELE", "veh")}
+    assert all(entry["idle_heartbeat"] == 0.1 for entry in live), (
+        "nats-py's by-sequence reset must not fire before our fresh-NEW replacement"
+    )
+    # Silence for resubscribe_after_s replaces the consumer with a fresh NEW
+    # one -- never a resume by sequence, which would replay the backlog.
+    assert len(live) >= 2
+    assert decoder.health.live_resubscribes == len(live) - 1
+    assert decoder.health.live_resubscribes >= 1
+    assert all(entry.get("opt_start_seq") is None for entry in live)
+    snapshot = decoder.health.snapshot()
+    assert (snapshot["live_source"], snapshot["live_stream"]) == ("vehicle", "TELE")
+
+
+def test_vehicle_source_keeps_trying_while_the_link_is_down(tmp_path, monkeypatch):
+    """A subscribe that cannot reach the car is a radio dropout, not a wiring error."""
+    log: list = []
+    fake = _FakeNats(log, fail_first_live=2)
+    decoder = _decoder(tmp_path, monkeypatch, fake, live_source="vehicle", resubscribe_after_s=5.0)
+
+    _run_for(decoder, 2.0)
+
+    assert decoder.health.live_subscribe_failures == 2
+    assert [entry.get("failed", False) for entry in log[1:4]] == [True, True, False]
+    assert decoder.health.live_resubscribes == 0
+
+
+def test_pit_source_leaves_a_quiet_consumer_alone(tmp_path, monkeypatch):
+    """The sourced copy is local and in order; resuming by sequence is exactly right there."""
+    log: list = []
+    fake = _FakeNats(log)
+    decoder = _decoder(tmp_path, monkeypatch, fake, resubscribe_after_s=0.1)
+
+    _run_for(decoder, 0.4)
+
+    assert fake.contexts == [{}]
+    live = [entry for entry in log if entry["deliver_policy"].name == "NEW"]
+    assert len(live) == 1
+    assert "idle_heartbeat" not in live[0]
+    assert decoder.health.live_resubscribes == 0
+
+
+def test_a_batch_from_an_unseen_registry_generation_triggers_a_pit_rescan(tmp_path, monkeypatch):
+    """The agent restarted while the vehicle-stream consumer was down: the new
+    registry went past unseen. The pit's sourced copy has it; go and get it."""
+    registry = pb.ChannelRegistry(registry_seq=7, vehicle_id="car-1")
+    registry.channels.add(id=3, name="car.coolant_temp", units="K", type=pb.UINT, scale=0.1)
+    batcher = Batcher(
+        7, {3: ChannelPolicy("car.coolant_temp", pb.UINT, None, scale=0.1)}, tick_ms=20
+    )
+    batcher.add("can0", 3, Sample("can0:test", 0, 1234.0, 355.0))
+    batch_payload = batcher.tick(1234, 0)["can0"]
+
+    class _LiveSub:
+        def __init__(self) -> None:
+            self.sent = 0
+
+        async def next_msg(self, timeout: float = 1.0):
+            await asyncio.sleep(0.01)
+            if self.sent < 2:
+                self.sent += 1
+                return SimpleNamespace(headers={}, data=batch_payload)
+            raise TimeoutError
+
+        async def unsubscribe(self) -> None:
+            return None
+
+    class _RegistrySub:
+        def __init__(self) -> None:
+            self.served = False
+
+        async def next_msg(self, timeout: float = 1.0):
+            if not self.served:
+                self.served = True
+                return SimpleNamespace(
+                    headers={MSG_TYPE_HEADER: MSG_TYPE_REGISTRY},
+                    data=registry.SerializeToString(),
+                )
+            raise TimeoutError
+
+        async def unsubscribe(self) -> None:
+            return None
+
+    class _PitJs:
+        def __init__(self) -> None:
+            self.scans = 0
+
+        async def subscribe(self, subject, **kwargs):
+            assert kwargs["stream"] == "TELE_VEHICLE"
+            assert kwargs["deliver_policy"].name == "ALL"
+            self.scans += 1
+            return _RegistrySub()
+
+    path = _write(
+        tmp_path / "live.yaml",
+        """vehicle: car-1
+defaults: {max_hz: 0, total_max_hz: 0}
+channels: [{match: car.coolant_temp}]
+""",
+    )
+    decoder = LiveDecoder(
+        LiveDecoderSettings(
+            config_path=path, nats_url="nats://unused", health_port=0, live_source="vehicle"
+        )
+    )
+    sink = _NoSink()
+    decoder.sink = sink
+    pit_js = _PitJs()
+
+    async def go() -> None:
+        stop = asyncio.Event()
+        asyncio.get_running_loop().call_later(0.3, stop.set)
+        await decoder._consume(_LiveSub(), stop, js_live=None, js_registry=pit_js)
+
+    asyncio.run(go())
+
+    assert pit_js.scans == 1, "one re-scan, rate-limited, not one per unknown batch"
+    assert decoder.health.registries == 1
+    assert decoder.cache.unknown_seq_batches >= 1, "the first batch could not be decoded"
+    assert [update.channel for update in sink.sent] == ["car.coolant_temp"], (
+        "the second batch decodes once generation 7 is known"
+    )

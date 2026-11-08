@@ -281,6 +281,15 @@ docker run -d --name openlaps-vehicle-nats --network host --restart unless-stopp
   nats:2.12-alpine -c /etc/nats/nats.conf
 ```
 
+### 4b. Raw CAN capture (optional, for fixtures)
+
+`docs/RAW_CAPTURE.md` describes the capture; the shipped unit assumes
+`/mnt/data/captures`, which on this board is `/srv/openlaps/captures`, and
+the link has to be brought up in FD mode. The drop-in under
+`systemd/openlaps-canlog@.service.d/` beside this file carries both and its
+header has the four install commands. About 220 MB/hour on this bus; the
+NVMe has room for weeks.
+
 ### 5. go2rtc
 
 The camera's microphone is captured through PipeWire's Pulse socket under

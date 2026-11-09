@@ -88,7 +88,17 @@ covers all four:
   ```
   CONFIG_PPS_CLIENT_GPIO=y
   CONFIG_NVME_HWMON=y
+  CONFIG_TCP_CONG_ADVANCED=y
+  CONFIG_TCP_CONG_BBR=y
+  CONFIG_NET_SCH_FQ=y
   ```
+
+  The last three compile in BBR congestion control and the `fq` pacing
+  qdisc for the vehicle-to-pit TCP link (the NATS leafnode, over HaLow or
+  Starlink). They are inert until selected: the kernel default stays
+  `cubic`, and `systemd/90-openlaps-bbr.conf` (installed to
+  `/etc/sysctl.d/`) is what switches the board over. The vendor kernel
+  ships no module tree, so these must be `=y`.
 
   Not `.config` directly: the SDK regenerates that from the board defconfig on
   every build, so a hand edit is discarded.
@@ -143,9 +153,22 @@ Then, **before believing it**:
 
 ```bash
 uname -v                                   # build number and date must be the new ones
-zcat /proc/config.gz | grep -E 'NVME_HWMON|PPS_CLIENT_GPIO'
+zcat /proc/config.gz | grep -E 'NVME_HWMON|PPS_CLIENT_GPIO|TCP_CONG_BBR|NET_SCH_FQ'
 ls /dev/ttyS2 /dev/pps0
+cat /proc/sys/net/ipv4/tcp_available_congestion_control   # reno cubic bbr
 ```
+
+Then switch the board to BBR, which the kernel only makes available:
+
+```bash
+sudo install -m 0644 deploy/targets/luckfox-omni3576/systemd/90-openlaps-bbr.conf /etc/sysctl.d/
+sudo sysctl --system
+sysctl net.ipv4.tcp_congestion_control    # bbr
+```
+
+The vehicle nats-server runs with host networking, so it picks this up on
+its next connection; restart the `nats` container to apply it to the live
+leafnode link.
 
 A `boot.img` copied to the board but not written boots the old kernel with
 no complaint, and the agent's only hint is a one-line warning that

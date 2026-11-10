@@ -129,6 +129,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "009_race_plans.sql",
             "010_strategy.sql",
             "011_field_timing.sql",
+            "012_pit_stops_guarded_json.sql",
         ]
 
     # A real upgrade runs later in a new process/connection, so deployment
@@ -144,6 +145,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "009_race_plans.sql",
             "010_strategy.sql",
             "011_field_timing.sql",
+            "012_pit_stops_guarded_json.sql",
         ]
         assert pending(conn) == []
 
@@ -218,6 +220,7 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "009_race_plans.sql",
             "010_strategy.sql",
             "011_field_timing.sql",
+            "012_pit_stops_guarded_json.sql",
         ]
         assert apply_migrations(conn) == [
             "002_trace_read_surface.sql",
@@ -230,6 +233,7 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "009_race_plans.sql",
             "010_strategy.sql",
             "011_field_timing.sql",
+            "012_pit_stops_guarded_json.sql",
         ]
         assert pending(conn) == []
 
@@ -671,6 +675,30 @@ def test_pit_stops_stay_open_on_a_mismatched_exit_line_type(migrated):
         "SELECT exit_at, is_open, stop_type, entry_line, exit_line FROM v_pit_stops"
     ).fetchall()
     assert rows == [(None, True, "refuel", "PitEntryRefuel", None)]
+
+
+def test_pit_stops_ignore_non_json_text_on_other_channels(migrated):
+    """Other STRING channels hold plain text (a chrony reference id, a fix
+    letter). The planner may visit their rows before the lap.event filter, so
+    the view must not try to parse them."""
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    clock_key = _register(
+        migrated, name="sys.host.clock_source", registry_seq=1, wire_id=9, value_type=STRING
+    )
+    with migrated.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO samples (time, channel_key, value_text) VALUES (%s, %s, %s)",
+            [(start + timedelta(seconds=n), clock_key, "7F7F0101") for n in range(200)],
+        )
+    _insert_pit_events(migrated, [(start, "pit_entry", "PitEntryRefuel")])
+    # Take away the plan that happens to filter on the channel first.
+    migrated.execute("SET LOCAL enable_hashjoin = off")
+    migrated.execute("SET LOCAL enable_mergejoin = off")
+    migrated.execute("SET LOCAL enable_indexscan = off")
+    migrated.execute("SET LOCAL enable_bitmapscan = off")
+
+    rows = migrated.execute("SELECT is_open, stop_type FROM v_pit_stops").fetchall()
+    assert rows == [(True, "refuel")]
 
 
 def test_pit_stops_discard_an_exit_without_a_preceding_entry(migrated):

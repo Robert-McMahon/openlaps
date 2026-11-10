@@ -39,6 +39,7 @@ SHIPPED_LIMITS: dict[str, tuple[str | None, str, float, str]] = {
     "knock-high": ("car.knock_level1", "gt", 80.0, "5s"),
     "engine-protection-active": ("car.engine_protection_severity", "gt", 0.0, "2s"),
     "publish-lag-high": ("sys.agent.publish_lag_ms", "gt", 500.0, "30s"),
+    "can-bus-stalled": ("sys.agent.stall_s.can0", "gt", 3.0, "2s"),
     "live-feed-stale": ("car.rpm", "gt", 5.0, "5s"),
     "notifier-heartbeat": (None, "gt", 0.0, "0s"),
     # P7.9: the strategy service's findings, by severity.

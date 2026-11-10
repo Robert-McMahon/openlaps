@@ -140,7 +140,12 @@ flowchart LR
   over a small local MQTT broker (websockets) for Grafana's live gauge
   panels. This is the only MQTT left in the system, it never crosses the
   radio, and it is disposable — replacing it with Grafana Live push would
-  touch nothing else.
+  touch nothing else. Its consumer can sit on the pit's sourced copy
+  (`OPENLAPS_LIVE_SOURCE=pit`, strictly in order, so gauges replay a
+  dropout's backlog before reaching "now") or on the vehicle's own stream
+  through the leafnode (`vehicle`: gauges show current values the moment
+  the link returns while the sourced copy catches up, for the price of
+  each batch crossing the radio twice while the link is healthy).
 - **session-control** publishes driver/stint/session state on `cmd.<vehicle>.*`
   (replicated to the vehicle over the same leafnode); the agent stamps active
   session identity onto derived channels so every lap is attributable.

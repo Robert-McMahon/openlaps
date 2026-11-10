@@ -188,6 +188,20 @@ services:
     environment:
       OPENLAPS_NATS_URL: ${OPENLAPS_NATS_URL:-nats://nats:4222}
       OPENLAPS_LIVE_STREAM: ${OPENLAPS_LIVE_STREAM:-TELE_VEHICLE}
+      # Where the gauges' consumer sits. "pit" reads the sourced copy above:
+      # local and in order, so after a radio dropout the gauges replay the
+      # backlog and reach "now" only once the gap has crossed the link.
+      # "vehicle" reads the car's own stream through the leafnode, so the
+      # gauges show current values the moment the link is back while the
+      # sourced copy catches up behind them -- at the cost of every batch
+      # crossing the radio twice while the link is healthy. Registries are
+      # scanned from the pit copy either way.
+      OPENLAPS_LIVE_SOURCE: ${OPENLAPS_LIVE_SOURCE:-pit}
+      OPENLAPS_VEHICLE_JS_DOMAIN: ${OPENLAPS_VEHICLE_JS_DOMAIN:-veh}
+      OPENLAPS_VEHICLE_STREAM: ${OPENLAPS_VEHICLE_STREAM:-TELE}
+      # vehicle source only: a consumer silent this long is re-created as
+      # DeliverPolicy.NEW instead of resuming by sequence (= the backlog).
+      OPENLAPS_LIVE_RESUBSCRIBE_S: ${OPENLAPS_LIVE_RESUBSCRIBE_S:-10}
       OPENLAPS_LIVE_CONFIG: /config/live/live-decoder.yaml
       OPENLAPS_LIVE_HEALTH_PORT: "8082"
       OPENLAPS_MQTT_HOST: mosquitto

@@ -1,0 +1,341 @@
+From: Robert McMahon <rob.mcmahon@outlook.com.au>
+Date: Sun, 8 Nov 2026 04:40:00 +0000
+Subject: [PATCH] can: rk3576_canfd: never leave NAPI scheduled after a DMA drain
+
+Applies to the Luckfox Omni3576 SDK kernel (kernel-6.1, Rockchip BSP
+driver drivers/net/can/rockchip/rk3576_canfd.c, compatible
+"rockchip,rk3576-canfd", use_dma = 1, rx_max_data = 18, fifo_depth = 14).
+
+Symptom: minutes into a busy 1 Mbit/s bus (a Haltech ECU at ~1500
+frames/s) can0 stops delivering frames for good. The link still reads
+ERROR-ACTIVE with zero error counters, the CAN interrupt keeps ticking
+at ~100/s, `ip -s link` RX packets keep climbing, /proc/net/can/stats
+shows a 0 % current match ratio, candump sees nothing even with the
+full error mask, and `ip link set can0 down` hangs holding rtnl, which
+also blocks new SSH logins. Only a reset of the controller (reboot) with
+a quiet bus brings it back. CANFD_INT_MASK reads 0x28001 while stuck.
+
+Cause: the receive path masks the stream interrupts (ISM_WTM,
+RX_STR_TIMEOUT, RX_FINISH), starts a DMA of the records waiting in the
+internal SRAM, and relies on the NAPI poll run from the DMA completion
+to unmask them. rk3576_canfd_rx_poll() only called napi_complete_done()
+and restored the mask when it drained fewer than rx_fifo_depth records.
+When the SRAM was completely full (the host ~9 ms late at ~1500
+frames/s) the poll drained exactly rx_fifo_depth, returned that (less
+than the NAPI weight of 64) without completing, and the core left
+NAPI_STATE_SCHED set forever: every later napi_schedule() is a no-op,
+the stream interrupts stay masked, and napi_disable() in ndo_stop spins
+on the SCHED bit. Each further frame then raised RX_STR_FULL_INT /
+RX_BUF_OV_INT, for which rk3576_canfd_err() has no case, so it emitted
+a bare CAN_ERR_FLAG skb with no error class (undeliverable to any
+socket, since can_id & CAN_ERR_MASK == 0) and counted it in rx_packets.
+rk3576_canfd_rx_dma() returning early (nothing waiting, or no DMA
+descriptor) also left the mask set with nothing to clear it.
+
+Fix:
+ - rx_poll always completes NAPI after consuming what the transfer
+   brought in, then starts another DMA if records arrived meanwhile and
+   only unmasks once the SRAM is empty.
+ - rx_dma distinguishes "submitted" / "nothing waiting" / error, and the
+   callers release the mask in the latter two cases.
+ - an RX_DMA_BUSY flag keeps the interrupt from starting a second DMA
+   on top of one in flight (both wrote the same rxbuf and quota).
+ - the record count is capped at rx_fifo_depth, the size of rxbuf.
+ - rk3576_canfd_err() reports SRAM overflow as CAN_ERR_CRTL_RX_OVERFLOW
+   (rx_over_errors) and BUS_ERR_INT as CAN_ERR_BUSERROR, and no longer
+   dereferences a NULL frame when the error skb allocation fails.
+ - rk3576_canfd_start() clears the busy flag and quota, so a restart
+   never inherits them.
+
+Found 2026-11-08 on the openlaps vehicle target after three stalls in
+one day, all with the engine running.
+---
+--- a/drivers/net/can/rockchip/rk3576_canfd.c
++++ b/drivers/net/can/rockchip/rk3576_canfd.c
+@@ -345,6 +345,8 @@
+ 	CANFD_DATA_CANFD_FIXED,
+ };
+ 
++#define RX_DMA_BUSY		0
++
+ /* rk3576_canfd private data structure */
+ 
+ struct rk3576_canfd {
+@@ -364,6 +366,7 @@
+ 	bool use_dma;
+ 	u32 dma_size;
+ 	int quota;
++	unsigned long rx_dma_busy;	/* RX_DMA_BUSY: a transfer owns the rx stream interrupt mask */
+ 	struct dma_chan *rxchan;
+ 	u32 *rxbuf;
+ 	dma_addr_t rx_dma_src_addr;
+@@ -586,6 +589,8 @@
+ 
+ 	rk3576_canfd_write(rcan, CANFD_INT_MASK, INT_ENABLE);
+ 	rk3576_canfd_atf_config(ndev, CANFD_ATF_MASK_MODE);
++	clear_bit(RX_DMA_BUSY, &rcan->rx_dma_busy);
++	rcan->quota = 0;
+ 
+ 	/* set mode */
+ 	val = rk3576_canfd_read(rcan, CANFD_MODE);
+@@ -811,47 +816,22 @@
+ 	return 1;
+ }
+ 
+-/* rk3576_canfd_rx_poll - Poll routine for rx packets (NAPI)
+- * @napi:	napi structure pointer
+- * @quota:	Max number of rx packets to be processed.
+- *
+- * This is the poll routine for rx part.
+- * It will process the packets maximux quota value.
+- *
+- * Return: number of packets received
++/* Complete receive records waiting in the internal stream SRAM, capped at
++ * what one DMA transfer (and rxbuf) can hold.
+  */
+-static int rk3576_canfd_rx_poll(struct napi_struct *napi, int quota)
++static int rk3576_canfd_rx_records(struct rk3576_canfd *rcan)
+ {
+-	struct net_device *ndev = napi->dev;
+-	struct rk3576_canfd *rcan = netdev_priv(ndev);
+-	int work_done = 0, cnt = 0;
+-
+-	if (rcan->use_dma) {
+-		while (work_done < rcan->quota)
+-			work_done += rk3576_canfd_rx(ndev, work_done);
+-
+-		if (work_done < rcan->rx_fifo_depth) {
+-			napi_complete_done(napi, work_done);
+-			rk3576_canfd_write(rcan, CANFD_INT_MASK, INT_ENABLE);
+-		}
+-	} else {
+-		quota = (rk3576_canfd_read(rcan, CANFD_STR_STATE) & rcan->rx_fifo_mask) >>
+-			rcan->rx_fifo_shift;
+-		quota = quota / rcan->rx_max_data;
+-		cnt = (rk3576_canfd_read(rcan, CANFD_STR_STATE) & INTM_CNT_MASK) >> INTM_CNT_SHIFT;
+-		if (quota != cnt)
+-			quota = ((rk3576_canfd_read(rcan, CANFD_STR_STATE) & rcan->rx_fifo_mask) >>
+-				rcan->rx_fifo_shift) / rcan->rx_max_data;
++	u32 state = rk3576_canfd_read(rcan, CANFD_STR_STATE);
++	int quota, cnt;
+ 
+-		while (work_done < quota)
+-			work_done += rk3576_canfd_rx(ndev, CANFD_RXFRD);
+-
+-		if (work_done < rcan->rx_fifo_depth) {
+-			napi_complete_done(napi, work_done);
+-			rk3576_canfd_write(rcan, CANFD_INT_MASK, INT_ENABLE);
+-		}
++	quota = ((state & rcan->rx_fifo_mask) >> rcan->rx_fifo_shift) / rcan->rx_max_data;
++	cnt = (state & INTM_CNT_MASK) >> INTM_CNT_SHIFT;
++	if (quota != cnt) {
++		state = rk3576_canfd_read(rcan, CANFD_STR_STATE);
++		quota = ((state & rcan->rx_fifo_mask) >> rcan->rx_fifo_shift) / rcan->rx_max_data;
+ 	}
+-	return work_done;
++
++	return min(quota, rcan->rx_fifo_depth);
+ }
+ 
+ static void rk3576_canfd_rx_dma_callback(void *data)
+@@ -861,23 +841,19 @@
+ 	napi_schedule(&rcan->napi);
+ }
+ 
++/* Submit a DMA of the waiting records into rxbuf. Returns 1 when a transfer
++ * was submitted (rk3576_canfd_rx_poll runs from its completion callback),
++ * 0 when nothing is waiting, or a negative errno when it could not be
++ * started. In the 0 / error cases nothing will run later, so the caller
++ * has to release RX_DMA_BUSY and re-enable the stream interrupts itself.
++ */
+ static int rk3576_canfd_rx_dma(struct rk3576_canfd *rcan)
+ {
+-	struct dma_async_tx_descriptor *rxdesc = NULL;
+-	int quota = 0, cnt = 0;
++	struct dma_async_tx_descriptor *rxdesc;
+ 
+-	quota = (rk3576_canfd_read(rcan, CANFD_STR_STATE) & rcan->rx_fifo_mask) >>
+-		rcan->rx_fifo_shift;
+-	quota = quota / rcan->rx_max_data;
+-	cnt = (rk3576_canfd_read(rcan, CANFD_STR_STATE) & INTM_CNT_MASK) >> INTM_CNT_SHIFT;
+-
+-	if (quota != cnt)
+-		quota = ((rk3576_canfd_read(rcan, CANFD_STR_STATE) & rcan->rx_fifo_mask) >>
+-			rcan->rx_fifo_shift) / rcan->rx_max_data;
+-
+-	rcan->quota = quota;
++	rcan->quota = rk3576_canfd_rx_records(rcan);
+ 	if (rcan->quota == 0)
+-		return 1;
++		return 0;
+ 
+ 	rxdesc = dmaengine_prep_slave_single(rcan->rxchan, rcan->rx_dma_dst_addr,
+ 					     rcan->dma_size * rcan->quota, DMA_DEV_TO_MEM, 0);
+@@ -892,6 +868,80 @@
+ 	return 1;
+ }
+ 
++/* Start the next DMA while holding RX_DMA_BUSY with the stream interrupts
++ * masked. If there is nothing to fetch, or the transfer cannot be started,
++ * release the flag and unmask again, so the mask is never left set without
++ * a transfer (and so a poll) that will clear it. The flag is cleared before
++ * the mask is written: the worst case of an interrupt landing in between is
++ * one redundant pass through rk3576_canfd_rx_dma_kick().
++ */
++static void rk3576_canfd_rx_dma_start(struct rk3576_canfd *rcan)
++{
++	int ret = rk3576_canfd_rx_dma(rcan);
++
++	if (ret > 0)
++		return;
++	if (ret < 0)
++		netdev_warn_once(rcan->can.dev, "rx DMA could not be started (%d)\n", ret);
++	clear_bit(RX_DMA_BUSY, &rcan->rx_dma_busy);
++	rk3576_canfd_write(rcan, CANFD_INT_MASK, INT_ENABLE);
++}
++
++/* Interrupt-side entry: begin draining the stream SRAM by DMA unless a
++ * transfer already owns the mask, in which case its poll will pick the new
++ * records up (rk3576_canfd_rx_poll chains another DMA before unmasking).
++ */
++static void rk3576_canfd_rx_dma_kick(struct rk3576_canfd *rcan)
++{
++	if (test_and_set_bit(RX_DMA_BUSY, &rcan->rx_dma_busy))
++		return;
++	rk3576_canfd_rx_dma_start(rcan);
++}
++
++/* rk3576_canfd_rx_poll - Poll routine for rx packets (NAPI)
++ * @napi:	napi structure pointer
++ * @budget:	Max number of rx packets to be processed.
++ *
++ * Return: number of packets received
++ */
++static int rk3576_canfd_rx_poll(struct napi_struct *napi, int budget)
++{
++	struct net_device *ndev = napi->dev;
++	struct rk3576_canfd *rcan = netdev_priv(ndev);
++	int work_done = 0;
++
++	if (rcan->use_dma) {
++		/* Everything this transfer brought in is consumed here; quota is
++		 * at most rx_fifo_depth, well under the NAPI weight.
++		 */
++		while (work_done < rcan->quota)
++			work_done += rk3576_canfd_rx(ndev, work_done);
++
++		/* Always complete. A poll that returns less than its weight
++		 * without completing leaves NAPI_STATE_SCHED set for good: every
++		 * later napi_schedule() is a no-op and, with the stream
++		 * interrupts still masked, the controller never delivers another
++		 * frame (and napi_disable() in ndo_stop spins forever). The
++		 * vendor code did exactly that whenever a full SRAM
++		 * (rx_fifo_depth records) was drained in one transfer, which
++		 * a busy 1 Mbit/s bus manages within minutes.
++		 */
++		napi_complete_done(napi, work_done);
++
++		/* Records that arrived meanwhile: fetch them before unmasking. */
++		rk3576_canfd_rx_dma_start(rcan);
++	} else {
++		while (work_done < budget && rk3576_canfd_rx_records(rcan) > 0)
++			work_done += rk3576_canfd_rx(ndev, CANFD_RXFRD);
++
++		if (work_done < budget) {
++			napi_complete_done(napi, work_done);
++			rk3576_canfd_write(rcan, CANFD_INT_MASK, INT_ENABLE);
++		}
++	}
++	return work_done;
++}
++
+ static int rk3576_canfd_err(struct net_device *ndev, u32 isr)
+ {
+ 	struct rk3576_canfd *rcan = netdev_priv(ndev);
+@@ -915,17 +965,34 @@
+ 	if (isr & BUS_OFF_INT) {
+ 		rcan->can.state = CAN_STATE_BUS_OFF;
+ 		rcan->can.can_stats.bus_off++;
+-		cf->can_id |= CAN_ERR_BUSOFF;
++		if (skb)
++			cf->can_id |= CAN_ERR_BUSOFF;
+ 	} else if (isr & PASSIVE_ERR_INT) {
+ 		rcan->can.can_stats.error_passive++;
+ 		rcan->can.state = CAN_STATE_ERROR_PASSIVE;
+ 		/* error passive state */
+-		cf->can_id |= CAN_ERR_CRTL;
+-		cf->data[1] = (txerr > rxerr) ?
+-					CAN_ERR_CRTL_TX_WARNING :
+-					CAN_ERR_CRTL_RX_WARNING;
+-		cf->data[6] = txerr;
+-		cf->data[7] = rxerr;
++		if (skb) {
++			cf->can_id |= CAN_ERR_CRTL;
++			cf->data[1] = (txerr > rxerr) ?
++						CAN_ERR_CRTL_TX_WARNING :
++						CAN_ERR_CRTL_RX_WARNING;
++			cf->data[6] = txerr;
++			cf->data[7] = rxerr;
++		}
++	}
++	if (isr & (RX_BUF_OV_INT | RX_STR_FULL_INT | RX_STR_OV_INT)) {
++		/* frames lost because the stream SRAM was full */
++		stats->rx_over_errors++;
++		stats->rx_errors++;
++		if (skb) {
++			cf->can_id |= CAN_ERR_CRTL;
++			cf->data[1] |= CAN_ERR_CRTL_RX_OVERFLOW;
++		}
++	}
++	if (isr & BUS_ERR_INT) {
++		rcan->can.can_stats.bus_error++;
++		if (skb)
++			cf->can_id |= CAN_ERR_BUSERROR;
+ 	}
+ 	if (sta_reg & ERR_WARNING_STATE) {
+ 		rcan->can.can_stats.error_warning++;
+@@ -944,7 +1011,10 @@
+ 	if (isr & BUSOFF_RCY_INT) {
+ 		rk3576_canfd_write(rcan, CANFD_INT_MASK, 0xffff);
+ 		rk3576_canfd_write(rcan, CANFD_INT, isr);
+-		napi_schedule(&rcan->napi);
++		if (rcan->use_dma)
++			rk3576_canfd_rx_dma_kick(rcan);
++		else
++			napi_schedule(&rcan->napi);
+ 		rk3576_canfd_write(rcan, CANFD_BUSOFFRCY_CFG, BUSOFF_RCY_TIME_CLR);
+ 		rk3576_canfd_write(rcan, CANFD_BUSOFF_RCY_THR, BUSOFF_RCY_TIME_SLOW);
+ 		rk3576_canfd_write(rcan, CANFD_BUSOFFRCY_CFG,
+@@ -954,8 +1024,11 @@
+ 		can_free_echo_skb(ndev, 0, NULL);
+ 		netif_start_queue(ndev);
+ 	}
++	if (!skb)
++		return -ENOMEM;
++
+ 	stats->rx_packets++;
+-	stats->rx_bytes += cf->can_dlc;
++	stats->rx_bytes += cf->len;
+ 	netif_rx(skb);
+ 
+ 	return 0;
+@@ -968,16 +1041,16 @@
+ 	struct net_device_stats *stats = &ndev->stats;
+ 	u32 err_int = ERR_WARN_INT | RX_BUF_OV_INT | PASSIVE_ERR_INT |
+ 		      BUS_ERR_INT | BUS_OFF_INT | BUSOFF_RCY_INT |
+-		      BUS_OFF_RECOVERY_INT | RX_STR_FULL_INT;
++		      BUS_OFF_RECOVERY_INT | RX_STR_FULL_INT | RX_STR_OV_INT;
+ 	u32 isr;
+ 
+ 	isr = rk3576_canfd_read(rcan, CANFD_INT);
+-	if ((isr & RX_STR_TIMEOUT_INT) || (isr & ISM_WTM_INT) || (isr & RX_STR_FULL_INT)) {
++	if (isr & (RX_STR_TIMEOUT_INT | ISM_WTM_INT | RX_STR_FULL_INT)) {
+ 		rk3576_canfd_write(rcan, CANFD_INT_MASK,
+ 				   ISM_WTM_INT | RX_STR_TIMEOUT_INT |
+ 				   RX_FINISH_INT);
+ 		if (rcan->use_dma)
+-			rk3576_canfd_rx_dma(rcan);
++			rk3576_canfd_rx_dma_kick(rcan);
+ 		else
+ 			napi_schedule(&rcan->napi);
+ 	}

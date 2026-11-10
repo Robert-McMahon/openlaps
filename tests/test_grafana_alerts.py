@@ -19,6 +19,7 @@ REQUIRED_RULES = {
     "knock-high",
     "engine-protection-active",
     "publish-lag-high",
+    "can-bus-stalled",
     "live-feed-stale",
     "notifier-heartbeat",
     "strategy-warning",

@@ -185,7 +185,7 @@ def test_fuel_dashboard_is_a_consumer_of_the_strategy_views() -> None:
     assert fills == ["Laps to dry (lower)"]
 
 
-def test_reliability_dashboard_uses_long_range_aggregate_and_kelvin_units() -> None:
+def test_reliability_dashboard_uses_long_range_aggregate_and_celsius_units() -> None:
     dashboard = _dashboard("reliability.json")
     sql = _all_sql(dashboard)
     panels = _panels(dashboard)
@@ -198,7 +198,12 @@ def test_reliability_dashboard_uses_long_range_aggregate_and_kelvin_units() -> N
         panel for panel in panels if "temperature" in panel.get("title", "").lower()
     ]
     assert temperature_panels
-    assert all(panel["fieldConfig"]["defaults"]["unit"] == "kelvin" for panel in temperature_panels)
+    # The Haltech temperature channels are stored in Kelvin (docs/CATALOG.md).
+    # These panels convert in SQL so the axis reads in degrees Celsius.
+    for panel in temperature_panels:
+        assert panel["fieldConfig"]["defaults"]["unit"] == "celsius"
+        for target in panel["targets"]:
+            assert "- 273.15" in target["rawSql"]
 
 
 def test_lap_analysis_uses_sector_view_and_identity_based_lap_picker() -> None:

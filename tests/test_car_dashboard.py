@@ -22,6 +22,8 @@ LIVE_CHANNELS = {
     "car.lambda1",
     "car.battery_v",
     "car.fuel_pressure",
+    "car.fuel_level",
+    "car.fuel_total_used",
 }
 CONTEXT_CHANNELS = {
     "lap.number",

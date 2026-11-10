@@ -6,6 +6,22 @@ first, then an ephemeral ordered `DeliverPolicy.NEW` consumer decodes batches
 against their exact generation. MQTT handoff is non-blocking; when the broker
 is down or its bounded queue is full, live updates are dropped and counted
 instead of applying backpressure to NATS.
+
+Where the live consumer sits is a deployment choice (``OPENLAPS_LIVE_SOURCE``):
+
+- ``pit`` (default): on the pit's sourced copy of the vehicle stream. Simple,
+  local, and strictly in order -- which after a radio dropout means the
+  gauges show the backlog replaying at link speed and reach "now" only once
+  the whole gap has crossed the radio.
+- ``vehicle``: on the vehicle's own stream, reached through the leafnode via
+  the vehicle's JetStream domain. ``DeliverPolicy.NEW`` then means *new at
+  the car*, so the moment the link is back the gauges show current values
+  while the sourced copy catches up behind them. The price is that every
+  batch crosses the radio twice while the link is healthy (once for the
+  sourced copy, once for this consumer); the registries are still scanned
+  from the pit's complete local copy, and a consumer that has gone quiet for
+  ``resubscribe_after_s`` is replaced with a fresh ``NEW`` one rather than
+  left to nats-py's by-sequence recovery, which would replay the gap.
 """
 
 from __future__ import annotations
@@ -48,6 +64,16 @@ _CONSUME_POLL_S = 0.05
 _REPORT_INTERVAL_S = 1.0
 _IDLE_WARN_AFTER_S = 30.0
 _IDLE_WARN_REPEAT_S = 60.0
+# JetStream API calls made across the leafnode (vehicle source mode) get a
+# bounded wait: when the radio is down they fail and the service retries,
+# rather than hanging the consume loop on a request nothing will answer.
+_JS_API_TIMEOUT_S = 5.0
+# A batch naming a registry generation this service has never seen means a
+# registry message went past while no live consumer was attached (the agent
+# restarted during a dropout, say). The pit's sourced copy has it; re-scan
+# there, but no more often than this.
+_REGISTRY_RESCAN_MIN_S = 5.0
+LIVE_SOURCES = ("pit", "vehicle")
 
 
 def mqtt_message(vehicle: str, update: LiveUpdate) -> tuple[str, bytes]:
@@ -84,6 +110,20 @@ class LiveDecoderSettings:
     # normally the *only* one set -- the YAML's `vehicle:` key is an optional
     # override, see `_resolve_vehicle`.
     vehicle_id: str | None = None
+    # Which stream the live consumer reads: the pit's sourced copy ("pit") or
+    # the vehicle's own stream across the leafnode ("vehicle"). See the
+    # module docstring for the trade.
+    live_source: str = "pit"
+    # Vehicle-source wiring: the vehicle's JetStream domain and stream name,
+    # the same two values provision_pit_streams.py sources from.
+    vehicle_domain: str = "veh"
+    vehicle_stream: str = "TELE"
+    # Vehicle source only: a live consumer that has delivered nothing for this
+    # long is dropped and re-created as DeliverPolicy.NEW. The car publishes
+    # at least once a second while it is on, so silence this long means the
+    # link was down (or the consumer died with it); a fresh consumer resumes
+    # at "now" instead of replaying the gap.
+    resubscribe_after_s: float = 10.0
 
     @classmethod
     def from_env(
@@ -111,6 +151,22 @@ class LiveDecoderSettings:
             raise ValueError("OPENLAPS_MQTT_PORT must be between 1 and 65535")
         if not 0 <= health_port <= 65535:
             raise ValueError("OPENLAPS_LIVE_HEALTH_PORT must be between 0 and 65535")
+        live_source = env.get("OPENLAPS_LIVE_SOURCE", "pit").strip().lower() or "pit"
+        if live_source not in LIVE_SOURCES:
+            raise ValueError(
+                f"OPENLAPS_LIVE_SOURCE must be one of {', '.join(LIVE_SOURCES)}, "
+                f"not {live_source!r}"
+            )
+        vehicle_domain = env.get("OPENLAPS_VEHICLE_JS_DOMAIN", "veh").strip()
+        vehicle_stream = env.get("OPENLAPS_VEHICLE_STREAM", "TELE").strip()
+        if live_source == "vehicle" and not (vehicle_domain and vehicle_stream):
+            raise ValueError(
+                "OPENLAPS_LIVE_SOURCE=vehicle needs OPENLAPS_VEHICLE_JS_DOMAIN and "
+                "OPENLAPS_VEHICLE_STREAM"
+            )
+        resubscribe_after_s = float(env.get("OPENLAPS_LIVE_RESUBSCRIBE_S", "10"))
+        if resubscribe_after_s <= 0:
+            raise ValueError("OPENLAPS_LIVE_RESUBSCRIBE_S must be greater than zero")
         return cls(
             config_path=Path(configured),
             nats_url=env.get("OPENLAPS_NATS_URL", "nats://127.0.0.1:4222").strip(),
@@ -124,7 +180,16 @@ class LiveDecoderSettings:
             config_poll_s=poll_s,
             mqtt_queue_size=queue_size,
             vehicle_id=env.get("OPENLAPS_VEHICLE_ID", "").strip() or None,
+            live_source=live_source,
+            vehicle_domain=vehicle_domain,
+            vehicle_stream=vehicle_stream,
+            resubscribe_after_s=resubscribe_after_s,
         )
+
+    @property
+    def live_stream(self) -> str:
+        """The stream the live consumer is created on."""
+        return self.vehicle_stream if self.live_source == "vehicle" else self.stream
 
 
 def _resolve_vehicle(settings: LiveDecoderSettings, config: LiveConfig) -> str:
@@ -292,6 +357,8 @@ class LiveDecoder:
         self.health = HealthState()
         self.health.config_mtime_ns = self.reloader.mtime_ns
         self.health.stream = settings.stream
+        self.health.live_source = settings.live_source
+        self.health.live_stream = settings.live_stream
         self.health.subject_filter = self.subject_filter
         self.sink = MqttSink(settings, self.vehicle, self.health)
         self.ready = asyncio.Event()
@@ -312,11 +379,21 @@ class LiveDecoder:
             client = await self._connect_nats(stop)
             if client is None:
                 return
+            # Registries always come from the pit's complete local copy; a
+            # vehicle-sourced live consumer only has to carry what is new.
             js = client.jetstream()
             await self._scan_registries(js)
-            subscription = await self._subscribe(js, self.subject_filter, api.DeliverPolicy.NEW)
+            if self.settings.live_source == "vehicle":
+                js_live = client.jetstream(
+                    domain=self.settings.vehicle_domain, timeout=_JS_API_TIMEOUT_S
+                )
+            else:
+                js_live = js
+            subscription = await self._subscribe_live(js_live, stop)
+            if subscription is None:
+                return
             self.ready.set()
-            await self._consume(subscription, stop)
+            await self._consume(subscription, stop, js_live, js_registry=js)
         finally:
             self.ready.clear()
             stop.set()
@@ -371,6 +448,9 @@ class LiveDecoder:
         js: JetStreamContext,
         subject: str,
         deliver_policy: api.DeliverPolicy,
+        *,
+        stream: str | None = None,
+        idle_heartbeat: float | None = None,
     ) -> JetStreamContext.PushSubscription:
         """Subscribe against the *named* stream, saying so when it fails.
 
@@ -382,21 +462,62 @@ class LiveDecoder:
         both halves of the lookup, so the log says which stream and which
         subject rather than leaving a bare NotFoundError to be guessed at.
         """
+        stream = self.settings.stream if stream is None else stream
+        options: dict[str, object] = {}
+        if idle_heartbeat is not None:
+            options["idle_heartbeat"] = idle_heartbeat
         try:
             return await js.subscribe(
                 subject,
-                stream=self.settings.stream,
+                stream=stream,
                 ordered_consumer=True,
                 deliver_policy=deliver_policy,
+                **options,
             )
         except Exception as exc:
             logger.error(
                 "live-decoder: cannot subscribe to %s on stream %r: %s",
                 subject,
-                self.settings.stream,
+                stream,
                 exc,
             )
             raise
+
+    async def _subscribe_live(
+        self, js: JetStreamContext, stop: asyncio.Event
+    ) -> JetStreamContext.PushSubscription | None:
+        """The ``DeliverPolicy.NEW`` consumer the gauges are driven from.
+
+        On the pit stream a failure is a wiring error and unwinds `run` as it
+        always has. On the vehicle stream the request crosses the radio, so a
+        failure usually just means the link is down: keep trying with the
+        connection backoff until it is back or `stop` is set. Nothing is lost
+        meanwhile -- there is no live data to show while the link is down,
+        and the registries are already in hand.
+
+        The idle heartbeat in vehicle mode is set to ``resubscribe_after_s``:
+        nats-py's ordered consumer re-creates itself *by sequence* after two
+        missed heartbeats, which would replay the gap, so our own fresh-NEW
+        replacement (`_consume`) is given the first chance at exactly that
+        age.
+        """
+        if self.settings.live_source != "vehicle":
+            return await self._subscribe(js, self.subject_filter, api.DeliverPolicy.NEW)
+        backoff = _CONNECT_BACKOFF_START_S
+        while not stop.is_set():
+            try:
+                return await self._subscribe(
+                    js,
+                    self.subject_filter,
+                    api.DeliverPolicy.NEW,
+                    stream=self.settings.vehicle_stream,
+                    idle_heartbeat=self.settings.resubscribe_after_s,
+                )
+            except Exception:  # noqa: BLE001 - already logged by _subscribe
+                self.health.live_subscribe_failures += 1
+                await _sleep_unless(stop, backoff)
+                backoff = min(backoff * 2, _CONNECT_BACKOFF_MAX_S)
+        return None
 
     async def _scan_registries(self, js: JetStreamContext) -> None:
         subject = f"tele.{self.vehicle}.{REGISTRY_SOURCE_CLASS}"
@@ -419,7 +540,17 @@ class LiveDecoder:
             self.cache.generations() or "none",
         )
 
-    async def _consume(self, subscription: object, stop: asyncio.Event) -> None:
+    async def _consume(
+        self,
+        subscription: object,
+        stop: asyncio.Event,
+        js_live: JetStreamContext | None = None,
+        js_registry: JetStreamContext | None = None,
+    ) -> None:
+        last_message = time.monotonic()
+        self.health.last_message_mono = last_message
+        unknown_seen = self.cache.unknown_seq_batches
+        last_rescan = float("-inf")
         while not stop.is_set():
             try:
                 message = await subscription.next_msg(timeout=_CONSUME_POLL_S)
@@ -431,11 +562,72 @@ class LiveDecoder:
                 continue
             now = time.monotonic()
             if message is not None:
+                last_message = now
+                self.health.last_message_mono = now
                 self._handle_message(message, now)
+                if (
+                    js_registry is not None
+                    and self.cache.unknown_seq_batches > unknown_seen
+                    and now - last_rescan >= _REGISTRY_RESCAN_MIN_S
+                ):
+                    # A DeliverPolicy.NEW consumer on the vehicle stream never
+                    # sees a registry published while it was not attached;
+                    # the sourced copy keeps every generation.
+                    unknown_seen = self.cache.unknown_seq_batches
+                    last_rescan = now
+                    logger.info(
+                        "live-decoder: batch names an unknown registry generation; "
+                        "re-scanning registries on %s",
+                        self.settings.stream,
+                    )
+                    try:
+                        await self._scan_registries(js_registry)
+                    except Exception as exc:  # noqa: BLE001 - try again next period
+                        logger.warning("live-decoder: registry re-scan failed: %s", exc)
             else:
                 self._publish(self.limiter.admit(self.limiter.drain(now), now))
+                if (
+                    js_live is not None
+                    and self.settings.live_source == "vehicle"
+                    and now - last_message >= self.settings.resubscribe_after_s
+                ):
+                    replacement = await self._resubscribe_live(subscription, js_live, stop)
+                    if replacement is None:
+                        return
+                    subscription = replacement
+                    # Measured from the new consumer's creation, so a link
+                    # that stays down costs one attempt per period, not one
+                    # per poll.
+                    last_message = time.monotonic()
             self._reload(now)
             self._sync_limiter_health()
+
+    async def _resubscribe_live(
+        self,
+        subscription: object,
+        js_live: JetStreamContext,
+        stop: asyncio.Event,
+    ) -> JetStreamContext.PushSubscription | None:
+        """Replace a quiet vehicle-stream consumer with a fresh NEW one.
+
+        Quiet means no batch for `resubscribe_after_s`. Either the link went
+        away and took the consumer with it, or the link is fine and the car
+        really is silent; a fresh consumer is the right answer to both, and
+        cheap in the second case. What it must never do is resume where the
+        old one stopped: that is the backlog, and the sourced stream already
+        carries it.
+        """
+        self.health.live_resubscribes += 1
+        logger.info(
+            "live-decoder: no batch for %.0fs on %s; re-creating the live consumer",
+            self.settings.resubscribe_after_s,
+            self.settings.live_stream,
+        )
+        try:
+            await subscription.unsubscribe()
+        except Exception:  # noqa: BLE001 - the old consumer is being discarded
+            pass
+        return await self._subscribe_live(js_live, stop)
 
     def _handle_message(self, message: Msg, now: float) -> None:
         self.messages_seen += 1
@@ -542,7 +734,7 @@ class LiveDecoder:
                     "check the vehicle id and that the stream is being sourced",
                     idle,
                     self.subject_filter,
-                    self.settings.stream,
+                    self.settings.live_stream,
                 )
 
 
@@ -559,6 +751,7 @@ async def run_live_decoder(settings: LiveDecoderSettings, stop: asyncio.Event) -
 
 
 __all__ = [
+    "LIVE_SOURCES",
     "LiveDecoder",
     "LiveDecoderSettings",
     "LiveUpdate",

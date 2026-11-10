@@ -123,6 +123,7 @@ on the same dashboards, stored in the same DB, no side channel:
 | --- | --- |
 | `sys.agent.status` | heartbeat (1 Hz); the pit alerts on staleness — replaces the old MQTT LWT |
 | `sys.agent.drops.<collector>` | cumulative drop-oldest count per queue |
+| `sys.agent.stall_s.<bus>` | seconds the kernel has been counting frames on the bus that the collector never received (0 when healthy or quiet); the vehicle-side watchdog reboots on the same signature -- `collectors/can_stall.py` |
 | `sys.agent.unmapped_refs` | cumulative samples with no catalog mapping |
 | `sys.agent.publish_drops` | batches shed because local NATS was unavailable |
 | `sys.agent.publish_lag_ms` | age of oldest unacked publish |

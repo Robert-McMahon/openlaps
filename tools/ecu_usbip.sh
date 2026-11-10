@@ -5,6 +5,8 @@
 #     tools/ecu_usbip.sh attach     # on the pit host    (openlaps-ecu-attach.service)
 #     tools/ecu_usbip.sh unexport   # vehicle: hand the ECU back to its local driver
 #     tools/ecu_usbip.sh detach     # pit: drop the vhci port(s) holding the ECU
+#     tools/ecu_usbip.sh redirect   # pit: stream the attached ECU into the Windows VM (openlaps-ecu-redirect.service)
+#     tools/ecu_usbip.sh unredirect # pit: remove the VM's usb-redir binding
 #     tools/ecu_usbip.sh status     # either end: what this end can see right now
 #
 # docs/operations/remote-ecu.md is the runbook. Both loops exist for one
@@ -25,6 +27,17 @@
 #   OPENLAPS_ECU_USB_PID   4 hex digits, no 0x
 #   OPENLAPS_ECU_HOST      attach only: the vehicle's address on the car LAN
 #   OPENLAPS_ECU_POLL_S    loop period, default 3
+#   OPENLAPS_ECU_VM        redirect only: the Windows guest's container, default omarchy-windows
+#   OPENLAPS_ECU_VM_PORT   redirect only: TCP port QEMU listens on for the stream, default 4160
+#
+# The pit hands the attached ECU to the guest with usbredir, not QEMU's
+# usb-host: libusb inside the dockur container never receives hotplug events
+# (no udevd there), so usb-host only ever opens devices that were present when
+# the VM booted -- every ECU reset or re-arm needed a Windows restart.
+# `redirect` opens the device on the host with usbredirect, where udev works,
+# and streams it to a usb-redir device it adds to the guest's xhci.0 through
+# the QEMU monitor. dockur DNATs every inbound TCP port it does not know to
+# the guest, so the loop also exempts its port from that chain.
 #
 # The device is found by VID:PID rather than by bus id because the bus id
 # follows the physical port: move the cable to another socket and a bus id
@@ -48,6 +61,10 @@ VID="${OPENLAPS_ECU_USB_VID:-}"
 PID="${OPENLAPS_ECU_USB_PID:-}"
 POLL="${OPENLAPS_ECU_POLL_S:-3}"
 HOST="${OPENLAPS_ECU_HOST:-}"
+VM="${OPENLAPS_ECU_VM:-omarchy-windows}"
+VM_PORT="${OPENLAPS_ECU_VM_PORT:-4160}"
+VM_MONITOR="${OPENLAPS_ECU_VM_MONITOR:-/run/shm/monitor.sock}"
+LOOPS="${OPENLAPS_ECU_LOOPS:-}" # tests only: stop a loop after this many passes
 SYS_USB="${OPENLAPS_ECU_SYSFS:-/sys/bus/usb/devices}" # overridable for tests only
 
 log() { printf '%s\n' "$*" >&2; }
@@ -176,6 +193,102 @@ cmd_detach() {
 	done
 }
 
+# BUS-DEVNUM (usbredirect's form) of the ECU on this host, vhci copy included:
+# on the pit that copy is exactly what should go to the guest.
+host_busdev() {
+	local dev
+	for dev in "$SYS_USB"/*; do
+		[[ -r "$dev/idVendor" && -r "$dev/idProduct" && -r "$dev/busnum" && -r "$dev/devnum" ]] || continue
+		[[ "$(<"$dev/idVendor")" == "$VID" && "$(<"$dev/idProduct")" == "$PID" ]] || continue
+		echo "$(<"$dev/busnum")-$(<"$dev/devnum")"
+		return 0
+	done
+	return 1
+}
+
+vm_running() {
+	[[ "$(docker inspect -f '{{.State.Running}}' "$VM" 2>/dev/null)" == true ]]
+}
+
+vm_ip() {
+	docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$VM" 2>/dev/null
+}
+
+# One HMP command to the guest's QEMU; prints whatever QEMU answered (nothing
+# on success for chardev-add/device_add, the error text otherwise).
+qemu_monitor() {
+	# -q 1: send, then give QEMU a second to answer before closing.
+	printf '%s\r\n' "$1" | docker exec -i "$VM" nc -U -q 1 -w 2 "$VM_MONITOR" 2>/dev/null |
+		sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | tr -d '\r' | grep -vE '^\(qemu\)|^QEMU [0-9]' || true
+}
+
+# Idempotent: the NAT exemption, the listening chardev and the usb-redir device.
+ensure_vm_binding() {
+	local rule=(-p tcp --dport "$VM_PORT" -m comment --comment openlaps-ecu -j RETURN) err
+	if ! docker exec "$VM" iptables -t nat -C QEMU_DNAT "${rule[@]}" >/dev/null 2>&1; then
+		docker exec "$VM" iptables -t nat -I QEMU_DNAT "${rule[@]}" || {
+			log "could not exempt port $VM_PORT from $VM's guest NAT"
+			return 1
+		}
+	fi
+	if ! qemu_monitor 'info chardev' | grep -q '^openlaps_ecu_cd:'; then
+		err="$(qemu_monitor "chardev-add socket,id=openlaps_ecu_cd,host=0.0.0.0,port=$VM_PORT,server=on,wait=off")"
+		[[ -z "$err" ]] || {
+			log "QEMU chardev-add: $err"
+			return 1
+		}
+	fi
+	if ! qemu_monitor 'info qtree' | grep -q 'id "openlaps_ecu"'; then
+		err="$(qemu_monitor 'device_add usb-redir,id=openlaps_ecu,chardev=openlaps_ecu_cd,bus=xhci.0')"
+		[[ -z "$err" ]] || {
+			log "QEMU device_add usb-redir: $err"
+			return 1
+		}
+	fi
+}
+
+cmd_redirect() {
+	need_ids
+	if ! command -v usbredirect >/dev/null; then
+		log "usbredirect not found: install the distro's usbredir package (Arch: pacman -S usbredir)"
+		exit 3
+	fi
+	log "streaming $VID:$PID into $VM (QEMU port $VM_PORT), checking every ${POLL}s"
+	local busdev ip waiting_vm=0 waiting_dev=0 pass=0
+	while :; do
+		[[ -z "$LOOPS" ]] || ((pass++ < LOOPS)) || break
+		if ! vm_running; then
+			((waiting_vm)) || log "$VM is not running; waiting"
+			waiting_vm=1
+		elif ! busdev="$(host_busdev)"; then
+			waiting_vm=0
+			((waiting_dev)) || log "$VID:$PID is not on this host (not attached yet); waiting"
+			waiting_dev=1
+		elif ensure_vm_binding && ip="$(vm_ip)" && [[ -n "$ip" ]]; then
+			waiting_vm=0 waiting_dev=0
+			log "redirecting $busdev ($VID:$PID) to $VM at $ip:$VM_PORT"
+			# Blocks for the life of the stream: returns when the ECU leaves
+			# the bus (reset, disarm, link drop) or the VM goes away.
+			usbredirect --device "$busdev" --to "$ip:$VM_PORT" -k || true
+			log "stream for $busdev ended"
+		fi
+		sleep "$POLL"
+	done
+}
+
+cmd_unredirect() {
+	# The unit's cgroup kill already ended usbredirect; take the guest-side
+	# binding down too so the next VM boot or `redirect` starts clean.
+	vm_running || return 0
+	if qemu_monitor 'info qtree' | grep -q 'id "openlaps_ecu"'; then
+		qemu_monitor 'device_del openlaps_ecu' >/dev/null
+		log "removed usb-redir device from $VM"
+	fi
+	if qemu_monitor 'info chardev' | grep -q '^openlaps_ecu_cd:'; then
+		qemu_monitor 'chardev-remove openlaps_ecu_cd' >/dev/null
+	fi
+}
+
 cmd_status() {
 	need_ids
 	local busid
@@ -202,9 +315,11 @@ export) cmd_export ;;
 unexport) cmd_unexport ;;
 attach) cmd_attach ;;
 detach) cmd_detach ;;
+redirect) cmd_redirect ;;
+unredirect) cmd_unredirect ;;
 status) cmd_status ;;
 *)
-	sed -n '2,8p' "$0" >&2
+	sed -n '2,10p' "$0" >&2
 	exit 64
 	;;
 esac

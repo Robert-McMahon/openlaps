@@ -645,25 +645,19 @@ services:
       DISK_SIZE: ${ECU_WINDOWS_DISK_SIZE:-64G}
       USERNAME: ${ECU_WINDOWS_USERNAME:-openlaps}
       PASSWORD: ${ECU_WINDOWS_PASSWORD:-}
-      # The ECU, matched by VID:PID rather than by bus/device number: the
-      # number changes every time the ECU resets, the VID:PID never does, and
-      # QEMU's usb-host matching by ID is what lets the guest get the ECU back
-      # after a key-off without restarting the VM. The same two values, in
-      # the same 4-hex-digit form, as /etc/default/openlaps-ecu.
-      ARGUMENTS: "-device usb-host,vendorid=0x${OPENLAPS_ECU_USB_VID:-0000},productid=0x${OPENLAPS_ECU_USB_PID:-0000}"
+    # No USB passthrough here on purpose. The ECU reaches the guest as a
+    # usbredir stream from openlaps-ecu-redirect.service on the host (set
+    # OPENLAPS_ECU_VM=ecu-windows in /etc/default/openlaps-ecu), which adds a
+    # usb-redir device through the QEMU monitor at run time. QEMU's usb-host
+    # cannot do this job: libusb inside the container gets no hotplug events,
+    # so it only ever sees devices present at VM boot and every ECU reset
+    # would need a Windows restart. docs/operations/remote-ecu.md.
+    container_name: ecu-windows
     devices:
       - /dev/kvm:/dev/kvm
       - /dev/net/tun:/dev/net/tun
-    # USB, as a bind mount plus a cgroup rule rather than a `devices:` entry.
-    # `devices:` copies the nodes that exist at container start and allows
-    # exactly those, so the node the ECU gets after it re-enumerates (a new
-    # /dev/bus/usb/BBB/DDD) would be both missing and denied. The bind mount
-    # shows the host's live devtmpfs; 189 is the USB device major.
     volumes:
       - ecu-windows-storage:/storage
-      - /dev/bus/usb:/dev/bus/usb
-    device_cgroup_rules:
-      - "c 189:* rmw"
     cap_add:
       - NET_ADMIN
     ports:

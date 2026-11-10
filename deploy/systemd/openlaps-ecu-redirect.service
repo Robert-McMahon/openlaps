@@ -1,0 +1,32 @@
+# Pit: stream the attached ECU into the Windows guest with usbredir.
+#
+#     sudo pacman -S usbredir
+#     sudo install -m 0644 deploy/systemd/openlaps-ecu-redirect.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now openlaps-ecu-redirect
+#
+# Safe to enable alongside openlaps-ecu-attach: it only ever streams the ECU
+# the attach loop has put on this host, waits quietly while there is none or
+# while the VM is down, and comes back by itself after every ECU reset,
+# re-arm and VM restart. That is the whole reason it exists: QEMU's usb-host
+# never sees a device that appears after the VM booted, because libusb in
+# the dockur container gets no hotplug events (tools/ecu_usbip.sh explains).
+#
+# Which container to feed, and the TCP port QEMU listens on for the stream,
+# come from /etc/default/openlaps-ecu (OPENLAPS_ECU_VM, OPENLAPS_ECU_VM_PORT).
+
+[Unit]
+Description=openlaps remote ECU redirect (usbredir into the Windows guest)
+Documentation=https://github.com/Robert-McMahon/openlaps/blob/main/docs/operations/remote-ecu.md
+After=docker.service openlaps-ecu-attach.service
+Wants=openlaps-ecu-attach.service
+
+[Service]
+EnvironmentFile=/etc/default/openlaps-ecu
+ExecStart=/usr/local/sbin/openlaps-ecu-usbip redirect
+ExecStopPost=/usr/local/sbin/openlaps-ecu-usbip unredirect
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

@@ -189,8 +189,11 @@ def test_remote_access_cannot_be_left_armed_across_a_reboot():
 
 def test_every_unit_reads_the_file_the_script_defaults_to():
     default = re.search(r"OPENLAPS_ECU_CONFIG:-([^}]+)\}", SCRIPT.read_text()).group(1)
-    for name in ("openlaps-ecu-export.service", "openlaps-ecu-attach.service",
-                 "openlaps-ecu-redirect.service"):
+    for name in (
+        "openlaps-ecu-export.service",
+        "openlaps-ecu-attach.service",
+        "openlaps-ecu-redirect.service",
+    ):
         assert f"EnvironmentFile={default}" in (SYSTEMD / name).read_text(), name
 
 
@@ -222,17 +225,27 @@ def test_redirect_streams_the_attached_ecu_into_the_guest(tmp_path):
     (root / "devices/platform/vhci_hcd.0/usb5/5-1/devnum").write_text("7\n")
     _stub_vm(tmp_path, nat_exempt=False)
 
-    proc, _ = _run(tmp_path, "redirect", OPENLAPS_ECU_LOOPS="1", OPENLAPS_ECU_POLL_S="0",
-                   OPENLAPS_ECU_VM="guest", OPENLAPS_ECU_VM_PORT="4321")
+    proc, _ = _run(
+        tmp_path,
+        "redirect",
+        OPENLAPS_ECU_LOOPS="1",
+        OPENLAPS_ECU_POLL_S="0",
+        OPENLAPS_ECU_VM="guest",
+        OPENLAPS_ECU_VM_PORT="4321",
+    )
 
     assert proc.returncode == 0, proc.stderr
     docker = (tmp_path / "docker.calls").read_text()
-    assert "exec guest iptables -t nat -I QEMU_DNAT -p tcp --dport 4321" in docker, \
+    assert "exec guest iptables -t nat -I QEMU_DNAT -p tcp --dport 4321" in docker, (
         "dockur DNATs unknown inbound ports to the guest; ours must be exempted"
+    )
     monitor = (tmp_path / "monitor.in").read_text()
-    assert "chardev-add socket,id=openlaps_ecu_cd,host=0.0.0.0,port=4321,server=on,wait=off" in monitor
+    assert (
+        "chardev-add socket,id=openlaps_ecu_cd,host=0.0.0.0,port=4321,server=on,wait=off" in monitor
+    )
     assert "device_add usb-redir,id=openlaps_ecu,chardev=openlaps_ecu_cd,bus=xhci.0" in monitor
-    assert (tmp_path / "usbredirect.calls").read_text().strip() == "--device 5-7 --to 172.19.0.2:4321 -k"
+    usbredirect = (tmp_path / "usbredirect.calls").read_text().strip()
+    assert usbredirect == "--device 5-7 --to 172.19.0.2:4321 -k"
     assert "redirecting 5-7" in proc.stderr
 
 

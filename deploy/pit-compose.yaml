@@ -636,7 +636,55 @@ services:
       # First start downloads and unpacks a plugin.
       start_period: 60s
 
+  # --- remote ECU tuning (opt-in) ---------------------------------------------
+
+  ecu-windows:
+    # A Windows guest for the ECU vendor's tuning software (Haltech NSP),
+    # driving the car's ECU over USB/IP: docs/operations/remote-ecu.md.
+    # Behind a profile so a plain `up -d` never boots a Windows VM:
+    #
+    #     docker compose -f deploy/pit-compose.yaml --profile ecu up -d ecu-windows
+    #
+    # dockur/windows is QEMU/KVM in a container, so the pit host needs
+    # /dev/kvm. First start downloads and installs Windows into the volume
+    # below unattended; watch it on http://<pit-host>:8006.
+    #
+    # Pin the tag after the first pull (`docker image inspect`), like ntfy's.
+    image: dockurr/windows:${ECU_WINDOWS_IMAGE_TAG:-latest}
+    profiles: ["ecu"]
+    environment:
+      VERSION: ${ECU_WINDOWS_VERSION:-11}
+      RAM_SIZE: ${ECU_WINDOWS_RAM_SIZE:-6G}
+      CPU_CORES: ${ECU_WINDOWS_CPU_CORES:-4}
+      DISK_SIZE: ${ECU_WINDOWS_DISK_SIZE:-64G}
+      USERNAME: ${ECU_WINDOWS_USERNAME:-openlaps}
+      PASSWORD: ${ECU_WINDOWS_PASSWORD:-}
+    # No USB passthrough here on purpose. The ECU reaches the guest as a
+    # usbredir stream from openlaps-ecu-redirect.service on the host (set
+    # OPENLAPS_ECU_VM=ecu-windows in /etc/default/openlaps-ecu), which adds a
+    # usb-redir device through the QEMU monitor at run time. QEMU's usb-host
+    # cannot do this job: libusb inside the container gets no hotplug events,
+    # so it only ever sees devices present at VM boot and every ECU reset
+    # would need a Windows restart. docs/operations/remote-ecu.md.
+    container_name: ecu-windows
+    devices:
+      - /dev/kvm:/dev/kvm
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - ecu-windows-storage:/storage
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "${ECU_WINDOWS_WEB_PORT:-8006}:8006"   # browser console (noVNC)
+      - "${ECU_WINDOWS_RDP_PORT:-3389}:3389/tcp"
+      - "${ECU_WINDOWS_RDP_PORT:-3389}:3389/udp"
+    # Windows needs time to shut down cleanly; the default 10 s would pull
+    # the plug on it, and on NSP mid-write.
+    stop_grace_period: 2m
+    restart: "no"
+
 volumes:
+  ecu-windows-storage:
   nats-data:
   timescale-data:
   session-data:

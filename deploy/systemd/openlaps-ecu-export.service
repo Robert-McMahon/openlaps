@@ -1,0 +1,29 @@
+# Vehicle: keep the ECU bound to usbip-host so the pit can attach it.
+#
+#     sudo install -m 0755 tools/ecu_usbip.sh /usr/local/sbin/openlaps-ecu-usbip
+#     sudo install -m 0644 deploy/systemd/openlaps-usbipd.service \
+#          deploy/systemd/openlaps-ecu-export.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#
+#     sudo systemctl start openlaps-ecu-export     # arm remote tuning
+#     sudo systemctl stop  openlaps-ecu-export     # disarm
+#
+# Deliberately NOT enabled (no [Install] section): remote ECU access is armed
+# per session, not left open across reboots. Stopping it unbinds the ECU --
+# which drops the pit's session at once -- and stops usbipd (PartOf= there).
+#
+# While armed the ECU is invisible to anything local on the vehicle that
+# talks to it over USB; CAN telemetry is unaffected.
+
+[Unit]
+Description=openlaps remote ECU export (USB/IP bind loop)
+Documentation=https://github.com/Robert-McMahon/openlaps/blob/main/docs/operations/remote-ecu.md
+Requires=openlaps-usbipd.service
+After=openlaps-usbipd.service
+
+[Service]
+EnvironmentFile=/etc/default/openlaps-ecu
+ExecStart=/usr/local/sbin/openlaps-ecu-usbip export
+ExecStopPost=/usr/local/sbin/openlaps-ecu-usbip unexport
+Restart=on-failure
+RestartSec=2s

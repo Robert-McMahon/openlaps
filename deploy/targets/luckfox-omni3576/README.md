@@ -91,14 +91,23 @@ covers all four:
   CONFIG_TCP_CONG_ADVANCED=y
   CONFIG_TCP_CONG_BBR=y
   CONFIG_NET_SCH_FQ=y
+  CONFIG_USBIP_CORE=y
+  CONFIG_USBIP_HOST=y
   ```
 
-  The last three compile in BBR congestion control and the `fq` pacing
+  The three TCP lines compile in BBR congestion control and the `fq` pacing
   qdisc for the vehicle-to-pit TCP link (the NATS leafnode, over HaLow or
   Starlink). They are inert until selected: the kernel default stays
   `cubic`, and `systemd/90-openlaps-bbr.conf` (installed to
-  `/etc/sysctl.d/`) is what switches the board over. The vendor kernel
-  ships no module tree, so these must be `=y`.
+  `/etc/sysctl.d/`) is what switches the board over.
+
+  The two USBIP lines are only for remote ECU tuning
+  (`docs/operations/remote-ecu.md`): they let the board export the ECU's USB
+  port to the pit.
+
+  All five are `=y` rather than `=m` because this procedure writes only
+  `boot.img` and never installs a matching module tree, so a module would
+  have nothing to load from.
 
   Not `.config` directly: the SDK regenerates that from the board defconfig on
   every build, so a hand edit is discarded.
@@ -153,9 +162,10 @@ Then, **before believing it**:
 
 ```bash
 uname -v                                   # build number and date must be the new ones
-zcat /proc/config.gz | grep -E 'NVME_HWMON|PPS_CLIENT_GPIO|TCP_CONG_BBR|NET_SCH_FQ'
+zcat /proc/config.gz | grep -E 'NVME_HWMON|PPS_CLIENT_GPIO|TCP_CONG_BBR|NET_SCH_FQ|USBIP_HOST'
 ls /dev/ttyS2 /dev/pps0
 cat /proc/sys/net/ipv4/tcp_available_congestion_control   # reno cubic bbr
+ls -d /sys/bus/usb/drivers/usbip-host      # remote ECU tuning only
 ```
 
 Then switch the board to BBR, which the kernel only makes available:

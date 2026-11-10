@@ -1,0 +1,28 @@
+# Vehicle: let only the pit reach usbipd (TCP 3240).
+#
+#     sudo nft -f deploy/nft/ecu-usbip.nft
+#
+# usbipd authenticates nothing -- whoever connects first can attach the ECU
+# and write to it -- so this is the access control, together with the export
+# unit being off by default. Edit PIT_ADDR if the pit is not 192.168.12.203
+# (docs/operations/registry.md). Unlike the bench counters
+# (bench-vehicle.nft), this one takes a verdict, but only on port 3240, so
+# nothing else on the box is affected.
+#
+# To make it survive a reboot, include it from /etc/nftables.conf and enable
+# nftables.service; the runbook does this, because a reboot that silently
+# drops the restriction would leave the ECU open to the whole car LAN the
+# next time remote tuning is armed.
+
+define PIT_ADDR = 192.168.12.203
+
+table inet openlaps_ecu
+delete table inet openlaps_ecu
+
+table inet openlaps_ecu {
+	chain input {
+		type filter hook input priority filter; policy accept;
+		tcp dport 3240 ip saddr $PIT_ADDR accept
+		tcp dport 3240 counter drop comment "usbipd: pit only"
+	}
+}

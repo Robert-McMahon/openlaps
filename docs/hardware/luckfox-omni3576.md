@@ -14,14 +14,19 @@ Build the Rockchip kernel with:
 ```text
 CONFIG_PPS_CLIENT_GPIO=y
 CONFIG_NVME_HWMON=y
+CONFIG_USBIP_CORE=y   # remote ECU tuning only
+CONFIG_USBIP_HOST=y   # remote ECU tuning only
 ```
+
+The USB/IP options let the board export the ECU's USB port to the pit; see
+[Remote ECU tuning](../operations/remote-ecu.md).
 
 Back up the boot partition before writing a rebuilt `boot.img`. After reboot,
 verify the running build and the required devices:
 
 ```bash
 uname -v
-zcat /proc/config.gz | grep -E 'NVME_HWMON|PPS_CLIENT_GPIO'
+zcat /proc/config.gz | grep -E 'NVME_HWMON|PPS_CLIENT_GPIO|USBIP_HOST'
 ls /dev/ttyS2 /dev/pps0
 ```
 

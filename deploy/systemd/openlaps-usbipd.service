@@ -1,0 +1,27 @@
+# Vehicle: the USB/IP server that publishes the ECU to the pit on TCP 3240.
+#
+# Not enabled, and never started on its own: openlaps-ecu-export.service
+# pulls it in and, through PartOf=, takes it down again. usbipd has no
+# authentication of any kind, so the port is open only while someone has
+# deliberately armed remote tuning, and deploy/nft/ecu-usbip.nft restricts it
+# to the pit's address while it is.
+#
+# Debian 12: `sudo apt install usbip` provides /usr/sbin/usbipd; the
+# usbip-host driver needs the kernel options in
+# deploy/targets/luckfox-omni3576/README.md.
+
+[Unit]
+Description=openlaps USB/IP server (remote ECU access)
+Documentation=https://github.com/Robert-McMahon/openlaps/blob/main/docs/operations/remote-ecu.md
+PartOf=openlaps-ecu-export.service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# `-`: built in on the openlaps kernel, where there may be no module tree.
+ExecStartPre=-/usr/sbin/modprobe usbip-host
+# Foreground (no -D) so systemd supervises the process itself; -4 because the
+# car LAN is IPv4 and the nft rule only covers ip saddr.
+ExecStart=/usr/sbin/usbipd -4
+Restart=on-failure
+RestartSec=2s

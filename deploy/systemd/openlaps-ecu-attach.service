@@ -1,0 +1,31 @@
+# Pit: keep the vehicle's exported ECU attached to this host over vhci-hcd,
+# where the ecu-windows container (deploy/pit-compose.yaml, profile `ecu`)
+# hands it to the Windows guest.
+#
+# Arch / Omarchy:
+#
+#     sudo pacman -S usbip
+#     sudo install -m 0755 tools/ecu_usbip.sh /usr/local/sbin/openlaps-ecu-usbip
+#     sudo install -m 0644 deploy/systemd/openlaps-ecu-attach.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl start openlaps-ecu-attach
+#
+# Safe to leave running, and safe to enable: it only ever attaches what the
+# vehicle chooses to export, and logs once and waits while nothing is.
+# Stopping it detaches the ECU from this host.
+
+[Unit]
+Description=openlaps remote ECU attach (USB/IP client loop)
+Documentation=https://github.com/Robert-McMahon/openlaps/blob/main/docs/operations/remote-ecu.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/default/openlaps-ecu
+ExecStart=/usr/local/sbin/openlaps-ecu-usbip attach
+ExecStopPost=/usr/local/sbin/openlaps-ecu-usbip detach
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

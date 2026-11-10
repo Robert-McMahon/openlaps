@@ -330,11 +330,12 @@ sudo systemctl daemon-reload
 sudo systemctl restart chrony openlaps-agent
 ```
 
-The agent logs `gnss time: feeding chrony at ... (first sample: clock +NN ms
-from RMC)`. With chrony already locked, `NN` is the serial latency; put it on
-the `refclock SOCK` line as `offset` (seconds) if it is far from the shipped
-0.050. `chronyc sources` should show `NMEA` with a `?` (it is `noselect`) and
-a climbing reach, and `GPS` selected at stratum 0. With this file the PPS
+The agent logs `gnss time: feeding chrony at ...` on its first sample.
+`chronyc sources` should show `NMEA` with a `?` (it is `noselect`) and a
+climbing reach, and `GPS` selected at stratum 0. The `offset 0.029` on the
+`refclock SOCK` line is this board's measured serial latency; the NMEA row's
+offset should sit near zero, and if it does not, add it (sign included) to
+that figure. With this file the PPS
 gives no samples while the agent is stopped or the receiver has no fix; the
 pool, then the drift file, carry the clock until it returns.
 

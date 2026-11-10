@@ -15,6 +15,7 @@ from collectors.clock import Emit, MonotonicWallClock, WallClock
 from collectors.rawlog import RawLogWriter
 from collectors.serial.driver import DriverConfigurationError, SerialDriver, SerialPort
 from collectors.serial.drivers import build_driver, is_supported
+from collectors.serial.gnss_time import ChronyNmeaFeed
 from collectors.serial.nmea import NmeaDecoder
 from core.config import SerialConfig
 from core.samples import Sample
@@ -58,6 +59,7 @@ class SerialCollector:
         backoff_start_s: float = DEFAULT_BACKOFF_START_S,
         backoff_max_s: float = DEFAULT_BACKOFF_MAX_S,
         raw_log_dir: Path | None = None,
+        time_feed: ChronyNmeaFeed | None = None,
     ) -> None:
         device = config.driver.name if config.driver is not None else config.decoder
         if config.decoder != "nmea":
@@ -78,6 +80,7 @@ class SerialCollector:
         self._raw_log_dir = raw_log_dir
         self._raw_writer: RawLogWriter | None = None
         self._raw_retry_mono = 0.0
+        self._time_feed = time_feed
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -126,6 +129,8 @@ class SerialCollector:
             if self._raw_writer is not None:
                 self._raw_writer.close()
                 self._raw_writer = None
+            if self._time_feed is not None:
+                self._time_feed.close()
 
     def _run(self, stop: threading.Event) -> None:
         backoff = self._backoff_start_s
@@ -225,6 +230,12 @@ class SerialCollector:
             if len(line) > MAX_SENTENCE_BYTES and not line.endswith((b"\n", b"\r")):
                 self.stats.oversized_lines += 1
                 continue
+            if self._time_feed is not None:
+                # The realtime clock's own reading of the arrival instant,
+                # not the agent's wall mapping: chrony needs to be told what
+                # the clock it is steering said.
+                arrival_ns = time.time_ns() - (time.monotonic_ns() - t_mono_ns)
+                self._time_feed.handle_line(line, arrival_ns)
             self.handle_line(line, t_mono_ns=t_mono_ns)
         return received
 

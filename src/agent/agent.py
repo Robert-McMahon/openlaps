@@ -36,6 +36,7 @@ from agent.timing_app import LapTimingApp, build_lap_timing_app
 from collectors.can import CanCollector
 from collectors.can_stall import StallDetector, read_rx_packets
 from collectors.host import HostCollector
+from collectors.serial.gnss_time import ChronyNmeaFeed
 from collectors.serial.transport import SerialCollector
 from core.catalog import (
     DEFAULT_DERIVED_CHANNELS,
@@ -71,6 +72,9 @@ class AgentSettings:
     registry_interval_s: float = DEFAULT_REGISTRY_INTERVAL_S
     state_dir: Path | None = None
     raw_capture_dir: Path | None = None
+    # chrony SOCK refclock that numbers the PPS seconds from the receiver's
+    # RMC time (collectors/serial/gnss_time.py). Unset: no feed.
+    chrony_nmea_socket: str | None = None
     health_interval_s: float = 1.0
 
     @classmethod
@@ -119,6 +123,7 @@ class AgentSettings:
         take("OPENLAPS_REGISTRY_REPUBLISH_S", "registry_interval_s", float)
         take("OPENLAPS_STATE_DIR", "state_dir", Path)
         take("OPENLAPS_RAW_CAPTURE_DIR", "raw_capture_dir", Path)
+        take("OPENLAPS_CHRONY_NMEA_SOCKET", "chrony_nmea_socket", str)
         return cls(**kwargs)
 
 
@@ -298,6 +303,11 @@ class VehicleAgent:
                 wall_clock=self.clock,
                 serial_factory=serial_factory,
                 raw_log_dir=raw_log_dir,
+                time_feed=(
+                    ChronyNmeaFeed(settings.chrony_nmea_socket)
+                    if settings.chrony_nmea_socket and source.decoder == "nmea"
+                    else None
+                ),
             )
             self._supervised.append(_Supervised(serial_collector, queue))
             if source.driver is not None:

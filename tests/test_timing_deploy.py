@@ -127,3 +127,33 @@ def test_the_kernel_pps_config_does_not_lock_to_a_refclock_that_is_absent():
     # `lock` as an option word, not as the tail of `refclock`.
     assert not any("lock" in line.split() for line in directives)
     assert any(line.startswith("pool pool.ntp.org") for line in directives)
+
+
+def test_the_pps_nmea_config_pairs_the_pulse_with_the_agents_time_feed():
+    """Same clock policy as the unpaired file; only the refclocks differ."""
+    pps = (ROOT / "deploy" / "chrony" / "vehicle-pps.conf").read_text()
+    paired = (ROOT / "deploy" / "chrony" / "vehicle-pps-nmea.conf").read_text()
+
+    def directives(text: str) -> list[str]:
+        return [
+            line.strip() for line in text.splitlines() if line.strip() and not line.startswith("#")
+        ]
+
+    def settings(text: str) -> list[str]:
+        return [line for line in directives(text) if not line.startswith("refclock")]
+
+    assert settings(paired) == settings(pps)
+    refclocks = [line.split() for line in directives(paired) if line.startswith("refclock")]
+    sock = next(words for words in refclocks if words[1] == "SOCK")
+    pulse = next(words for words in refclocks if words[1] == "PPS")
+    # The coarse source numbers pulses and must never be selected itself.
+    assert sock[sock.index("refid") + 1] == "NMEA" and "noselect" in sock
+    assert pulse[pulse.index("lock") + 1] == "NMEA" and "prefer" in pulse
+
+
+def test_the_nmea_socket_path_agrees_between_chrony_and_its_drop_in():
+    paired = (ROOT / "deploy" / "chrony" / "vehicle-pps-nmea.conf").read_text()
+    drop_in = (ROOT / "deploy" / "systemd" / "chrony-openlaps-nmea.conf").read_text()
+
+    assert "refclock SOCK /run/openlaps-chrony/nmea.sock" in paired
+    assert "-g openlaps /run/openlaps-chrony" in drop_in

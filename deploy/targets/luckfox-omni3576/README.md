@@ -27,7 +27,7 @@ which carries PPS, power, ground and the UART together:
 | 3 | `RXD` ← | **8** | board TX (`uart2m1`) |
 | 4 | `TXD` → | **10** | board RX (`uart2m1`) |
 | 5 | `GND` ↔ | **6** | mandatory — PPS and the UART levels are both referenced to it |
-| 6 | `EN` | — | high-level enable; tie to VCC if the module does not start with it floating |
+| 6 | `EN` | pin 2/4 (with `VCC`) | high-level enable; **tie it to VCC** — see below |
 
 **COM1, not COM2.** The X4 uses COM2, and that is the one thing not to copy
 across: the driver's timing sentences are addressed to `COM2` explicitly
@@ -35,6 +35,31 @@ across: the driver's timing sentences are addressed to `COM2` explicitly
 have it reconfigure the link it is talking over. The profile's
 `timing_output: COM2` is vestigial here — nothing reads COM2 on this board —
 and is left alone because the profile is shared with the X4.
+
+**A floating `EN` looks like a dead module.** One WTRTK-980 ran for months
+with `EN` unconnected; its replacement (2026-11-10) did nothing at all that
+way — no LED, cold, no USB enumeration, `rx:0` on the UART — and came up at
+once, drawing ~100 mA at 5 V, with `EN` tied to `VCC`. Tie it.
+
+**The carrier joins USB 5 V to `VCC`.** With a bench supply on `VCC`, plugging
+in USB took the supply's current to zero. Do not have the USB port and the
+header's 5 V connected at the same time. The USB port is a CH340 serial bridge
+(`1a86:7523`) to the receiver at 115200, which is how firmware is flashed
+(Unicore UPrecise, Windows).
+
+**A new receiver needs two things this repo does not do for it:**
+
+- **Firmware R4.10 Build17548** (check with `VERSIONA`). The replacement shipped
+  on Build13504.
+- **`CONFIG SIGNALGROUP 8`**, once; it persists and the receiver reboots. Out of
+  the box it is in group 1 and refuses the profile's 50 Hz output — the agent
+  logs `UM980 command 'GPRMC 0.02' failed: PARSING FAILED FIELD OUT OF RANGE,
+  Period 0.02 is not supported for this log message!` on every retry. The
+  driver does not send this command.
+
+Once the agent has configured the receiver (`CONFIG CMDFORMAT 1`), it ignores
+plain-text commands in silence. To talk to it by hand, stop the agent and send
+`$<command>*<XX>`, `XX` being the XOR of the command's bytes (`$CONFIG*0A`).
 
 **A dead receive line looks like a receiver fault.** The symptom is
 `receiver configuration failed: UM980 command 'CONFIG CMDFORMAT 1' failed:
@@ -296,6 +321,33 @@ sudo install -m 0644 deploy/udev/99-openlaps-pps.rules /etc/udev/rules.d/
 sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=pps
 sudo systemctl restart chrony
 ```
+
+**Offline, that is not enough: pair the PPS with the receiver's time.** A
+PPS edge says when a second starts, not which one, and `vehicle-pps.conf`
+takes the whole second from the internet pool. With no internet it comes from
+the RTC instead: on 2026-11-10 this board ran a whole 12 s fast with PPS
+locked to microseconds, and the dashboard showed the vehicle at stratum 10
+(chrony gives an unpaired PPS "local stratum − 1" when it is first selected
+under the `local` fallback, and keeps it). `vehicle-pps-nmea.conf` locks the
+PPS to a second source the agent feeds from the top-of-second RMC:
+
+```bash
+sudo install -m 0644 deploy/chrony/vehicle-pps-nmea.conf /etc/chrony/chrony.conf
+sudo install -D -m 0644 deploy/systemd/chrony-openlaps-nmea.conf \
+    /etc/systemd/system/chrony.service.d/openlaps-nmea.conf
+echo 'OPENLAPS_CHRONY_NMEA_SOCKET=/run/openlaps-chrony/nmea.sock' | sudo tee -a /etc/openlaps/agent.env
+sudo systemctl daemon-reload
+sudo systemctl restart chrony openlaps-agent
+```
+
+The agent logs `gnss time: feeding chrony at ...` on its first sample.
+`chronyc sources` should show `NMEA` with a `?` (it is `noselect`) and a
+climbing reach, and `GPS` selected at stratum 0. The `offset 0.029` on the
+`refclock SOCK` line is this board's measured serial latency; the NMEA row's
+offset should sit near zero, and if it does not, add it (sign included) to
+that figure. With this file the PPS
+gives no samples while the agent is stopped or the receiver has no fix; the
+pool, then the drift file, carry the clock until it returns.
 
 **The udev rule is not optional.** `pps-gpio` creates `/dev/pps0` as
 `crw------- root root` and chronyd drops to `_chrony`; without the rule the

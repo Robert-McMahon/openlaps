@@ -15,6 +15,7 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from agent.queues import DEFAULT_MAXLEN, SampleQueue
 from agent.session import SessionStore
 from agent.timing_app import LapTimingApp, build_lap_timing_app
 from collectors.can import CanCollector
+from collectors.can_stall import StallDetector, read_rx_packets
 from collectors.host import HostCollector
 from collectors.serial.transport import SerialCollector
 from core.catalog import (
@@ -150,9 +152,13 @@ class _SessionInbox:
 
 
 def agent_derived_channels(
-    collector_names: list[str], *, fusion: bool = False
+    collector_names: list[str], *, bus_names: Sequence[str] = (), fusion: bool = False
 ) -> tuple[DerivedChannel, ...]:
-    """The derived-channel set this agent adds to the registry."""
+    """The derived-channel set this agent adds to the registry.
+
+    ``bus_names`` are the CAN collectors among ``collector_names``: each one
+    also gets a ``sys.agent.stall_s.<bus>`` channel (see ``collectors.can_stall``).
+    """
     channels = list(DEFAULT_DERIVED_CHANNELS)
     channels += [
         DerivedChannel("sys.agent.status", pb.STRING),
@@ -163,6 +169,7 @@ def agent_derived_channels(
         DerivedChannel("sys.agent.publish_lag_ms", pb.DOUBLE, "ms"),
     ]
     channels += [DerivedChannel(f"sys.agent.drops.{name}", pb.INT64) for name in collector_names]
+    channels += [DerivedChannel(f"sys.agent.stall_s.{name}", pb.DOUBLE, "s") for name in bus_names]
     if fusion:
         channels += FUSION_DERIVED_CHANNELS
     return tuple(channels)
@@ -194,7 +201,8 @@ class VehicleAgent:
                 settings.hardware_path,
             )
 
-        collector_names = [bus.name for bus in self.profile.vehicle.buses]
+        bus_names = [bus.name for bus in self.profile.vehicle.buses]
+        collector_names = list(bus_names)
         collector_names += [source.name for source in self.profile.vehicle.serial]
         if self.profile.vehicle.host.enabled:
             collector_names.append("host")
@@ -210,7 +218,9 @@ class VehicleAgent:
             self.profile,
             state_path=registry_state,
             derived_channels=agent_derived_channels(
-                collector_names, fusion=self.profile.catalog.apps.fusion is not None
+                collector_names,
+                bus_names=bus_names,
+                fusion=self.profile.catalog.apps.fusion is not None,
             ),
         )
         self.clock = SystemClock()
@@ -256,6 +266,9 @@ class VehicleAgent:
 
         self._supervised: list[_Supervised] = []
         self._rtcm_collectors: list[SerialCollector] = []
+        # One stall judge per bus: frames the kernel counted against frames
+        # the collector decoded (collectors.can_stall). Fed by the health loop.
+        self._stall_detectors: dict[str, StallDetector] = {}
         for bus in self.profile.vehicle.buses:
             queue = SampleQueue(bus.name, settings.queue_maxlen)
             collector = CanCollector(
@@ -266,6 +279,7 @@ class VehicleAgent:
                 bus_factory=bus_factory,
             )
             self._supervised.append(_Supervised(collector, queue))
+            self._stall_detectors[bus.name] = StallDetector()
         for source in self.profile.vehicle.serial:
             queue = SampleQueue(source.name, settings.queue_maxlen)
             raw_log_dir = None
@@ -433,6 +447,14 @@ class VehicleAgent:
         emit("sys.agent.publish_lag_ms", self.publisher.publish_lag_ms())
         for supervised in self._supervised:
             emit(f"sys.agent.drops.{supervised.queue.source_class}", supervised.queue.dropped)
+            collector = supervised.collector
+            if isinstance(collector, CanCollector):
+                stall_s = self._stall_detectors[collector.name].observe(
+                    read_rx_packets(collector.config.interface),
+                    collector.decode_stats.frames,
+                    time.monotonic(),
+                )
+                emit(f"sys.agent.stall_s.{collector.name}", stall_s)
 
     def _status_payload(self, state: str) -> str:
         collectors = {

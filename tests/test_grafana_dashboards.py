@@ -176,10 +176,19 @@ def _collector_names() -> list[str]:
     return names
 
 
+def _bus_names() -> list[str]:
+    """The CAN buses, which also get ``sys.agent.stall_s.<bus>``."""
+    vehicle = yaml.safe_load(VEHICLE_YAML.read_text(encoding="utf-8"))
+    return [bus["name"] for bus in vehicle.get("buses") or []]
+
+
 def _known_channels() -> set[str]:
     catalog = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
     channels = set(catalog["channels"])
-    channels.update(channel.name for channel in agent_derived_channels(_collector_names()))
+    channels.update(
+        channel.name
+        for channel in agent_derived_channels(_collector_names(), bus_names=_bus_names())
+    )
     channels.update(load_timing_config(TIMING_EXTRAPOLATOR).output_channels)
     channels.update(STRATEGY_CHANNELS)
     return channels

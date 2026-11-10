@@ -567,6 +567,83 @@ groups:
         expression: B
         refId: C
         type: threshold
+  - uid: can-bus-stalled
+    title: CAN bus stalled on the vehicle box (watchdog rebooting it)
+    condition: C
+    for: 2s
+    noDataState: OK
+    execErrState: Error
+    annotations:
+      dashboardUID: reliability
+      runbook_url: /d/reliability/reliability?var-alert=can-bus-stalled
+      summary: CAN bus stalled on the vehicle box (watchdog rebooting it)
+      panelID: '7'
+    labels:
+      service: openlaps
+      kind: threshold
+      severity: warning
+      scope: always
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescale
+      model:
+        datasource:
+          type: grafana-postgresql-datasource
+          uid: timescale
+        editorMode: code
+        format: time_series
+        instant: true
+        rawQuery: true
+        rawSql: '/* can-bus-stalled: above 3 s */ SELECT now() AS "time", COALESCE((SELECT
+          value FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel
+          = ''sys.agent.stall_s.can0'' AND value IS NOT NULL ORDER BY time DESC LIMIT 1),
+          0.0) AS "value"'
+        refId: A
+    - refId: B
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions: []
+        datasource: &id008
+          type: __expr__
+          uid: '-100'
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      relativeTimeRange:
+        from: 0
+        to: 0
+      datasourceUid: '-100'
+      model:
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 3.0
+          operator:
+            type: and
+          query:
+            params:
+            - C
+          reducer:
+            params: []
+            type: last
+          type: query
+          unloadEvaluator:
+            type: lt
+            params:
+            - 1.0
+        datasource: *id008
+        expression: B
+        refId: C
+        type: threshold
   - uid: notifier-heartbeat
     title: Notifier heartbeat
     condition: C
@@ -605,7 +682,7 @@ groups:
       datasourceUid: '-100'
       model:
         conditions: []
-        datasource: &id008
+        datasource: &id009
           type: __expr__
           uid: '-100'
         expression: A
@@ -632,7 +709,7 @@ groups:
             params: []
             type: last
           type: query
-        datasource: *id008
+        datasource: *id009
         expression: B
         refId: C
         type: threshold
@@ -681,7 +758,7 @@ groups:
       datasourceUid: '-100'
       model:
         conditions: []
-        datasource: &id009
+        datasource: &id010
           type: __expr__
           uid: '-100'
         expression: A
@@ -708,7 +785,7 @@ groups:
             params: []
             type: last
           type: query
-        datasource: *id009
+        datasource: *id010
         expression: B
         refId: C
         type: threshold
@@ -753,7 +830,7 @@ groups:
       datasourceUid: '-100'
       model:
         conditions: []
-        datasource: &id010
+        datasource: &id011
           type: __expr__
           uid: '-100'
         expression: A
@@ -780,7 +857,7 @@ groups:
             params: []
             type: last
           type: query
-        datasource: *id010
+        datasource: *id011
         expression: B
         refId: C
         type: threshold
@@ -825,7 +902,7 @@ groups:
       datasourceUid: '-100'
       model:
         conditions: []
-        datasource: &id011
+        datasource: &id012
           type: __expr__
           uid: '-100'
         expression: A
@@ -852,7 +929,7 @@ groups:
             params: []
             type: last
           type: query
-        datasource: *id011
+        datasource: *id012
         expression: B
         refId: C
         type: threshold
@@ -896,7 +973,7 @@ groups:
       datasourceUid: '-100'
       model:
         conditions: []
-        datasource: &id012
+        datasource: &id013
           type: __expr__
           uid: '-100'
         expression: A
@@ -923,7 +1000,7 @@ groups:
             params: []
             type: last
           type: query
-        datasource: *id012
+        datasource: *id013
         expression: B
         refId: C
         type: threshold
@@ -967,7 +1044,7 @@ groups:
       datasourceUid: '-100'
       model:
         conditions: []
-        datasource: &id013
+        datasource: &id014
           type: __expr__
           uid: '-100'
         expression: A
@@ -994,7 +1071,7 @@ groups:
             params: []
             type: last
           type: query
-        datasource: *id013
+        datasource: *id014
         expression: B
         refId: C
         type: threshold
@@ -1040,7 +1117,7 @@ groups:
       datasourceUid: '-100'
       model:
         conditions: []
-        datasource: &id014
+        datasource: &id015
           type: __expr__
           uid: '-100'
         expression: A
@@ -1067,7 +1144,7 @@ groups:
             params: []
             type: last
           type: query
-        datasource: *id014
+        datasource: *id015
         expression: B
         refId: C
         type: threshold
@@ -1111,7 +1188,7 @@ groups:
       datasourceUid: '-100'
       model:
         conditions: []
-        datasource: &id015
+        datasource: &id016
           type: __expr__
           uid: '-100'
         expression: A
@@ -1138,7 +1215,7 @@ groups:
             params: []
             type: last
           type: query
-        datasource: *id015
+        datasource: *id016
         expression: B
         refId: C
         type: threshold

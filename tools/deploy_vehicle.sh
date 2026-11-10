@@ -13,7 +13,8 @@
 #      board can say which revision it is running -- it has no .git.
 #   3. Runs `uv sync --frozen` on the board if pyproject.toml or uv.lock
 #      changed. That downloads packages, so do it before leaving for the track.
-#   4. Restarts openlaps-agent and prints its status and recent journal.
+#   4. Restarts openlaps-agent and prints its status and recent journal, and
+#      restarts openlaps-can-watchdog if it is running (it is tools/ code too).
 #
 # Not restarted: openlaps-can (re-run it only when the profile's buses or
 # bitrates change), the nats container (deploy/nats/vehicle.conf) and go2rtc
@@ -49,4 +50,5 @@ fi
 
 echo "==> restarting $UNIT"
 ssh "$HOST" "sudo systemctl restart $UNIT && sleep 3 && systemctl is-active $UNIT && journalctl -u $UNIT -n 15 --no-pager"
+ssh "$HOST" "sudo systemctl try-restart openlaps-can-watchdog 2>/dev/null || true"
 echo "==> done: $(ssh "$HOST" "cat $DEST/.deployed-rev")"

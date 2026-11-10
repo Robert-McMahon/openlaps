@@ -1,7 +1,7 @@
 {
   "uid": "reliability",
   "title": "Reliability watch",
-  "description": "Reliability watch \u2014 provisioned openlaps endurance operations dashboard.",
+  "description": "Reliability watch — provisioned openlaps endurance operations dashboard.",
   "editable": false,
   "schemaVersion": 41,
   "version": 1,
@@ -99,8 +99,8 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
-        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
         "refresh": 1,
         "options": [],
         "includeAll": true,
@@ -119,8 +119,8 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
-        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "definition": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
+        "query": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
         "refresh": 1,
         "options": [],
         "includeAll": true,
@@ -267,7 +267,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "kelvin",
+          "unit": "celsius",
           "color": {
             "mode": "palette-classic"
           },
@@ -294,9 +294,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, avg AS \"Average\", min AS \"Minimum\", max AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.coolant_temp' AND $__timeFilter(time) ORDER BY time"
+          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.coolant_temp' AND $__timeFilter(time) ORDER BY time"
         }
-      ]
+      ],
+      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C."
     },
     {
       "id": 3,
@@ -314,7 +315,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "kelvin",
+          "unit": "celsius",
           "color": {
             "mode": "palette-classic"
           },
@@ -341,9 +342,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, avg AS \"Average\", min AS \"Minimum\", max AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.oil_temp' AND $__timeFilter(time) ORDER BY time"
+          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.oil_temp' AND $__timeFilter(time) ORDER BY time"
         }
-      ]
+      ],
+      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C."
     },
     {
       "id": 4,
@@ -361,7 +363,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "kelvin",
+          "unit": "celsius",
           "color": {
             "mode": "palette-classic"
           },
@@ -388,9 +390,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, avg AS \"Average\", min AS \"Minimum\", max AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.gearbox_oil_temp' AND $__timeFilter(time) ORDER BY time"
+          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.gearbox_oil_temp' AND $__timeFilter(time) ORDER BY time"
         }
-      ]
+      ],
+      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C."
     },
     {
       "id": 5,

@@ -33,6 +33,11 @@ class HealthState:
         # Reported so that a run of zeroes carries its own explanation: the
         # subject a service decodes is the first thing you want beside them.
         self.stream = ""
+        self.live_source = "pit"
+        self.live_stream = ""
+        self.live_resubscribes = 0
+        self.live_subscribe_failures = 0
+        self.last_message_mono: float | None = None
         self.subject_filter = ""
         self.publish_rate = 0.0
         self._started = time.monotonic()
@@ -61,6 +66,15 @@ class HealthState:
         return {
             "uptime_s": round(max(0.0, current - self._started), 1),
             "stream": self.stream,
+            "live_source": self.live_source,
+            "live_stream": self.live_stream,
+            "live_resubscribes": self.live_resubscribes,
+            "live_subscribe_failures": self.live_subscribe_failures,
+            "last_message_age_s": (
+                None
+                if self.last_message_mono is None
+                else round(max(0.0, current - self.last_message_mono), 1)
+            ),
             "subject_filter": self.subject_filter,
             "publish_rate": round(self.publish_rate, 1),
             "channels": {

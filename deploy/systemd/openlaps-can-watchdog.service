@@ -1,0 +1,68 @@
+# Reboot the vehicle box when a CAN controller stalls and will not recover.
+#
+#     sudo cp deploy/systemd/openlaps-can-watchdog.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now openlaps-can-watchdog
+#
+# On 2026-11-08 the Luckfox Omni3576's rk3576_canfd controller sat in a
+# bus-error state for hours: the kernel counted ~100 frames/s on can0 and
+# delivered none of them to any socket, while the ECU kept talking. Taking
+# the link down to recover it hung inside the driver, holding the rtnl lock
+# and blocking every new SSH login; a power cycle was the only way out.
+# `tools/can_watchdog.py` watches for exactly that signature -- the kernel's
+# rx counter rising while a socket of its own receives nothing -- on every
+# bus the profile names, and reboots the box when it persists. It never
+# touches the interface. The agent reports the same condition to the pit as
+# `sys.agent.stall_s.<bus>`, so Grafana fires `can-bus-stalled` before the
+# reboot lands.
+#
+# Mode is set in /etc/openlaps/agent.env, not here:
+#
+#     OPENLAPS_CAN_WATCHDOG_ACTION=log      # bring-up: journal entry only (default)
+#     OPENLAPS_CAN_WATCHDOG_ACTION=reboot   # race weekend
+#
+# Reboots are budgeted (3 per hour by default, remembered in
+# /var/lib/openlaps/can-watchdog-reboots.json) so a bus that is genuinely
+# broken does not become a reboot loop nobody can log in to stop.
+
+[Unit]
+Description=openlaps CAN stall watchdog
+Documentation=https://github.com/Robert-McMahon/openlaps
+# Watch only once the interfaces are configured; nothing here depends on
+# the agent, which is the point -- it keeps judging while the agent is down.
+After=openlaps-can.service
+Wants=openlaps-can.service
+
+[Service]
+Type=exec
+# Root: `systemctl reboot` and /proc/sysrq-trigger. It reads the profile and
+# a CAN socket, writes one small file, and nothing else.
+User=root
+EnvironmentFile=/etc/openlaps/agent.env
+WorkingDirectory=/opt/openlaps
+ExecStart=/opt/openlaps/.venv/bin/python /opt/openlaps/tools/can_watchdog.py
+
+Restart=always
+RestartSec=5s
+
+# It must outlive everything else under memory pressure, or it cannot do
+# its one job.
+OOMScoreAdjust=-900
+
+# Hardening. No ProtectKernelTunables: that makes /proc/sysrq-trigger
+# read-only, which is the fallback reboot path.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# The reboot budget lives beside the agent's state.
+ReadWritePaths=/var/lib/openlaps
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openlaps-can-watchdog
+
+[Install]
+WantedBy=multi-user.target

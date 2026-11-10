@@ -79,6 +79,20 @@ channels:
   - match: "car.oil_temp"
     max_hz: 1
 
+  # ---- fuel ----
+  # FUEL_LEVEL at ~4.2 Hz. The tank drains over laps, not seconds, and the
+  # car dashboard's live stat only needs the latest reading, so 1 Hz is
+  # already generous. Adds a nominal 1 msg/s to the aggregate above; not
+  # re-measured.
+  - match: "car.fuel_level"
+    max_hz: 1
+  # MISC12's TOTAL_FUEL_USED, which the ECU zeroes at every engine start, so
+  # it is "fuel used since engine start" as broadcast. It ticks in 1 cc steps
+  # (~26/min at idle); the live stat shows it to 0.01 L, so 1 Hz loses
+  # nothing a reader could see. Another nominal 1 msg/s; not re-measured.
+  - match: "car.fuel_total_used"
+    max_hz: 1
+
   # ---- drivetrain and electrics ----
   # MISC10 / MISC3 at ~17 Hz. Gear is an int that changes a handful of
   # times a lap, but the change wants to appear immediately, and the

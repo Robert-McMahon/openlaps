@@ -90,6 +90,7 @@ def test_registry_includes_sys_agent_and_derived_channels(tmp_path: Path):
         "sys.agent.drops.can0",
         "sys.agent.drops.serial0",
         "sys.agent.drops.host",
+        "sys.agent.stall_s.can0",
     } <= names
     # The timing app is wired per apps.lap_timing in the example catalog.
     assert agent.timing_app is not None
@@ -105,6 +106,37 @@ def test_health_samples_land_on_sys_agent_channels(tmp_path: Path):
     status = json.loads(samples["derived:sys.agent.status"])
     assert status["state"] == "running"
     assert set(status["collectors"]) == {"can0", "serial0", "host"}
+
+
+def test_health_samples_report_a_can_stall_from_the_kernel_counter(tmp_path: Path, monkeypatch):
+    """Frames the kernel counts but the collector never sees: the 2026-11-08 hang."""
+    agent = VehicleAgent(_settings(tmp_path), bus_factory=_failing_bus_factory)
+    kernel = {"rx": 1000}
+    monkeypatch.setattr("agent.agent.read_rx_packets", lambda interface: kernel["rx"])
+    clock = {"now": 100.0}
+    monkeypatch.setattr("agent.agent.time.monotonic", lambda: clock["now"])
+
+    agent._emit_health_samples()  # baseline
+    for _ in range(2):
+        clock["now"] += 1.0
+        kernel["rx"] += 100
+        agent._emit_health_samples()
+    stalls = [
+        sample.value
+        for sample in agent._agent_queue.drain()
+        if sample.source_ref == "derived:sys.agent.stall_s.can0"
+    ]
+    assert stalls == [0.0, 1.0, 2.0]
+
+    # A quiet bus -- the kernel counter flat too -- is not a stall.
+    clock["now"] += 1.0
+    agent._emit_health_samples()
+    stalls = [
+        sample.value
+        for sample in agent._agent_queue.drain()
+        if sample.source_ref == "derived:sys.agent.stall_s.can0"
+    ]
+    assert stalls == [0.0]
 
 
 def test_encode_failures_reach_the_wire_as_their_own_channel(tmp_path: Path):

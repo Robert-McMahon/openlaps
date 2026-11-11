@@ -43,6 +43,13 @@ services:
       # certificate's SAN):
       #     NATS_LEAFNODE_URL=tls://leaf:<password>@<vehicle-host>:7422
       NATS_LEAFNODE_URL: ${NATS_LEAFNODE_URL:?set NATS_LEAFNODE_URL in .env}
+      # Optional second address for the same car (see deploy/nats/pit.conf).
+      NATS_LEAFNODE_URL_ALT: ${NATS_LEAFNODE_URL_ALT:-${NATS_LEAFNODE_URL}}
+    # Lets a leafnode URL use a name from the vehicle certificate's SAN for an
+    # address DNS does not know, e.g. the car's Tailscale address:
+    #     NATS_VEHICLE_EXTRA_HOST=openlaps-luckfox:100.x.y.z
+    extra_hosts:
+      - "${NATS_VEHICLE_EXTRA_HOST:-openlaps-vehicle-unset:127.0.0.1}"
     ports:
       - "4222:4222"   # clients (tools/decode.py, the nats CLI)
       - "8222:8222"   # monitoring: /healthz, /leafz, /jsz
@@ -637,6 +644,21 @@ services:
       start_period: 60s
 
   # --- remote ECU tuning (opt-in) ---------------------------------------------
+
+  video-relay:
+    # Lets phones and tablets on the pit LAN watch the car camera without
+    # being on the tailnet: they open http://<pit-host>:1984 and this forwards
+    # the TCP connection to the car's go2rtc. Point OPENLAPS_VIDEO_UPSTREAM at
+    # the car's video-only Tailscale node (deploy/video-tunnel), which can
+    # only travel over Starlink, so video never loads the HaLow link. Players
+    # must use mode=mse (plain TCP on 1984); WebRTC media is not relayed.
+    # Opt in with `--profile video`.
+    profiles: ["video"]
+    image: alpine/socat:1.8.0.0
+    command: ["TCP-LISTEN:1984,fork,reuseaddr", "TCP:${OPENLAPS_VIDEO_UPSTREAM:-127.0.0.1}:1984"]
+    ports:
+      - "1984:1984"
+    restart: unless-stopped
 
   ecu-windows:
     # A Windows guest for the ECU vendor's tuning software (Haltech NSP),

@@ -35,29 +35,29 @@
       {
         "name": "camera",
         "label": "Camera (go2rtc) base URL",
-        "description": "http://<vehicle-host>:1984 — the vehicle SBC's go2rtc API listener. Default is the bench vehicle; override here at the track, no dashboard edit needed.",
+        "description": "Where the player fetches video from. Default is the pit host's video-relay (deploy/pit-compose.yaml), which forwards to the car's Starlink-only video node; use mode=mse with it. To go straight to a car on the LAN instead, enter http://<vehicle-host>:1984.",
         "type": "textbox",
         "hide": 0,
-        "query": "http://192.168.12.176:1984",
+        "query": "http://192.168.12.203:1984",
         "current": {
-          "text": "http://192.168.12.176:1984",
-          "value": "http://192.168.12.176:1984"
+          "text": "http://192.168.12.203:1984",
+          "value": "http://192.168.12.203:1984"
         },
         "options": [
           {
             "selected": true,
-            "text": "http://192.168.12.176:1984",
-            "value": "http://192.168.12.176:1984"
+            "text": "http://192.168.12.203:1984",
+            "value": "http://192.168.12.203:1984"
           }
         ]
       },
       {
         "name": "stream",
         "label": "Stream (go2rtc source)",
-        "description": "car_h264 plays anywhere. car is the H.265 encode -- half the bitrate, but it needs a browser with platform HEVC decode (Windows/macOS; not Chromium on Linux).",
+        "description": "car_h264 is the default and plays anywhere; use it with mode=mse. car_rtc is the same picture with a full frame every half second, for mode=webrtc over a lossy path such as Starlink: a lost packet freezes it for half a second instead of up to 1.7 s. car is the H.265 encode on vehicles that have one (not the Luckfox); it needs platform HEVC decode on the viewer.",
         "type": "custom",
         "hide": 0,
-        "query": "car_h264,car",
+        "query": "car_h264,car_rtc,car",
         "current": {
           "text": "car_h264",
           "value": "car_h264"
@@ -70,6 +70,11 @@
           },
           {
             "selected": false,
+            "text": "car_rtc",
+            "value": "car_rtc"
+          },
+          {
+            "selected": false,
             "text": "car",
             "value": "car"
           }
@@ -78,7 +83,7 @@
       {
         "name": "mode",
         "label": "Player mode",
-        "description": "mse is required for the H.265 `car` stream. webrtc is lower latency and fine for car_h264.",
+        "description": "mse resends lost data, so it is the smooth choice over Starlink; pair it with car_h264. webrtc is lower latency but freezes on packet loss; pair it with car_rtc. mse is required for the H.265 `car` stream.",
         "type": "custom",
         "hide": 0,
         "query": "mse,webrtc",

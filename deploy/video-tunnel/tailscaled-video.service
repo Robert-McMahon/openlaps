@@ -1,0 +1,15 @@
+[Unit]
+Description=Tailscale node for car video (Starlink only, see deploy/video-tunnel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=tsvideo
+StateDirectory=tailscale-video
+RuntimeDirectory=tailscale-video
+ExecStart=/usr/sbin/tailscaled --tun=userspace-networking --statedir=/var/lib/tailscale-video --socket=/run/tailscale-video/tailscaled.sock --port=41642
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

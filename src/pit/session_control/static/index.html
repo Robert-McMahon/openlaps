@@ -40,6 +40,31 @@
         </thead>
         <tbody id="stint-rows"></tbody>
       </table>
+      <div class="row-buttons">
+        <button id="timeline-edit" class="secondary hidden">Edit timeline</button>
+        <button id="reopen-button" class="secondary hidden">Reopen session</button>
+      </div>
+      <form id="timeline-form" class="hidden">
+        <p class="hint">Correct anything that was missed on the day. A stint
+        runs from the pit-exit line to the pit-entry line, so there may be a
+        gap between two stints: that is the stop. Pick a line crossing to
+        fill a time, or type the time. Stint 1 starts the session.</p>
+        <h3>Stints</h3>
+        <div id="timeline-stints" class="rows"></div>
+        <h3>Red flags</h3>
+        <p class="hint">The race clock keeps running under a red flag; the
+        driver's clock does not. Time in the pits pauses the driver's clock
+        too, and only a change of driver resets it.</p>
+        <div id="timeline-reds" class="rows"></div>
+        <button type="button" id="timeline-add-red" class="secondary">Add a red flag period</button>
+        <h3>Fuel marks</h3>
+        <p class="hint">What was in the tank at a moment, as the crew knows
+        it. The fuel numbers count down from the latest one.</p>
+        <div id="timeline-marks" class="rows"></div>
+        <button type="button" id="timeline-add-mark" class="secondary">Add a fuel mark</button>
+        <button type="submit" class="primary">Save timeline</button>
+        <button type="button" id="timeline-cancel" class="secondary">Cancel</button>
+      </form>
     </section>
 
     <section id="start-section" class="card hidden">
@@ -70,12 +95,45 @@
         <label>New driver
           <select id="driver-select" required></select>
         </label>
-        <label>Actually happened at <span class="hint">(optional; leave
-          empty for now. Picking the driver already in the car with a time
-          corrects when their stint began.)</span>
+        <label>Old driver out at <span class="hint">(pit entry; optional,
+          leave empty for the same moment as below)</span>
+          <span class="pick" data-for="driver-out-at" data-kinds="pit_entry lap_completed"></span>
+          <input type="datetime-local" id="driver-out-at" step="1">
+        </label>
+        <label>New driver in at <span class="hint">(pit exit; optional,
+          leave empty for now. Picking the driver already in the car with
+          only this time corrects when their stint began.)</span>
+          <span class="pick" data-for="driver-at" data-kinds="pit_exit lap_completed"></span>
           <input type="datetime-local" id="driver-at" step="1">
         </label>
         <button type="submit" class="primary">Change driver</button>
+      </form>
+    </section>
+
+    <section id="flag-section" class="card hidden">
+      <h2>Red flag</h2>
+      <p class="hint" id="flag-status">The race is running.</p>
+      <label>Actually happened at <span class="hint">(optional; leave empty
+        for now)</span>
+        <input type="datetime-local" id="flag-at" step="1">
+      </label>
+      <button id="flag-button" class="danger">Red flag: race stopped</button>
+    </section>
+
+    <section id="fuel-section" class="card hidden">
+      <h2>Fuel mark</h2>
+      <p class="hint">Record what is in the tank after a fill: the full tank
+      if it was brimmed, or your best figure from the cans that went in.
+      The fuel numbers count down from the latest mark.</p>
+      <form id="fuel-form">
+        <label>Litres in the tank
+          <input type="number" id="fuel-level" min="0" step="0.5" required>
+        </label>
+        <label>As of <span class="hint">(optional; leave empty for now)</span>
+          <span class="pick" data-for="fuel-at" data-kinds="pit_exit pit_entry"></span>
+          <input type="datetime-local" id="fuel-at" step="1">
+        </label>
+        <button type="submit" class="primary">Mark fuel</button>
       </form>
     </section>
 
@@ -117,6 +175,10 @@
         <label>Planned stops <span class="hint">(one per line: <code>lap 42 refuel Driver B</code>
           or <code>14:30 service</code>; the driver is optional)</span>
           <textarea id="plan-stops" rows="4" spellcheck="false"></textarea>
+        </label>
+        <label>Fuel counter scale <span class="hint">(litres really burned per
+          litre the ECU counts; 1 until a full-to-surge-light run says otherwise)</span>
+          <input type="number" id="plan-fuel-scale" min="0.5" max="2" step="0.001" value="1">
         </label>
         <label>Car number <span class="hint">(as the timekeepers list it)</span>
           <input type="text" id="plan-car-number" autocomplete="off" maxlength="8">

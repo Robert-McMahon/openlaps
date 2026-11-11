@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 import psycopg
@@ -25,13 +25,18 @@ from psycopg.types.json import Jsonb
 
 from pit.strategy.model import (
     MONITORS,
+    CounterSpan,
     Finding,
+    FlagFact,
+    FuelMarkFact,
     LapFact,
     PlanFacts,
     RaceInputs,
     StintFact,
     StopFact,
+    StrategyPolicy,
     StrategyState,
+    counter_requests,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,8 +65,51 @@ SELECT bool_or(is_open) FROM v_pit_stops WHERE vehicle_id = %s AND entry_at >= %
 
 _PLAN = """
 SELECT revision, race_end_at, race_end_laps, end_authority, tank_l, usable_fuel_l,
-       refuel_min_s, service_typical_s, driver_limits, planned_stops
+       refuel_min_s, service_typical_s, driver_limits, planned_stops, fuel_used_scale
 FROM v_race_plan WHERE session_id = %s
+"""
+_FLAGS = """
+SELECT started, ended FROM v_session_flags
+WHERE session_id = %s AND kind = 'red' ORDER BY started
+"""
+_MARKS = "SELECT at, level_l FROM v_fuel_marks WHERE session_id = %s ORDER BY at"
+# How many readings in a window sat on the "full" side of the threshold.
+# `{op}` is one of two literals chosen in code, never caller text.
+_FULL_READINGS = """
+SELECT count(*) FROM v_samples_named
+WHERE vehicle_id = %s AND channel = %s AND value IS NOT NULL
+  AND time >= %s AND time <= %s AND value {op} %s
+"""
+# The surge switch's state changes since the session started, from the
+# one-second trace: a row per second is small enough to window over a whole
+# race, where the raw channel is not. One row per change of state.
+_SURGE_CHANGES = """
+SELECT time, is_on FROM (
+    SELECT time, avg {op} %s AS is_on, lag(avg {op} %s) OVER (ORDER BY time) AS was_on
+    FROM v_samples_1s_named
+    WHERE vehicle_id = %s AND channel = %s AND time >= %s AND time <= %s
+) changes
+WHERE was_on IS DISTINCT FROM is_on
+ORDER BY time
+"""
+_SURGE_LAST = """
+SELECT max(time) FROM v_samples_1s_named
+WHERE vehicle_id = %s AND channel = %s AND time >= %s AND time <= %s
+"""
+# The fuel-used counter is cumulative and restarts from zero when the ECU
+# is power-cycled (the kill switch is off for every refuel). Sum the rises;
+# where it fell, the engine has burned the new value since the restart.
+_COUNTER_USED = """
+SELECT count(*),
+       sum(CASE WHEN previous IS NULL THEN 0
+                WHEN value >= previous THEN value - previous
+                ELSE value END)
+FROM (
+    SELECT value, lag(value) OVER (ORDER BY time) AS previous
+    FROM v_samples_named
+    WHERE vehicle_id = %s AND channel = %s AND value IS NOT NULL
+      AND time >= %s AND time <= %s
+) counter
 """
 _LAPS = """
 SELECT lap_number, crossed_at, lap_time_s, valid, pit_status, stint_number,
@@ -119,9 +167,12 @@ _CLOSE_FINDING = (
 class StrategyDatabase:
     """Owns one connection to the pit database and every statement on it."""
 
-    def __init__(self, dsn: str, vehicle_id: str) -> None:
+    def __init__(self, dsn: str, vehicle_id: str, policy: StrategyPolicy | None = None) -> None:
         self._dsn = dsn
         self._vehicle = vehicle_id
+        # The policy names the channels and thresholds the counter fuel model
+        # reads; the level model needs none of them.
+        self._policy = policy or StrategyPolicy()
         self._conn: psycopg.Connection | None = None
         # monitor -> the open finding's id, so a warning that persists across
         # evaluations is one row that closes once, not a row per lap.
@@ -153,6 +204,8 @@ class StrategyDatabase:
             laps = conn.execute(_LAPS, (self._vehicle, session_id)).fetchall()
             stints = conn.execute(_STINTS, (session_id,)).fetchall()
             stops = conn.execute(_STOPS, (self._vehicle, session_started)).fetchall()
+            flags = conn.execute(_FLAGS, (session_id,)).fetchall()
+            marks = conn.execute(_MARKS, (session_id,)).fetchall()
         except psycopg.Error:
             self.close()
             raise
@@ -173,8 +226,9 @@ class StrategyDatabase:
                     if isinstance(value, int | float) and not isinstance(value, bool)
                 },
                 planned_stops=[stop for stop in (plan_row[9] or []) if isinstance(stop, dict)],
+                fuel_used_scale=float(plan_row[10] or 1.0),
             )
-        return RaceInputs(
+        inputs = RaceInputs(
             now=now,
             vehicle_id=self._vehicle,
             session_id=session_id,
@@ -211,7 +265,66 @@ class StrategyDatabase:
                 )
                 for row in stops
             ],
+            reds=[FlagFact(started=row[0], ended=row[1]) for row in flags],
+            fuel_marks=[FuelMarkFact(at=row[0], level_l=float(row[1])) for row in marks],
         )
+        if self._policy.fuel_model != "counter":
+            return inputs
+        try:
+            return self._read_counter_inputs(conn, inputs)
+        except psycopg.Error:
+            self.close()
+            raise
+
+    def _read_counter_inputs(self, conn: psycopg.Connection, inputs: RaceInputs) -> RaceInputs:
+        """What the counter fuel model needs beyond the views' rows.
+
+        In order, because each step decides what the next reads: whether the
+        sender confirmed each refuel, when the surge switch closed, and only
+        then -- the anchor now being known -- the counter since it.
+        """
+        policy = self._policy
+        now = inputs.now
+        stops = inputs.stops
+        if policy.full_threshold is not None:
+            query = _FULL_READINGS.format(op=_operator(policy.full_when))
+            checked = []
+            for stop in stops:
+                if stop.stop_type == "refuel" and not stop.is_open and stop.exit_at is not None:
+                    (count,) = conn.execute(
+                        query,
+                        (
+                            self._vehicle,
+                            policy.full_channel,
+                            stop.entry_at,
+                            stop.exit_at,
+                            policy.full_threshold,
+                        ),
+                    ).fetchone()
+                    stop = replace(stop, full_confirmed=int(count) >= policy.full_min_samples)
+                checked.append(stop)
+            stops = checked
+
+        episodes: list[tuple[datetime, datetime]] = []
+        if policy.surge_threshold is not None:
+            op = _operator(policy.surge_when)
+            window = (self._vehicle, policy.surge_channel, inputs.session_started, now)
+            changes = conn.execute(
+                _SURGE_CHANGES.format(op=op),
+                (policy.surge_threshold, policy.surge_threshold, *window),
+            ).fetchall()
+            (last_sample,) = conn.execute(_SURGE_LAST, window).fetchone()
+            episodes = surge_episodes(changes, last_sample)
+
+        inputs = replace(inputs, stops=stops, surge_episodes=episodes)
+        spans = []
+        for start, end in counter_requests(inputs, policy):
+            count, used_cc = conn.execute(
+                _COUNTER_USED, (self._vehicle, policy.counter_channel, start, end or now)
+            ).fetchone()
+            used_l = float(used_cc) / 1000.0 if count and used_cc is not None else None
+            spans.append(CounterSpan(start=start, end=end, used_l=used_l))
+        return replace(inputs, counter_spans=spans)
 
     def adopt_open_findings(self) -> int:
         """On startup, take over strategy findings a previous run left open."""
@@ -319,6 +432,33 @@ def _state_row(state: StrategyState) -> tuple:
         Jsonb(state.stop_plan, dumps=_dumps),
         Jsonb(state.plan_drift, dumps=_dumps),
     )
+
+
+def _operator(when: str) -> str:
+    """The comparison for an ``above`` / ``below`` threshold setting."""
+    return "<=" if when == "below" else ">="
+
+
+def surge_episodes(
+    changes: list[tuple[datetime, bool]], last_sample: datetime | None
+) -> list[tuple[datetime, datetime]]:
+    """Turn the switch's state changes into (closed-at, opened-at) periods.
+
+    A period still running ends at the last sample seen, so its length is
+    how long the switch is *known* to have been closed, not how long ago it
+    closed: a car that went silent with the light on has not been timed.
+    """
+    episodes: list[tuple[datetime, datetime]] = []
+    opened: datetime | None = None
+    for time, is_on in changes:
+        if is_on and opened is None:
+            opened = time
+        elif not is_on and opened is not None:
+            episodes.append((opened, time))
+            opened = None
+    if opened is not None and last_sample is not None and last_sample >= opened:
+        episodes.append((opened, last_sample))
+    return episodes
 
 
 def _dumps(value: object) -> str:

@@ -99,6 +99,22 @@ input:focus, select:focus, button:focus {
 button { font-weight: 700; cursor: pointer; border: none; }
 button.primary { background: #1f5fbf; color: #fff; }
 button.danger  { background: #b91c1c; color: #fff; }
+button.secondary { background: #e3e3e3; color: #222; }
+.row-buttons { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+#timeline-form { margin-top: 0.75rem; }
+h3 { font-size: 1rem; margin-top: 0.5rem; }
+.rows { display: flex; flex-direction: column; gap: 0.75rem; }
+/* One stint, red flag or fuel mark in the timeline editor. */
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+}
+.row .row-title { font-weight: 700; }
+select.pick-select { min-height: 2.25rem; font-size: 0.9rem; color: #333; }
 /* Ending a session by misclick during a race is a real cost: the end button
    arms on the first press and only acts on the second. */
 button.danger.armed { background: #7f1010; }

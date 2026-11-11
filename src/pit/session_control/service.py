@@ -33,6 +33,7 @@ _MAX_LOGGED_ALERTS = 20
 _MAX_ALERT_NAME_CHARS = 120
 _REQUEST_TIMEOUT_S = 5.0
 _MAX_HTTP_WORKERS = 32
+_MAX_TIMELINE_ITEMS = 500
 
 
 def _log_grafana_alerts(payload: dict) -> int:
@@ -257,18 +258,14 @@ class SessionController:
         async with self._lock:
             prior_state = self.state.to_dict()
             # Buttons get pressed late: an optional `at` (epoch ms) backdates
-            # a driver change or an end to when it actually happened. It must
-            # not be in the future (server clock), and the state machine
-            # already refuses anything before the active stint started. Start
-            # is not backdatable — nothing has happened yet to be late about.
-            at = body.get("at")
+            # a transition to when it actually happened. It must not be in
+            # the future (server clock), and the state machine refuses
+            # anything out of order. Start is not backdatable — start, then
+            # correct the timeline.
+            at = _epoch_ms(body, "at")
             if at is not None:
-                if isinstance(at, bool) or not isinstance(at, int):
-                    raise SessionError("at must be epoch milliseconds")
                 if action == "start":
                     raise SessionError("start cannot be backdated")
-                if at > int(time.time() * 1000):
-                    raise SessionError("at cannot be in the future")
                 now_ms = at
             if action == "start":
                 payload = self.state.start_session(
@@ -280,16 +277,41 @@ class SessionController:
                 )
             elif action == "driver":
                 driver = _text(body.get("driver")).strip()
-                if at is not None and self.state.status == "active" and driver == self.state.driver:
+                # `out_at` is when the outgoing driver's stint ended (the
+                # pit-entry line) when that is earlier than `at`, the moment
+                # the new stint began (pit exit).
+                out_at = _epoch_ms(body, "out_at")
+                if (
+                    at is not None
+                    and out_at is None
+                    and self.state.status == "active"
+                    and driver == self.state.driver
+                ):
                     # Re-stating the in-car driver with a time is a
                     # correction of when their stint began — the boundary
                     # just recorded was wrong — not a driver change. Without
                     # `at` it stays the 409 it always was.
                     payload = self.state.amend_stint_start(at)
                 else:
-                    payload = self.state.change_driver(driver, now_ms=now_ms)
+                    payload = self.state.change_driver(driver, now_ms=now_ms, out_ms=out_at)
             elif action == "end":
                 payload = self.state.end_session(now_ms=now_ms)
+            elif action == "reopen":
+                payload = self.state.reopen()
+            elif action == "red":
+                payload = self.state.red_flag(now_ms=now_ms)
+            elif action == "green":
+                payload = self.state.green_flag(now_ms=now_ms)
+            elif action == "fuel":
+                payload = self.state.mark_fuel(_fuel_level(body), now_ms=now_ms)
+            elif action == "timeline":
+                # The session restated after the fact, any part of it: the
+                # stints (times, drivers, a change nobody recorded), the
+                # red-flag periods, the fuel marks. A key that is absent is
+                # left alone. Unlike `at` this works on an ended session
+                # too, for as long as it is still the current one. All of it
+                # applies or none of it: a refusal part-way is rolled back.
+                payload = self._amend_timeline(body, prior_state)
             else:
                 raise SessionError(f"unknown action {action!r}")
             if not self.state_file.save(self.state):
@@ -308,6 +330,33 @@ class SessionController:
                 raise
             self.publisher.submit(payload)
             return payload
+
+    def _amend_timeline(
+        self, body: Mapping[str, object], prior_state: dict[str, object]
+    ) -> dict[str, object]:
+        parts = [key for key in ("stints", "reds", "fuel_marks") if key in body]
+        if not parts:
+            raise SessionError("timeline needs at least one of stints, reds, fuel_marks")
+        try:
+            if "stints" in body:
+                self.state.amend_timeline(_timeline_items(body, "stints", ("start", "end")))
+            if "reds" in body:
+                self.state.amend_reds(_timeline_items(body, "reds", ("start", "end")))
+            if "fuel_marks" in body:
+                self.state.amend_fuel_marks(_timeline_items(body, "fuel_marks", ("at",)))
+        except SessionError:
+            self.state = SessionState.from_dict(prior_state)
+            raise
+        return self.state.payload()
+
+    async def events(self) -> dict[str, object]:
+        """Line crossings the operator can pick a time from, newest first."""
+        async with self._lock:
+            started = self.state.session_start_ms if self.state.status != "none" else None
+        load = getattr(self.database, "load_events", None)
+        if started is None or load is None:
+            return {"events": []}
+        return {"events": await load(started)}
 
     async def current(self) -> dict[str, object]:
         async with self._lock:
@@ -349,6 +398,50 @@ class SessionController:
 
 def _text(value: object) -> str:
     return value if isinstance(value, str) else ""
+
+
+def _epoch_ms(body: Mapping[str, object], key: str) -> int | None:
+    """An optional epoch-ms field of a request body; never in the future."""
+    value = body.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SessionError(f"{key} must be epoch milliseconds")
+    if value > int(time.time() * 1000):
+        raise SessionError(f"{key} cannot be in the future")
+    return value
+
+
+def _fuel_level(body: Mapping[str, object]) -> float:
+    level = body.get("level_l")
+    if isinstance(level, bool) or not isinstance(level, int | float):
+        raise SessionError("level_l must be a number of litres")
+    return float(level)
+
+
+def _timeline_items(
+    body: Mapping[str, object], key: str, time_keys: tuple[str, ...]
+) -> list[dict[str, object]]:
+    """Decode one list of a ``POST /session/timeline`` body.
+
+    The wire uses ``start`` / ``end`` / ``at`` (epoch ms); the state machine
+    uses the ``_ms``-suffixed names its snapshots are stored under.
+    """
+    items = body.get(key)
+    if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+        raise SessionError(f"{key} must be a list of objects")
+    if len(items) > _MAX_TIMELINE_ITEMS:
+        raise SessionError(f"{key}: at most {_MAX_TIMELINE_ITEMS} entries")
+    decoded: list[dict[str, object]] = []
+    for item in items:
+        entry = {name: value for name, value in item.items() if name not in time_keys}
+        for name in time_keys:
+            try:
+                entry[f"{name}_ms"] = _epoch_ms(item, name)
+            except SessionError as exc:
+                raise SessionError(f"{key}: {exc}") from exc
+        decoded.append(entry)
+    return decoded
 
 
 async def _wait_for_stop_or_task_failure(
@@ -474,6 +567,15 @@ class _SessionHandler(BaseHTTPRequestHandler):
                 self._send(503, {"error": "service busy"})
         elif path == "/roster":
             self._send(200, load_roster(self.roster_path))
+        elif path == "/session/events":
+            future = asyncio.run_coroutine_threadsafe(self.controller.events(), self.loop)
+            try:
+                self._send(200, future.result(timeout=5.0))
+            except PlanUnavailable as exc:
+                self._send(503, {"error": str(exc)})
+            except TimeoutError:
+                future.cancel()
+                self._send(503, {"error": "service busy"})
         elif path in ("/session/plan", "/session/strategy"):
             coroutine = (
                 self.controller.plan_get()

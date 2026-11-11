@@ -1,0 +1,50 @@
+#!/bin/sh
+# mesh-probe: keep 802.11s link metrics honest on Morse HaLowLink1 radios.
+#
+# HWMP rates a peer link by the rate control's last estimate for it, and an
+# estimate only moves when frames are sent. A link that carries no traffic is
+# stuck at whatever it was last (often MCS0 or worse), so a better route is
+# not chosen until the current one has collapsed. `iw mpath probe` sends a
+# frame straight to a peer regardless of the path table, which keeps every
+# link's estimate current in both directions.
+#
+# Steady state: FAST peers (/etc/mesh-probe.conf, space separated MACs; empty =
+# all peers) get one probe per cycle, other peers one every SLOW_EVERY cycles.
+# Catch-up: a FAST peer that is heard well (signal >= GOOD_SIG) but still rated
+# slow (metric > STALE_METRIC) gets BURST extra probes per cycle, because the
+# rate control climbs by frame count and one probe per cycle takes most of a
+# minute to recover a link.
+IF=${IF:-wlh0}
+FAST=""; CYCLE=0.1; SLOW_EVERY=10; PAYLOAD=100
+GOOD_SIG=-82; STALE_METRIC=1000; BURST=6
+[ -f /etc/mesh-probe.conf ] && . /etc/mesh-probe.conf
+
+pay=$(printf '00:%.0s' $(seq 1 "$PAYLOAD")); pay=${pay%:}
+n=0; peers=""; stale=""; me=""
+while :; do
+	if [ $((n % 5)) -eq 0 ]; then
+		me=$(cat "/sys/class/net/$IF/address" 2>/dev/null)
+		st=$(iw dev "$IF" station dump 2>/dev/null | awk '
+			/^Station/{m=$2; s=-200; q=0; e=0}
+			/signal avg:/{s=$3}
+			/mesh plink:[ \t]*ESTAB/{e=1}
+			/mesh airtime link metric:/{q=$5; if (e) print m, s, q}')
+		peers=$(echo "$st" | awk 'NF{print $1}')
+		stale=$(echo "$st" | awk -v g="$GOOD_SIG" -v t="$STALE_METRIC" 'NF && $2>=g && $3>t{print $1}')
+		[ -z "$me" ] || [ -z "$peers" ] && { sleep 2; n=$((n+1)); continue; }
+	fi
+	for p in $peers; do
+		fast=1
+		if [ -n "$FAST" ] && ! echo " $FAST " | grep -qi " $p "; then fast=0; fi
+		if [ $fast -eq 0 ]; then
+			[ $((n % SLOW_EVERY)) -eq 0 ] || continue
+		fi
+		f="$p:$me:88:b5:$pay"
+		iw dev "$IF" mpath probe "$p" frame "$f" 2>/dev/null
+		if [ $fast -eq 1 ] && echo " $stale " | grep -q " $p "; then
+			i=0; while [ $i -lt "$BURST" ]; do iw dev "$IF" mpath probe "$p" frame "$f" 2>/dev/null; i=$((i+1)); done
+		fi
+	done
+	n=$((n+1))
+	sleep "$CYCLE"
+done

@@ -66,3 +66,14 @@ streams:
     #     budget reserves a rate, not an average.
     car_h264:
         - exec:ffmpeg -hide_banner -v error -f v4l2 -input_format mjpeg -video_size 640x360 -i /dev/video0 -f pulse -i alsa_input.platform-es8388-sound.HiFi__hw_rockchipes8388__source -map 0:v -map 1:a -filter:v format=nv12 -c:v h264_rkmpp -profile:v high -rc_mode CBR -b:v 800k -g 50 -filter:a afftdn=nr=20:nt=v:nf=-20 -c:a libopus -ar:a 48000 -ac:a 1 -b:a 64k -rtsp_transport tcp -f rtsp {output}
+
+    # The same picture with a full frame every half second, for WebRTC
+    # viewers on a lossy path (Starlink). WebRTC here has no resend: one lost
+    # packet freezes the picture until the next keyframe, which on car_h264
+    # is up to 1.7 s away (-g 50 at 30 fps). MSE resends over TCP and does
+    # not need this, so car_h264 keeps the longer GOP and its better picture
+    # per bit. This is a re-encode of car_h264 rather than a second camera
+    # pipeline because the camera can only be opened once (see above); it
+    # runs only while someone is watching car_rtc. Audio is passed through.
+    car_rtc:
+        - exec:ffmpeg -hide_banner -v error -rtsp_transport tcp -i rtsp://127.0.0.1:8554/car_h264 -map 0:v -map 0:a -filter:v format=nv12 -c:v h264_rkmpp -profile:v high -rc_mode CBR -b:v 800k -g 15 -c:a copy -rtsp_transport tcp -f rtsp {output}

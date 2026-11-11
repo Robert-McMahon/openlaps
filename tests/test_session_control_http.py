@@ -636,6 +636,132 @@ def test_backdated_transitions_over_http(tmp_path: Path):
     asyncio.run(exercise())
 
 
+def test_session_timeline_reopen_flags_and_fuel_over_http(tmp_path: Path):
+    """The after-the-fact surface: timeline, reopen, red flag, fuel mark, events."""
+
+    async def exercise() -> None:
+        database = Database()
+        publisher = Publisher()
+        server = serve_http(
+            asyncio.get_running_loop(),
+            SessionController(StateFile(tmp_path / "session.json"), database, publisher),
+            tmp_path / "missing-roster.json",
+            database,
+            publisher,
+            port=0,
+            host="127.0.0.1",
+        )
+        base = f"http://127.0.0.1:{server.server_port}"
+        hour = 3_600_000
+
+        async def post(path: str, body: dict[str, object]) -> tuple[int, dict]:
+            return await asyncio.to_thread(_request, f"{base}{path}", body)
+
+        try:
+            code, body = await post("/session/timeline", {"stints": []})
+            assert code == 409
+            assert "no session to amend" in body["error"]
+
+            code, body = await post("/session/start", {"session_type": "race", "driver": "A"})
+            assert code == 200
+            start = body["session_start"]
+            session_id = body["session_id"]
+
+            def stint(driver: str, begin: int, end: int | None) -> dict[str, object]:
+                return {"driver": driver, "start": begin, "end": end}
+
+            for bad, message in [
+                ({}, "at least one of"),
+                ({"stints": "all of them"}, "list of objects"),
+                ({"stints": [stint("A", start + 1000 * hour, None)]}, "future"),
+                ({"stints": [stint("A", "noon", None)]}, "epoch milliseconds"),
+                ({"stints": [stint("A", start, start)]}, "still active"),
+                (
+                    {"stints": [stint("A", start - hour, None)], "reds": [{"start": None}]},
+                    "red flag 1 needs a start",
+                ),
+            ]:
+                code, body = await post("/session/timeline", bad)
+                assert code == 409, bad
+                assert message in body["error"], bad
+
+            # The last refusal was part-way through: the stints must not have moved.
+            code, body = await asyncio.to_thread(_request, f"{base}/session")
+            assert body["session_start"] == start
+
+            # A driver change nobody recorded, with the stop as a gap, a red
+            # flag and a fuel mark, all in one amendment.
+            code, body = await post(
+                "/session/timeline",
+                {
+                    "stints": [
+                        stint("A", start - 3 * hour, start - 2 * hour),
+                        stint("B", start - 2 * hour + 240_000, None),
+                    ],
+                    "reds": [{"start": start - 90 * 60_000, "end": start - hour}],
+                    "fuel_marks": [{"at": start - 2 * hour + 200_000, "level_l": 132}],
+                },
+            )
+            assert code == 200
+            assert body["session_id"] == session_id
+            assert body["driver"] == "B"
+            assert body["stint_number"] == 2
+            assert body["session_start"] == start - 3 * hour
+            assert body["stint_start"] == start - 2 * hour + 240_000
+
+            # Live buttons: red, green, fuel, and a driver change with a gap.
+            code, body = await post("/session/green", {})
+            assert code == 409
+            code, body = await post("/session/red", {"at": start - 1000})
+            assert code == 200
+            code, body = await post("/session/green", {})
+            assert code == 200
+            code, body = await post("/session/fuel", {"level_l": "lots"})
+            assert code == 409
+            code, body = await post("/session/fuel", {"level_l": 100.5})
+            assert code == 200
+            code, body = await post(
+                "/session/driver", {"driver": "C", "out_at": start - 500, "at": start - 100}
+            )
+            assert code == 200
+            assert body["stint_number"] == 3
+            assert body["stint_start"] == start - 100
+
+            # An end by mistake, and the way back.
+            code, body = await post("/session/reopen", {})
+            assert code == 409
+            code, body = await post("/session/end", {})
+            assert code == 200
+            published = publisher.published
+            code, body = await post("/session/reopen", {})
+            assert code == 200
+            assert body["status"] == "active"
+            assert body["driver"] == "C"
+            assert body["stint_number"] == 3
+            assert publisher.published == published + 1
+
+            code, body = await asyncio.to_thread(_request, f"{base}/session")
+            assert code == 200
+            assert body["status"] == "active"
+            assert [(s["driver"], s["start_ms"], s["end_ms"]) for s in body["stints"]] == [
+                ("A", start - 3 * hour, start - 2 * hour),
+                ("B", start - 2 * hour + 240_000, start - 500),
+            ]
+            assert [red["start_ms"] for red in body["reds"]] == [start - 90 * 60_000, start - 1000]
+            assert body["reds"][-1]["end_ms"] is not None
+            assert [mark["level_l"] for mark in body["fuel_marks"]] == [132.0, 100.5]
+
+            # The fake database offers no line crossings; the endpoint still answers.
+            code, body = await asyncio.to_thread(_request, f"{base}/session/events")
+            assert code == 200
+            assert body == {"events": []}
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    asyncio.run(exercise())
+
+
 def _request(url: str, body: dict[str, object] | None = None) -> tuple[int, dict]:
     data = None if body is None else json.dumps(body).encode()
     return _raw_request(url, data)

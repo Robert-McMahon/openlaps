@@ -223,7 +223,7 @@
           "rawSql": "SELECT time, fuel_remaining_l AS \"Fuel remaining\", fuel_remaining_lo_l AS \"Lower bound\", rebase_confidence AS \"Re-base\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
         }
       ],
-      "description": "Tank contents by the P6.3 model, computed by the strategy service: the last level re-base less the counter deltas since. `Re-base` says where that reading came from (key_on: stationary after a refuel; moving: the live level sensor, which sloshes; plan: no reading at all)."
+      "description": "Tank contents by the P6.3 model, computed by the strategy service: the last level re-base less the counter deltas since. `Re-base` says where that reading came from. Counter model: full (the sender read full at the end of a refuel), assumed_full (a refuel nothing confirmed), operator (a fuel mark), surge (the surge-tank switch closed), plan (session start, full tank assumed). Level model: key_on, moving, plan."
     },
     {
       "id": 8,

@@ -245,3 +245,151 @@ def test_backdated_driver_change_reattributes_laps(timescale_dsn):
             """
         ).fetchall()
         assert rows == [(1, 1), (2, 2), (3, 2), (4, None)]
+
+
+def _record(dsn: str, snapshot: dict[str, object]) -> None:
+    async def push() -> None:
+        database = SessionDatabase(dsn, VEHICLE)
+        assert await database.connect_once()
+        assert await database.record(snapshot)
+        await database.close()
+
+    asyncio.run(push())
+
+
+def test_an_amended_timeline_rewrites_stints_laps_and_annotations(timescale_dsn):
+    """A restated session converges in the database, whatever it replaced.
+
+    Stints may leave a gap for the stop, a lap crossed in that gap stays
+    with the outgoing driver, a stint that never happened disappears with
+    its laps re-homed, and the red flags and fuel marks follow the snapshot.
+    """
+    with psycopg.connect(timescale_dsn) as conn:
+        apply_migrations(conn)
+
+    state = SessionState()
+    state.start_session("race", "Driver A", track_name="Collie", now_ms=T0)
+    state.change_driver("Driver B", now_ms=T0 + 60 * MIN)
+    state.change_driver("Driver C", now_ms=T0 + 90 * MIN)
+    state.red_flag(now_ms=T0 + 100 * MIN)
+    state.mark_fuel(132.0, now_ms=T0 + 95 * MIN)
+    _record(timescale_dsn, state.to_dict())
+
+    with psycopg.connect(timescale_dsn) as conn:
+        ids = dict(conn.execute("SELECT stint_number, stint_id FROM stints ORDER BY stint_number"))
+        for lap_number, crossed_ms, stint_number in [
+            (1, T0 + 10 * MIN, 1),
+            (2, T0 + 31 * MIN, 1),  # crossed in the lane during the real stop
+            (3, T0 + 50 * MIN, 1),  # really Driver B's: the change went unrecorded
+            (4, T0 + 70 * MIN, 2),
+            (5, T0 + 95 * MIN, 3),
+        ]:
+            conn.execute(
+                """
+                INSERT INTO laps (vehicle_id, session_id, stint_id, lap_number, crossed_at)
+                VALUES (%s, %s, %s, %s, to_timestamp(%s / 1000.0))
+                """,
+                (VEHICLE, state.session_id, ids[stint_number], lap_number, crossed_ms),
+            )
+        assert conn.execute("SELECT count(*) FROM session_flags").fetchone()[0] == 1
+        assert conn.execute("SELECT count(*) FROM fuel_marks").fetchone()[0] == 1
+
+    # What actually happened: A out at 30 min, B in at 34 and still driving.
+    state.amend_timeline(
+        [
+            {"driver": "Driver A", "start_ms": T0, "end_ms": T0 + 30 * MIN},
+            {"driver": "Driver B", "start_ms": T0 + 34 * MIN, "end_ms": None},
+        ]
+    )
+    state.amend_reds([{"start_ms": T0 + 40 * MIN, "end_ms": T0 + 45 * MIN}])
+    state.amend_fuel_marks([])
+    _record(timescale_dsn, state.to_dict())
+    _record(timescale_dsn, state.to_dict())  # a replayed snapshot changes nothing
+
+    with psycopg.connect(timescale_dsn) as conn:
+        stints = conn.execute(
+            """
+            SELECT st.stint_number, d.name,
+                   extract(epoch FROM st.started) * 1000, extract(epoch FROM st.ended) * 1000
+            FROM stints st JOIN drivers d USING (driver_id) ORDER BY st.stint_number
+            """
+        ).fetchall()
+        assert [(n, name, float(start)) for n, name, start, _ in stints] == [
+            (1, "Driver A", T0),
+            (2, "Driver B", T0 + 34 * MIN),
+        ]
+        assert float(stints[0][3]) == T0 + 30 * MIN
+        assert stints[1][3] is None
+
+        laps = conn.execute(
+            """
+            SELECT l.lap_number, st.stint_number
+            FROM laps l LEFT JOIN stints st USING (stint_id) ORDER BY l.lap_number
+            """
+        ).fetchall()
+        assert laps == [(1, 1), (2, 1), (3, 2), (4, 2), (5, 2)]
+
+        flags = conn.execute(
+            "SELECT kind, extract(epoch FROM started) * 1000, extract(epoch FROM ended) * 1000 "
+            "FROM v_session_flags WHERE vehicle_id = %s",
+            (VEHICLE,),
+        ).fetchall()
+        assert [(kind, float(start), float(end)) for kind, start, end in flags] == [
+            ("red", T0 + 40 * MIN, T0 + 45 * MIN)
+        ]
+        assert conn.execute("SELECT count(*) FROM v_fuel_marks").fetchone()[0] == 0
+
+    # Ended by mistake and reopened: the row is active again, the stint open.
+    state.end_session(now_ms=T0 + 120 * MIN)
+    _record(timescale_dsn, state.to_dict())
+    state.reopen()
+    _record(timescale_dsn, state.to_dict())
+    with psycopg.connect(timescale_dsn) as conn:
+        assert conn.execute("SELECT status, ended FROM sessions").fetchone() == ("active", None)
+        assert conn.execute("SELECT ended FROM stints WHERE stint_number = 2").fetchone() == (None,)
+
+
+def test_line_crossings_are_listed_newest_first_for_the_time_picker(timescale_dsn):
+    with psycopg.connect(timescale_dsn) as conn:
+        apply_migrations(conn)
+        keys = {}
+        for name, value_type in (("lap.event", 4), ("sys.host.clock_source", 4)):
+            keys[name] = conn.execute(
+                "INSERT INTO channels (vehicle_id, name, units, value_type) "
+                "VALUES (%s, %s, '', %s) RETURNING channel_key",
+                (VEHICLE, name, value_type),
+            ).fetchone()[0]
+        rows = [
+            (T0 + 1 * MIN, {"type": "lap_completed", "line": "StartFinish", "lap_number": 149}),
+            (T0 + 2 * MIN, {"type": "sector_completed", "line": "Sector1", "lap_number": 150}),
+            (T0 + 3 * MIN, {"type": "pit_entry", "line": "PitEntryRefuel", "lap_number": 150}),
+            (T0 + 13 * MIN, {"type": "pit_exit", "line": "PitExitRefuel", "lap_number": 150}),
+            (T0 - 7 * 60 * MIN, {"type": "lap_completed", "line": "StartFinish", "lap_number": 1}),
+        ]
+        for at_ms, event in rows:
+            conn.execute(
+                "INSERT INTO samples (time, channel_key, value_text) "
+                "VALUES (to_timestamp(%s / 1000.0), %s, %s)",
+                (at_ms, keys["lap.event"], json.dumps(event)),
+            )
+        # Another STRING channel carrying plain text must not break the JSON cast.
+        conn.execute(
+            "INSERT INTO samples (time, channel_key, value_text) "
+            "VALUES (to_timestamp(%s / 1000.0), %s, 'PPS')",
+            (T0 + 5 * MIN, keys["sys.host.clock_source"]),
+        )
+
+    async def read() -> list[dict[str, object]]:
+        database = SessionDatabase(timescale_dsn, VEHICLE)
+        assert await database.connect_once()
+        try:
+            return await database.load_events(T0)
+        finally:
+            await database.close()
+
+    events = asyncio.run(read())
+    assert events == [
+        {"at_ms": T0 + 13 * MIN, "type": "pit_exit", "line": "PitExitRefuel", "lap_number": 150},
+        {"at_ms": T0 + 3 * MIN, "type": "pit_entry", "line": "PitEntryRefuel", "lap_number": 150},
+        {"at_ms": T0 + 1 * MIN, "type": "lap_completed", "line": "StartFinish", "lap_number": 149},
+    ]

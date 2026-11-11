@@ -1,0 +1,22 @@
+#!/usr/sbin/nft -f
+# Keep the video tunnel (tailscaled-video, user tsvideo) off the HaLow port.
+# end0 = HaLow radio, end1 = Starlink. No `flush ruleset`: Docker shares it.
+table inet openlaps_video
+delete table inet openlaps_video
+table inet openlaps_video {
+	chain output {
+		type filter hook output priority filter; policy accept;
+		meta skuid "tsvideo" oifname "end0" counter drop comment "video tunnel never leaves by HaLow"
+	}
+	chain input {
+		type filter hook input priority filter; policy accept;
+		iifname "end0" udp dport 41642 counter drop comment "video tunnel never arrives by HaLow"
+		# go2rtc itself listens on every address. Without these a viewer can
+		# reach it straight over the HaLow LAN or the host's own tailnet
+		# address (which rides HaLow): the API/MSE on 1984, RTSP on 8554 and,
+		# less obviously, WebRTC media on 8555, which a browser negotiates
+		# directly with the car even when the page came through the relay.
+		# The video node hands its connections to 127.0.0.1, so it is unaffected.
+		iifname { "end0", "tailscale0" } meta l4proto { tcp, udp } th dport { 1984, 8554, 8555 } counter drop comment "camera only via the video tunnel"
+	}
+}

@@ -39,7 +39,7 @@ class PlanUnavailable(RuntimeError):
 _PLAN_COLUMNS = (
     "session_id, revision, race_end_at, race_end_laps, end_authority, tank_l, usable_fuel_l, "
     "refuel_min_s, service_typical_s, driver_limits, planned_stops, car_number, updated_at, "
-    "updated_by"
+    "updated_by, fuel_used_scale"
 )
 
 
@@ -52,8 +52,36 @@ _STRATEGY_COLUMNS = (
 )
 
 
+# How far before the session start the event picker reaches: the start
+# button is often pressed late, and the crossing it should have been pressed
+# at is then just outside the session.
+_EVENT_LOOKBACK_MS = 6 * 3600 * 1000
+_EVENT_LIMIT = 4000
+
+_EVENTS = """
+SELECT time, event ->> 'type', event ->> 'line', event ->> 'lap_number'
+FROM (
+    -- Guarded as in migration 012: the planner may evaluate the cast
+    -- before the channel filter, and other channels carry plain text.
+    SELECT s.time, CASE WHEN s.channel = 'lap.event' THEN s.value_text::jsonb END AS event
+    FROM v_samples_named s
+    WHERE s.vehicle_id = %s
+      AND s.channel = 'lap.event'
+      AND s.value_text IS NOT NULL
+      AND s.time >= %s
+) events
+WHERE event ->> 'type' IN ('lap_completed', 'pit_entry', 'pit_exit')
+ORDER BY time DESC
+LIMIT %s
+"""
+
+
 class SessionDatabase:
-    """Own ``drivers``, ``sessions``, ``stints`` and ``race_plans`` with outage retry."""
+    """Own ``drivers``, ``sessions``, ``stints`` and ``race_plans`` with outage retry.
+
+    Plus the two per-session annotation tables, ``session_flags`` and
+    ``fuel_marks``, written from the same snapshot.
+    """
 
     def __init__(
         self,
@@ -203,6 +231,45 @@ class SessionDatabase:
                 await self._drop_connection()
                 raise PlanUnavailable("database unavailable; strategy cannot be read") from exc
 
+    async def load_events(self, session_start_ms: int) -> list[dict[str, object]]:
+        """Recent line crossings for this car, newest first, for the time picker.
+
+        Read-only, from the ``lap.event`` samples: completed laps and pit
+        entries and exits, each with the instant the car crossed the line.
+        The operator picks one and its time fills the field being edited.
+        """
+        since = _timestamp(max(session_start_ms - _EVENT_LOOKBACK_MS, 0))
+        async with self._lock:
+            if not self.connected:
+                raise PlanUnavailable("database unavailable; line crossings cannot be read")
+            try:
+                rows = await asyncio.wait_for(
+                    self._select_events(self._require(), since),
+                    timeout=self._operation_timeout_s,
+                )
+            except (TimeoutError, psycopg.OperationalError, psycopg.InterfaceError) as exc:
+                self.errors += 1
+                await self._drop_connection()
+                raise PlanUnavailable(
+                    "database unavailable; line crossings cannot be read"
+                ) from exc
+        return [
+            {
+                "at_ms": int(time.timestamp() * 1000),
+                "type": kind,
+                "line": line or "",
+                "lap_number": int(lap)
+                if lap is not None and str(lap).lstrip("-").isdigit()
+                else None,
+            }
+            for time, kind, line, lap in rows
+        ]
+
+    async def _select_events(self, conn: psycopg.AsyncConnection, since: datetime) -> list[tuple]:
+        async with conn.transaction():
+            cursor = await conn.execute(_EVENTS, (self._vehicle_id, since, _EVENT_LIMIT))
+            return await cursor.fetchall()
+
     async def _select_strategy(
         self, conn: psycopg.AsyncConnection, session_id: str
     ) -> dict[str, object] | None:
@@ -225,10 +292,10 @@ class SessionDatabase:
                     INSERT INTO race_plans (
                         session_id, revision, race_end_at, race_end_laps, end_authority,
                         tank_l, usable_fuel_l, refuel_min_s, service_typical_s,
-                        driver_limits, planned_stops, car_number, updated_by
+                        driver_limits, planned_stops, car_number, updated_by, fuel_used_scale
                     )
                     SELECT %s, COALESCE(MAX(revision), 0) + 1, %s, %s, %s, %s, %s, %s, %s,
-                           %s::jsonb, %s::jsonb, %s, %s
+                           %s::jsonb, %s::jsonb, %s, %s, %s
                     FROM race_plans WHERE session_id = %s
                     RETURNING {_PLAN_COLUMNS}
                     """,
@@ -245,6 +312,7 @@ class SessionDatabase:
                         json.dumps(plan.to_dict()["planned_stops"]),
                         plan.car_number,
                         plan.updated_by,
+                        plan.fuel_used_scale,
                         session_id,
                     ),
                 )
@@ -414,37 +482,81 @@ class SessionDatabase:
                         _timestamp(end_ms) if isinstance(end_ms, int) else None,
                     ),
                 )
-            # Backdating a driver change moves a stint boundary after laps in
-            # the moved window were already attributed: the vehicle stamps
-            # stint_number into lap.event from the session state it knew at
-            # the crossing, so laps recorded between the real change and the
-            # late button press point at the closed stint. Re-window them
-            # from the stint rows just written, in the same transaction. This
-            # is a deliberate, narrow crossing of an ownership boundary —
-            # `laps` belongs to the ingest-writer — and an explicit operator
-            # amendment is the one case where the vehicle's stamp is known to
-            # be wrong (docs/plan/PHASE5.md -> P5.6).
+            # Moving a stint boundary after the fact leaves laps attributed
+            # to the wrong stint: the vehicle stamps stint_number into
+            # lap.event from the session state it knew at the crossing, so
+            # laps recorded between the real change and the late button
+            # press point at the closed stint. Re-window them from the stint
+            # rows just written, in the same transaction. This is a
+            # deliberate, narrow crossing of an ownership boundary — `laps`
+            # belongs to the ingest-writer — and an explicit operator
+            # amendment is the one case where the vehicle's stamp is known
+            # to be wrong (docs/plan/PHASE5.md -> P5.6).
+            #
+            # A lap belongs to the last stint that had started when it was
+            # crossed. Stints need not be contiguous — one ends at pit
+            # entry, the next begins at pit exit — and a crossing inside
+            # that gap is the outgoing driver's in-lap finishing in the pit
+            # lane, so it stays with them.
             #
             # Snapshot-derived rather than transition-carried on purpose: the
             # retry queue replays whole snapshots, and this UPDATE is
-            # idempotent, so a queued backdate converges to the same rows as
-            # a live one. Scope: only laps of this session that already point
-            # at a stint; a lap the writer left with a NULL stint (it arrived
-            # before our rows did) is the writer's to resolve, not ours.
+            # idempotent, so a queued amendment converges to the same rows
+            # as a live one. Scope: only laps of this session that already
+            # point at a stint; a lap the writer left with a NULL stint (it
+            # arrived before our rows did) is the writer's to resolve, not
+            # ours, and a lap crossed before the first stint began is left
+            # as the vehicle stamped it.
             await conn.execute(
                 """
                 UPDATE laps l
                 SET stint_id = s.stint_id
-                FROM stints s
+                FROM (
+                    SELECT stint_id, started,
+                           lead(started) OVER (ORDER BY stint_number) AS next_started
+                    FROM stints
+                    WHERE session_id = %s AND stint_number <= %s
+                ) s
                 WHERE l.session_id = %s
-                  AND s.session_id = l.session_id
                   AND l.stint_id IS NOT NULL
                   AND l.stint_id <> s.stint_id
                   AND l.crossed_at >= s.started
-                  AND (s.ended IS NULL OR l.crossed_at < s.ended)
+                  AND (s.next_started IS NULL OR l.crossed_at < s.next_started)
                 """,
-                (session_id,),
+                (session_id, len(stints), session_id),
             )
+            # An amendment can also remove a driver change that never
+            # happened, leaving rows numbered past the end of the snapshot.
+            # After the re-windowing, so their laps have already moved.
+            await conn.execute(
+                "DELETE FROM stints WHERE session_id = %s AND stint_number > %s",
+                (session_id, len(stints)),
+            )
+            # The annotations are small and wholly owned by the snapshot:
+            # replace them rather than diff them.
+            await conn.execute("DELETE FROM session_flags WHERE session_id = %s", (session_id,))
+            for red in _annotations(state.get("reds")):
+                end_ms = red.get("end_ms")
+                await conn.execute(
+                    """
+                    INSERT INTO session_flags (session_id, kind, started, ended)
+                    VALUES (%s, 'red', %s, %s)
+                    """,
+                    (
+                        session_id,
+                        _timestamp(_required_int(red, "start_ms")),
+                        _timestamp(end_ms) if isinstance(end_ms, int) else None,
+                    ),
+                )
+            await conn.execute("DELETE FROM fuel_marks WHERE session_id = %s", (session_id,))
+            for mark in _annotations(state.get("fuel_marks")):
+                level = mark.get("level_l")
+                if isinstance(level, bool) or not isinstance(level, int | float):
+                    raise ValueError("level_l must be a number")
+                await conn.execute(
+                    "INSERT INTO fuel_marks (session_id, at, level_l) VALUES (%s, %s, %s)",
+                    (session_id, _timestamp(_required_int(mark, "at_ms")), float(level)),
+                )
 
     @staticmethod
     async def _upsert_driver(conn: psycopg.AsyncConnection, name: str) -> int:
@@ -513,6 +625,15 @@ def _closed_stints(value: object) -> list[dict[str, object]]:
     return [dict(item) for item in value]
 
 
+def _annotations(value: object) -> list[dict[str, object]]:
+    """A snapshot's optional list of red-flag periods or fuel marks."""
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        raise TypeError("session annotations must be a list of objects")
+    return [dict(item) for item in value]
+
+
 def _required_str(data: Mapping[str, object], key: str) -> str:
     value = _as_str(data.get(key))
     if not value:
@@ -566,6 +687,7 @@ def _plan_row(row: tuple) -> dict[str, object]:
         car_number,
         updated_at,
         updated_by,
+        fuel_used_scale,
     ) = row
     return {
         "session_id": session_id,
@@ -582,6 +704,7 @@ def _plan_row(row: tuple) -> dict[str, object]:
         "car_number": car_number,
         "updated_at_ms": int(updated_at.timestamp() * 1000),
         "updated_by": updated_by,
+        "fuel_used_scale": fuel_used_scale,
     }
 
 

@@ -44,6 +44,8 @@ class RacePlan:
     planned_stops: list[PlannedStop] = field(default_factory=list)
     car_number: str | None = None
     updated_by: str | None = None
+    # Litres actually burned per litre the ECU's fuel-used counter reports.
+    fuel_used_scale: float = 1.0
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -163,6 +165,12 @@ def validate_plan(body: Mapping[str, object]) -> RacePlan:
             )
         )
 
+    fuel_used_scale = _number(body, "fuel_used_scale", required=False)
+    if fuel_used_scale is None:
+        fuel_used_scale = 1.0
+    if not 0.5 <= fuel_used_scale <= 2.0:
+        raise PlanError("fuel_used_scale must be between 0.5 and 2")
+
     return RacePlan(
         race_end_at_ms=race_end_at_ms,
         race_end_laps=race_end_laps,
@@ -175,4 +183,5 @@ def validate_plan(body: Mapping[str, object]) -> RacePlan:
         planned_stops=stops,
         car_number=_text(body.get("car_number"), "car_number"),
         updated_by=_text(body.get("updated_by"), "updated_by"),
+        fuel_used_scale=fuel_used_scale,
     )

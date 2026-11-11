@@ -73,6 +73,19 @@ class StrategySettings:
                 raise ValueError(f"{name} must be positive")
             return value
 
+        def optional(name: str) -> float | None:
+            value = env.get(name, "").strip()
+            return float(value) if value else None
+
+        def text(name: str, default: str) -> str:
+            return env.get(name, "").strip() or default
+
+        def choice(name: str, default: str, allowed: tuple[str, ...]) -> str:
+            value = text(name, default).lower()
+            if value not in allowed:
+                raise ValueError(f"{name} must be one of {', '.join(allowed)}")
+            return value
+
         policy = StrategyPolicy(
             burn_window_laps=int(number("OPENLAPS_STRATEGY_BURN_WINDOW_LAPS", "5")),
             burn_sigma=number("OPENLAPS_STRATEGY_BURN_SIGMA", "2"),
@@ -81,6 +94,23 @@ class StrategySettings:
             plan_drift_laps=int(number("OPENLAPS_STRATEGY_PLAN_DRIFT_LAPS", "3", positive=False)),
             short_fill_fraction=number("OPENLAPS_STRATEGY_SHORT_FILL_FRACTION", "0.1"),
             window_warn_laps=int(number("OPENLAPS_STRATEGY_WINDOW_WARN_LAPS", "2", positive=False)),
+            fuel_model=choice("OPENLAPS_STRATEGY_FUEL_MODEL", "counter", ("counter", "level")),
+            full_channel=text("OPENLAPS_STRATEGY_FULL_CHANNEL", "car.fuel_level"),
+            full_threshold=optional("OPENLAPS_STRATEGY_FULL_THRESHOLD"),
+            full_when=choice("OPENLAPS_STRATEGY_FULL_WHEN", "above", ("above", "below")),
+            full_min_samples=int(number("OPENLAPS_STRATEGY_FULL_MIN_SAMPLES", "3")),
+            surge_channel=text("OPENLAPS_STRATEGY_SURGE_CHANNEL", "car.surge_tank_switch"),
+            surge_threshold=optional("OPENLAPS_STRATEGY_SURGE_THRESHOLD"),
+            surge_when=choice("OPENLAPS_STRATEGY_SURGE_WHEN", "above", ("above", "below")),
+            surge_hold_s=number("OPENLAPS_STRATEGY_SURGE_HOLD_S", "5", positive=False),
+            surge_reserve_l=number("OPENLAPS_STRATEGY_SURGE_RESERVE_L", "1.8", positive=False),
+            counter_channel=text("OPENLAPS_STRATEGY_COUNTER_CHANNEL", "car.fuel_total_used"),
+            counter_error_fraction=number(
+                "OPENLAPS_STRATEGY_COUNTER_ERROR_FRACTION", "0.03", positive=False
+            ),
+            calibration_warn_fraction=number(
+                "OPENLAPS_STRATEGY_CALIBRATION_WARN_FRACTION", "0.05", positive=False
+            ),
         )
         mqtt_port = int(number("OPENLAPS_MQTT_PORT", "1883"))
         health_port = int(number("OPENLAPS_STRATEGY_HEALTH_PORT", "8088", positive=False))
@@ -117,7 +147,9 @@ class StrategyService:
         self.settings = settings
         self.health = HealthState()
         self._db = (
-            StrategyDatabase(settings.dsn, settings.vehicle_id) if database is None else database
+            StrategyDatabase(settings.dsn, settings.vehicle_id, settings.policy)
+            if database is None
+            else database
         )
         self._clock = clock or (lambda: datetime.now(UTC))
         self._last_probe: Probe | None = None

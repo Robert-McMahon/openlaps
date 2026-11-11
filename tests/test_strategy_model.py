@@ -18,6 +18,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from pit.strategy.model import (
+    CounterSpan,
+    FlagFact,
+    FuelMarkFact,
     LapFact,
     PlanFacts,
     RaceInputs,
@@ -25,8 +28,11 @@ from pit.strategy.model import (
     StopFact,
     StrategyPolicy,
     clean_laps,
+    counter_requests,
     evaluate,
+    fuel_anchors,
     idle_state,
+    red_seconds,
 )
 from pit.strategy.publisher import OUTPUT_CHANNELS, messages, mqtt_message
 
@@ -399,3 +405,231 @@ def test_mqtt_messages_are_pit_owned_and_compact():
     assert payload == b'{"time":1,"value":2.5,"display":"2.5"}'
     with pytest.raises(ValueError, match="non-strategy"):
         mqtt_message("example-club-racer", "car.fuel_level", {})
+
+
+# --- the counter fuel model: anchors, and the fuel-used counter between them -------
+
+# A 132 L tank with 130 usable, as the car that prompted this model. The
+# level sender does not read litres, so nothing here uses a StintFact level.
+K_POLICY = StrategyPolicy(fuel_model="counter", full_threshold=4.0, surge_threshold=2.5)
+K_PLAN = _plan(
+    tank_l=132.0,
+    usable_fuel_l=130.0,
+    race_end_laps=400,
+    driver_limits={"max_continuous_min": 120},
+    planned_stops=[],
+)
+K_STINT = StintFact(1, "Driver A", T0, None, 0, None, None)
+K_LAPS = [_lap(n, 100.0 * n, 1.0) for n in range(1, 11)]
+K_REFUEL = StopFact(_at(2000), _at(2600), False, "refuel", full_confirmed=True)
+
+
+def _counter_inputs(now_s: float, **overrides) -> RaceInputs:
+    base = dict(
+        now=_at(now_s),
+        vehicle_id="example-club-racer",
+        session_id="s-1",
+        session_started=T0,
+        plan=K_PLAN,
+        laps=K_LAPS,
+        stints=[K_STINT],
+        stops=[],
+    )
+    base.update(overrides)
+    return RaceInputs(**base)
+
+
+def test_counter_model_starts_from_an_assumed_full_tank_and_subtracts_the_counter():
+    inputs = _counter_inputs(1050, counter_spans=[CounterSpan(T0, None, 10.4)])
+    state = evaluate(inputs, K_POLICY, "lap")
+
+    assert state.rebase_confidence == "plan"
+    assert state.rebase_level_l == 132.0
+    assert state.rebase_at == T0
+    assert state.fuel_remaining_l == pytest.approx(132.0 - 10.4)
+    spread = 3.0 + 10.4 * 0.03  # the plan anchor's 3 L plus 3 % of what was counted
+    assert state.fuel_remaining_lo_l == pytest.approx(132.0 - 10.4 - spread, abs=0.01)
+    assert state.fuel_remaining_hi_l == pytest.approx(132.0 - 10.4 + spread, abs=0.01)
+    assert counter_requests(inputs, K_POLICY) == [(T0, None)]
+
+
+def test_a_confirmed_refuel_anchors_full_and_an_unconfirmed_one_says_so():
+    confirmed = _counter_inputs(
+        3000, stops=[K_REFUEL], counter_spans=[CounterSpan(_at(2600), None, 2.0)]
+    )
+    state = evaluate(confirmed, K_POLICY, "lap")
+    assert state.rebase_confidence == "full"
+    assert state.rebase_at == _at(2600)
+    assert state.fuel_remaining_l == pytest.approx(130.0)
+    assert not [f for f in state.findings if f.monitor == "strategy.short_fill"]
+
+    unconfirmed = _counter_inputs(
+        3000,
+        stops=[StopFact(_at(2000), _at(2600), False, "refuel", full_confirmed=False)],
+        counter_spans=[CounterSpan(_at(2600), None, 2.0)],
+    )
+    state = evaluate(unconfirmed, K_POLICY, "lap")
+    assert state.rebase_confidence == "assumed_full"
+    assert state.fuel_remaining_l == pytest.approx(130.0)
+    assert state.fuel_remaining_lo_l == pytest.approx(130.0 - 5.0 - 2.0 * 0.03, abs=0.01)
+    short = [f for f in state.findings if f.monitor == "strategy.short_fill"]
+    assert len(short) == 1 and "did not read full" in short[0].summary["message"]
+
+    # With no threshold configured nobody expected the sender to agree.
+    quiet = evaluate(unconfirmed, StrategyPolicy(fuel_model="counter"), "lap")
+    assert quiet.rebase_confidence == "assumed_full"
+    assert not [f for f in quiet.findings if f.monitor == "strategy.short_fill"]
+
+    # A service stop and a stop still open are not refuels and anchor nothing.
+    other = _counter_inputs(
+        3000,
+        stops=[
+            StopFact(_at(2000), _at(2600), False, "service"),
+            StopFact(_at(2900), None, True, "refuel"),
+        ],
+    )
+    assert [anchor.confidence for anchor in fuel_anchors(other, K_POLICY)] == ["plan"]
+
+
+def test_a_fuel_mark_beats_the_stop_it_was_made_in_and_the_latest_anchor_wins():
+    short_fill = FuelMarkFact(_at(2500), 90.0)  # two cans short, marked during the stop
+    inputs = _counter_inputs(
+        3000,
+        stops=[K_REFUEL],
+        fuel_marks=[short_fill],
+        counter_spans=[CounterSpan(_at(2500), None, 4.0)],
+    )
+    anchors = fuel_anchors(inputs, K_POLICY)
+    assert [(a.confidence, a.level_l) for a in anchors] == [("plan", 132.0), ("operator", 90.0)]
+    state = evaluate(inputs, K_POLICY, "lap")
+    assert state.rebase_confidence == "operator"
+    assert state.fuel_remaining_l == pytest.approx(86.0)
+
+    # A mark from before the stop is superseded by the stop's own anchor.
+    earlier = _counter_inputs(
+        3000,
+        stops=[K_REFUEL],
+        fuel_marks=[FuelMarkFact(_at(500), 100.0)],
+        counter_spans=[CounterSpan(_at(2600), None, 1.0)],
+    )
+    assert evaluate(earlier, K_POLICY, "lap").rebase_confidence == "full"
+
+
+def test_the_surge_light_anchors_nearly_empty_only_when_it_stays_on():
+    slosh = _counter_inputs(
+        1050,
+        surge_episodes=[(_at(900), _at(902))],
+        counter_spans=[CounterSpan(T0, None, 10.0)],
+    )
+    state = evaluate(slosh, K_POLICY, "lap")
+    assert state.rebase_confidence == "plan"
+    assert not [f for f in state.findings if f.monitor == "strategy.surge"]
+
+    held = _counter_inputs(
+        1050,
+        surge_episodes=[(_at(900), _at(902)), (_at(1000), _at(1040))],
+        counter_spans=[CounterSpan(_at(1000), None, 0.5)],
+    )
+    state = evaluate(held, K_POLICY, "lap")
+    assert state.rebase_confidence == "surge"
+    assert state.rebase_at == _at(1000)
+    # 2 L unusable plus the 1.8 L the switch leaves, less what has gone since.
+    assert state.rebase_level_l == pytest.approx(3.8)
+    assert state.fuel_remaining_l == pytest.approx(3.3)
+    surge = [f for f in state.findings if f.monitor == "strategy.surge"]
+    assert len(surge) == 1 and surge[0].severity == "critical"
+    # 1.3 L usable at a 1 L lap: the lower bound is about a lap, not a stint.
+    assert state.laps_to_dry_lo is not None and state.laps_to_dry_lo < 2.0
+
+    # A refuel after the light went on puts the model back on a full tank.
+    refuelled = _counter_inputs(
+        3000,
+        stops=[K_REFUEL],
+        surge_episodes=[(_at(1000), _at(2100))],
+        counter_spans=[CounterSpan(_at(2600), None, 1.0)],
+    )
+    assert evaluate(refuelled, K_POLICY, "lap").rebase_confidence == "full"
+
+
+def test_a_full_to_surge_run_checks_the_counter_and_the_plan_scale_corrects_it():
+    # Full at 2600 s, surge light at 9000 s: the tank gave 132 - 3.8 = 128.2 L
+    # while the counter reported 116.5 L, so it under-reads by about 10 %.
+    base = dict(
+        stops=[K_REFUEL],
+        surge_episodes=[(_at(9000), _at(9060))],
+        counter_spans=[
+            CounterSpan(_at(9000), None, 0.2),
+            CounterSpan(_at(2600), _at(9000), 116.5),
+        ],
+    )
+    inputs = _counter_inputs(9100, **base)
+    assert counter_requests(inputs, K_POLICY) == [(_at(9000), None), (_at(2600), _at(9000))]
+    state = evaluate(inputs, K_POLICY, "lap")
+    calibration = [f for f in state.findings if f.monitor == "strategy.fuel_calibration"]
+    assert len(calibration) == 1
+    assert calibration[0].summary["observed_scale"] == pytest.approx(128.2 / 116.5, abs=1e-4)
+
+    # With that scale entered in the plan the warning clears, and both the
+    # per-lap burn and the counter since the anchor are scaled by it.
+    scaled_plan = _plan(
+        tank_l=132.0,
+        usable_fuel_l=130.0,
+        race_end_laps=400,
+        planned_stops=[],
+        fuel_used_scale=1.10,
+    )
+    state = evaluate(_counter_inputs(9100, plan=scaled_plan, **base), K_POLICY, "lap")
+    assert not [f for f in state.findings if f.monitor == "strategy.fuel_calibration"]
+    assert state.burn_l_per_lap == pytest.approx(1.10)
+    assert state.fuel_remaining_l == pytest.approx(3.8 - 0.2 * 1.10)
+
+
+def test_without_counter_samples_the_model_falls_back_to_the_lap_deltas():
+    for spans in ([], [CounterSpan(T0, None, None)]):
+        state = evaluate(_counter_inputs(1050, counter_spans=spans), K_POLICY, "lap")
+        assert state.rebase_confidence == "plan"
+        assert state.fuel_remaining_l == pytest.approx(132.0 - 10.0)  # ten 1 L laps
+
+
+# --- red flags: the race clock runs, the driver's clock and the burn do not --------
+
+
+def test_a_red_flag_pauses_the_driver_clock():
+    red = FlagFact(_at(1800), _at(3000))  # twenty minutes stopped
+    assert red_seconds(_at(0), _at(3600), [red]) == 1200.0
+    assert red_seconds(_at(0), _at(2400), [FlagFact(_at(1800), None)]) == 600.0
+    assert red_seconds(_at(0), _at(1000), [red]) == 0.0
+
+    plan = _plan(driver_limits={"max_continuous_min": 120, "max_total_min": 360})
+    earlier = StintFact(1, "Driver A", T0, _at(3600), 0, None, None)
+    resting = StintFact(2, "Driver B", _at(3700), _at(7200), 0, None, None)
+    current = StintFact(3, "Driver A", _at(7300), None, 0, None, None)
+    stints = [earlier, resting, current]
+    now_s = 7300 + 3600
+
+    green = evaluate(_inputs(now_s, plan, A_LAPS, stints), POLICY, "timer")
+    assert green.driver_time_remaining_s == pytest.approx(7200 - 3600)
+    assert green.driver_total_remaining_s == pytest.approx(21600 - 3600 - 3600)
+
+    # One red in Driver A's first stint, one still out in the current stint.
+    reds = [red, FlagFact(_at(7300 + 3000), None)]
+    inputs = RaceInputs(
+        now=_at(now_s),
+        vehicle_id="example-club-racer",
+        session_id="s-1",
+        session_started=T0,
+        plan=plan,
+        laps=A_LAPS,
+        stints=stints,
+        stops=[],
+        reds=reds,
+    )
+    stopped = evaluate(inputs, POLICY, "timer")
+    assert stopped.driver_time_remaining_s == pytest.approx(7200 - 3600 + 600)
+    assert stopped.driver_total_remaining_s == pytest.approx(21600 - 7200 + 1200 + 600)
+
+
+def test_laps_under_a_red_flag_are_not_racing_burn():
+    red = FlagFact(_at(450), _at(650))  # touches laps 5, 6 and 7
+    kept = [lap.lap_number for lap in clean_laps(A_LAPS, [], POLICY, [red])]
+    assert kept == [1, 2, 3, 8, 9, 10]

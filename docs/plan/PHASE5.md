@@ -350,6 +350,46 @@ Two things are missing.
 table grows, and the new view needs the same treatment the existing two
 get: what it answers, and what it deliberately does not.
 
+**The session can be restated afterwards** (added 2026-11-11, after a
+practice session was left open for three days and ahead of the first
+36-hour race). `POST /session/timeline` replaces any of three lists on
+the current session, active or ended, all or nothing:
+
+- `stints` — `{driver, start, end}` in order. That one shape covers a
+  wrong time, a driver change nobody recorded, one that never happened
+  and the wrong driver. The first start is the session start; the last
+  stint of an active session has no end.
+- `reds` — `{start, end}` red-flag periods; the last may be open on an
+  active session.
+- `fuel_marks` — `{at, level_l}`: what the crew knows was in the tank.
+
+It goes through the same snapshot upsert as a backdate (stint rows past
+the end of the snapshot are deleted, laps re-windowed first) and
+re-publishes the session payload, whose schema is unchanged.
+
+**A stint ends at pit entry and the next begins at pit exit.** Stints may
+therefore leave a gap, which is the stop. `POST /session/driver` takes
+`out_at` (when the outgoing driver's stint ended) alongside `at` (when the
+new one began); with neither, or only `at`, the stints meet as before. A
+lap crossed in the gap stays with the outgoing driver.
+
+**Times are picked from line crossings.** `GET /session/events` lists the
+car's completed laps and pit entries and exits, newest first, and the UI
+offers them above every time field: choosing "lap 150 pit entry" fills
+the field with that crossing's exact time. The timestamp stays the stored
+truth and stays editable — no GPS, a practice day, a test.
+
+**The live buttons that go with it:** `POST /session/red` and
+`/session/green` open and close a red-flag period, `POST /session/fuel
+{level_l}` records a fuel mark, all three taking `at`; and `POST
+/session/reopen` undoes an end pressed by mistake — the same session id,
+the last stint open again. The car stamps laps with the session id it
+last heard whether or not that session has ended, so laps crossed between
+the end and the reopen are not lost.
+
+Still out of reach: a session that is no longer the current one. That
+remains the deferred work below.
+
 **Deferred on purpose, and named here so the next brief does not have to
 rediscover them:** `v_lap_sectors` (sector splits are not exposed by
 `v_laps`) and `v_pit_stops` (pit stops are not a table at all — they are a

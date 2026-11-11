@@ -17,6 +17,13 @@ not measure (a counter reset, no samples) is *substituted* with the rolling
 mean for the fraction of that lap after the re-base, never averaged into
 the burn itself, and the substitution widens the bounds.
 
+That is ``fuel_model = "level"``, and it needs a level sender that reads
+litres. ``fuel_model = "counter"`` is for a car whose sender does not: it
+anchors the tank on the moments its contents are actually known -- full at
+the end of a refuelling stop, whatever the crew marked, nearly empty when
+the surge-tank switch closes -- and runs the ECU's fuel-used counter
+between them (``fuel_anchors`` and ``_counter_fuel`` below).
+
 Every projection carries a lower and an upper bound. The lower bound is the
 one that gets radioed.
 """
@@ -25,7 +32,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -46,6 +53,8 @@ class PlanFacts:
     service_typical_s: int
     driver_limits: dict[str, int] = field(default_factory=dict)
     planned_stops: list[dict[str, Any]] = field(default_factory=list)
+    # Litres actually burned per litre the fuel-used counter reports.
+    fuel_used_scale: float = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +92,38 @@ class StopFact:
     exit_at: datetime | None
     is_open: bool
     stop_type: str
+    # Whether the level sender read full before the car left the stop; None
+    # when that was not looked for (no threshold configured, stop still open).
+    full_confirmed: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FlagFact:
+    """One ``v_session_flags`` row: a red-flag period, open while ``ended`` is None."""
+
+    started: datetime
+    ended: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class FuelMarkFact:
+    """One ``v_fuel_marks`` row: what the crew says was in the tank."""
+
+    at: datetime
+    level_l: float
+
+
+@dataclass(frozen=True, slots=True)
+class CounterSpan:
+    """Fuel-used counter consumption between two instants, unscaled.
+
+    ``end`` None means "to now". ``used_l`` None means the counter had no
+    samples in the span, which is not the same as having used nothing.
+    """
+
+    start: datetime
+    end: datetime | None
+    used_l: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +138,11 @@ class RaceInputs:
     laps: list[LapFact]
     stints: list[StintFact]
     stops: list[StopFact]
+    reds: list[FlagFact] = field(default_factory=list)
+    fuel_marks: list[FuelMarkFact] = field(default_factory=list)
+    # Periods the surge-tank switch read "low", as (first, last) instants.
+    surge_episodes: list[tuple[datetime, datetime]] = field(default_factory=list)
+    counter_spans: list[CounterSpan] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +157,25 @@ class StrategyPolicy:
     short_fill_fraction: float = 0.10
     window_warn_laps: int = 2
     max_simulated_stops: int = 50
+    # "level": re-base on the level sender's litres (the original model).
+    # "counter": anchor on full / fuel mark / surge light and run the
+    # fuel-used counter between them.
+    fuel_model: str = "level"
+    # The reading that means "the sender shows a full tank". Unset, a stop
+    # is never confirmed full and the tank is assumed full after a refuel.
+    full_channel: str = "car.fuel_level"
+    full_threshold: float | None = None
+    full_when: str = "above"  # above | below: which side of the threshold is full
+    full_min_samples: int = 3
+    # The reading that means "the surge tank's float switch has closed".
+    surge_channel: str = "car.surge_tank_switch"
+    surge_threshold: float | None = None
+    surge_when: str = "above"
+    surge_hold_s: float = 5.0  # shorter than this is slosh, not an empty tank
+    surge_reserve_l: float = 1.8  # usable litres left when it closes
+    counter_channel: str = "car.fuel_total_used"
+    counter_error_fraction: float = 0.03
+    calibration_warn_fraction: float = 0.05
 
 
 # The uncertainty a re-base carries, in litres, by where the reading came
@@ -122,13 +187,23 @@ _REBASE_UNCERTAINTY_L = {
     "moving": 2.0,
     "plan": 3.0,
     "none": 0.0,
+    # The counter model's anchors. "full" is a brimmed tank the sender
+    # agreed with; the sender steps in 5-10 L blocks, so its agreement is
+    # worth a few litres, not tenths. "assumed_full" is a refuel stop nobody
+    # and nothing confirmed. "surge" is a float switch at a known volume.
+    "full": 3.0,
+    "assumed_full": 5.0,
+    "operator": 3.0,
+    "surge": 0.5,
 }
 
 MONITORS = (
     "strategy.driver_time",
+    "strategy.fuel_calibration",
     "strategy.pit_window",
     "strategy.plan_drift",
     "strategy.short_fill",
+    "strategy.surge",
 )
 
 
@@ -257,10 +332,25 @@ def evaluate(inputs: RaceInputs, policy: StrategyPolicy, trigger: str) -> Strate
     stops = sorted(inputs.stops, key=lambda stop: stop.entry_at)
     findings: list[Finding] = []
 
-    clean = clean_laps(laps, stops, policy)
+    reds = sorted(inputs.reds, key=lambda red: red.started)
+    scale = plan.fuel_used_scale if plan is not None else 1.0
+    if scale != 1.0:
+        laps = [
+            replace(lap, fuel_used_l=lap.fuel_used_l * scale)
+            if lap.fuel_used_l is not None
+            else lap
+            for lap in laps
+        ]
+
+    clean = clean_laps(laps, stops, policy, reds)
     burn = _burn(clean, policy)
-    rebase = _rebase(stints, stops, plan, inputs.session_started, now)
-    fuel, fuel_lo, fuel_hi = _fuel_remaining(rebase, laps, stops, burn)
+    if policy.fuel_model == "counter":
+        rebase, (fuel, fuel_lo, fuel_hi) = _counter_fuel(
+            inputs, laps, stops, burn, scale, policy, findings
+        )
+    else:
+        rebase = _rebase(stints, stops, plan, inputs.session_started, now)
+        fuel, fuel_lo, fuel_hi = _fuel_remaining(rebase, laps, stops, burn)
 
     usable = usable_lo = usable_hi = None
     if plan is not None and fuel is not None:
@@ -297,7 +387,9 @@ def evaluate(inputs: RaceInputs, policy: StrategyPolicy, trigger: str) -> Strate
             _window_findings(findings, lap_count, window_open, window_close, laps_lo, policy)
 
     stint = stints[-1] if stints else None
-    driver_remaining, total_remaining = _driver_time(stint, stints, plan, now, findings, policy)
+    driver_remaining, total_remaining = _driver_time(
+        stint, stints, plan, now, findings, policy, reds
+    )
 
     stop_plan: list[dict[str, Any]] = []
     plan_drift: dict[str, Any] = {}
@@ -419,15 +511,39 @@ def _touches_pits(lap: LapFact, stops: list[StopFact]) -> bool:
     return False
 
 
-def clean_laps(laps: list[LapFact], stops: list[StopFact], policy: StrategyPolicy) -> list[LapFact]:
+def _under_red(lap: LapFact, reds: list[FlagFact]) -> bool:
+    """Any part of the lap was driven while the race was stopped."""
+    window = _lap_window(lap)
+    start, end = window if window is not None else (lap.crossed_at, lap.crossed_at)
+    return any(red.started <= end and (red.ended is None or red.ended >= start) for red in reds)
+
+
+def red_seconds(start: datetime, end: datetime, reds: list[FlagFact]) -> float:
+    """Seconds between ``start`` and ``end`` that fell under a red flag."""
+    total = 0.0
+    for red in reds:
+        overlap = (min(end, red.ended or end) - max(start, red.started)).total_seconds()
+        if overlap > 0:
+            total += overlap
+    return total
+
+
+def clean_laps(
+    laps: list[LapFact],
+    stops: list[StopFact],
+    policy: StrategyPolicy,
+    reds: list[FlagFact] | None = None,
+) -> list[LapFact]:
     """Laps the burn may be computed from, in crossing order.
 
     Kept: valid, timed, a clean counter measurement, positive burn, not
-    crossed in the pit lane, and not touching a pit stop. Then the lap-time
-    outlier rule stands in for a flag state the pit does not yet have: a lap
-    slower than the recent median by more than ``outlier_fraction`` is a
-    yellow, traffic or a spin, and burns nothing like a racing lap.
+    crossed in the pit lane, not touching a pit stop and not driven under a
+    recorded red flag. Then the lap-time outlier rule stands in for the flag
+    states the pit does not have: a lap slower than the recent median by
+    more than ``outlier_fraction`` is a yellow, traffic or a spin, and burns
+    nothing like a racing lap.
     """
+    reds = reds or []
     candidates = [
         lap
         for lap in laps
@@ -439,6 +555,7 @@ def clean_laps(laps: list[LapFact], stops: list[StopFact], policy: StrategyPolic
         and lap.fuel_used_l > 0
         and lap.pit_status != "pit"
         and not _touches_pits(lap, stops)
+        and not _under_red(lap, reds)
     ]
     if not candidates:
         return []
@@ -564,6 +681,183 @@ def _fuel_remaining(
     remaining = rebase.level_l - used
     spread = uncertainty + substituted * (burn.sd or (burn.mean or 0.0) * 0.25)
     return remaining, remaining - spread, remaining + spread
+
+
+# --- the counter model: anchors and the fuel-used counter between them -----------
+
+
+@dataclass(frozen=True, slots=True)
+class FuelAnchor:
+    """A moment the tank's contents are known, and how."""
+
+    at: datetime
+    level_l: float
+    confidence: str  # plan | assumed_full | full | operator | surge
+
+
+# Where two anchors share an instant, the better-informed one wins.
+_ANCHOR_RANK = {"plan": 0, "assumed_full": 1, "full": 2, "surge": 3, "operator": 4}
+
+
+def fuel_anchors(inputs: RaceInputs, policy: StrategyPolicy) -> list[FuelAnchor]:
+    """Every moment this session at which the tank's contents are known.
+
+    In time order; the last one is what the fuel model stands on.
+
+    * The session start, assumed a full tank (``plan``).
+    * The end of each closed refuelling stop: ``full`` when the level sender
+      read full before the car left, ``assumed_full`` when it did not or was
+      not asked. A fuel mark made during the stop replaces the stop's own
+      anchor -- the crew's word on a short fill beats an assumption.
+    * Each fuel mark (``operator``).
+    * Each time the surge-tank switch stayed closed for ``surge_hold_s``
+      (``surge``): the main tank is empty and ``surge_reserve_l`` usable
+      litres remain. Shorter closures are slosh.
+    """
+    plan = inputs.plan
+    anchors: list[FuelAnchor] = []
+    marks = sorted(inputs.fuel_marks, key=lambda mark: mark.at)
+    if plan is not None:
+        anchors.append(FuelAnchor(inputs.session_started, plan.tank_l, "plan"))
+        for stop in inputs.stops:
+            if stop.stop_type != "refuel" or stop.is_open or stop.exit_at is None:
+                continue
+            if any(stop.entry_at <= mark.at <= stop.exit_at for mark in marks):
+                continue
+            confidence = "full" if stop.full_confirmed else "assumed_full"
+            anchors.append(FuelAnchor(stop.exit_at, plan.tank_l, confidence))
+    anchors.extend(FuelAnchor(mark.at, mark.level_l, "operator") for mark in marks)
+    unusable = plan.tank_l - plan.usable_fuel_l if plan is not None else 0.0
+    for first, last in inputs.surge_episodes:
+        if (last - first).total_seconds() >= policy.surge_hold_s:
+            anchors.append(FuelAnchor(first, unusable + policy.surge_reserve_l, "surge"))
+    return sorted(anchors, key=lambda anchor: (anchor.at, _ANCHOR_RANK[anchor.confidence]))
+
+
+def calibration_interval(anchors: list[FuelAnchor]) -> tuple[FuelAnchor, FuelAnchor] | None:
+    """The latest known-full to surge-light run: the counter's one honest test.
+
+    A tank that was known full (or marked by the crew) and then run until
+    the surge switch closed burned a known volume; what the counter reported
+    over the same interval is how far it can be trusted.
+    """
+    for index in range(len(anchors) - 1, 0, -1):
+        surge, before = anchors[index], anchors[index - 1]
+        if surge.confidence == "surge" and before.confidence in ("full", "operator"):
+            return before, surge
+    return None
+
+
+def counter_requests(
+    inputs: RaceInputs, policy: StrategyPolicy
+) -> list[tuple[datetime, datetime | None]]:
+    """The counter spans an evaluation of ``inputs`` will ask for.
+
+    The database layer reads the anchors' ingredients first, calls this, and
+    reads exactly these spans: the anchor is not known until then.
+    """
+    anchors = fuel_anchors(inputs, policy)
+    if not anchors:
+        return []
+    requests: list[tuple[datetime, datetime | None]] = [(anchors[-1].at, None)]
+    interval = calibration_interval(anchors)
+    if interval is not None:
+        requests.append((interval[0].at, interval[1].at))
+    return requests
+
+
+def _span(spans: list[CounterSpan], start: datetime, end: datetime | None) -> CounterSpan | None:
+    return next((span for span in spans if span.start == start and span.end == end), None)
+
+
+def _counter_fuel(
+    inputs: RaceInputs,
+    laps: list[LapFact],
+    stops: list[StopFact],
+    burn: _Burn,
+    scale: float,
+    policy: StrategyPolicy,
+    findings: list[Finding],
+) -> tuple[_Rebase, tuple[float | None, float | None, float | None]]:
+    """Fuel remaining as the last anchor less the counter since it."""
+    anchors = fuel_anchors(inputs, policy)
+    if not anchors:
+        return _Rebase(None, None, "none", None), (None, None, None)
+    anchor = anchors[-1]
+    rebase = _Rebase(anchor.level_l, anchor.at, anchor.confidence, None)
+    uncertainty = _REBASE_UNCERTAINTY_L[anchor.confidence]
+
+    span = _span(inputs.counter_spans, anchor.at, None)
+    if span is not None and span.used_l is not None:
+        used = span.used_l * scale
+        remaining = anchor.level_l - used
+        spread = uncertainty + used * policy.counter_error_fraction
+        fuel = (remaining, remaining - spread, remaining + spread)
+    else:
+        # The counter has said nothing since the anchor (the car is off, or
+        # the channel is missing): fall back to the per-lap deltas, which
+        # are already scaled.
+        fuel = _fuel_remaining(rebase, laps, stops, burn)
+
+    if anchor.confidence == "surge":
+        findings.append(
+            Finding(
+                "strategy.surge",
+                "critical",
+                1.0,
+                {
+                    "message": (
+                        f"surge tank light on since {anchor.at:%H:%M:%S}Z: the main tank is "
+                        f"empty, about {policy.surge_reserve_l:.1f} L usable was left then"
+                    ),
+                    "since": anchor.at.isoformat(),
+                    "reserve_l": policy.surge_reserve_l,
+                },
+            )
+        )
+    if anchor.confidence == "assumed_full" and policy.full_threshold is not None:
+        findings.append(
+            Finding(
+                "strategy.short_fill",
+                "warning",
+                0.5,
+                {
+                    "message": (
+                        "the level sender did not read full at the end of the refuel stop; "
+                        "a full tank is assumed - set a fuel mark if it was a short fill"
+                    ),
+                    "expected_l": anchor.level_l,
+                },
+            )
+        )
+
+    interval = calibration_interval(anchors)
+    if interval is not None:
+        before, surge = interval
+        measured = _span(inputs.counter_spans, before.at, surge.at)
+        expected = before.level_l - surge.level_l
+        if measured is not None and measured.used_l and expected > 0:
+            observed_scale = expected / measured.used_l
+            if abs(observed_scale / scale - 1.0) > policy.calibration_warn_fraction:
+                findings.append(
+                    Finding(
+                        "strategy.fuel_calibration",
+                        "warning",
+                        min(1.0, abs(observed_scale / scale - 1.0)),
+                        {
+                            "message": (
+                                f"the tank gave {expected:.1f} L from full to the surge light "
+                                f"and the counter reported {measured.used_l:.1f} L: a counter "
+                                f"scale of {observed_scale:.3f} fits, the plan has {scale:.3f}"
+                            ),
+                            "tank_l": round(expected, 2),
+                            "counter_l": round(measured.used_l, 2),
+                            "observed_scale": round(observed_scale, 4),
+                            "plan_scale": scale,
+                        },
+                    )
+                )
+    return rebase, fuel
 
 
 def _driven_seconds(start: datetime, end: datetime, stops: list[StopFact]) -> float:
@@ -772,12 +1066,21 @@ def _driver_time(
     now: datetime,
     findings: list[Finding],
     policy: StrategyPolicy,
+    reds: list[FlagFact] | None = None,
 ) -> tuple[float | None, float | None]:
+    """Drive time left on each limit; a red flag stops the driver's clock.
+
+    A stint runs from the pit-exit line to the pit-entry line, so the stop
+    before it is already outside it. The race clock runs through a red flag
+    but the car is parked, so those seconds are not drive time either.
+    """
     if stint is None or plan is None:
         return None, None
-    continuous_s = (now - stint.started).total_seconds()
+    reds = reds or []
+    continuous_s = (now - stint.started).total_seconds() - red_seconds(stint.started, now, reds)
     total_s = sum(
         ((candidate.ended or now) - candidate.started).total_seconds()
+        - red_seconds(candidate.started, candidate.ended or now, reds)
         for candidate in stints
         if candidate.driver == stint.driver
     )

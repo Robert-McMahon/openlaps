@@ -177,6 +177,28 @@ returning the raw 100 rows.
 These three tables are **owned by session-control**; the ingest-writer only
 reads them, to resolve lap foreign keys.
 
+A stint runs from the pit-exit line to the pit-entry line, so consecutive
+stints need not meet: the gap between one stint's `ended` and the next
+one's `started` is the stop, and belongs to neither driver. A lap crossed
+in that gap (the in-lap finishing in the pit lane) stays with the outgoing
+driver. Stints recorded with a single button press still meet exactly.
+
+Two more tables carry what the operator knows and the car cannot report
+(migration 013), written from the same session snapshot and replaced
+wholesale on every write:
+
+```
+session_flags(flag_id, session_id -> sessions, kind, started, ended)
+fuel_marks(mark_id, session_id -> sessions, at, level_l)
+```
+
+`session_flags` holds red-flag periods (`kind = 'red'`, the only kind so
+far; `ended` NULL while the flag is out). The race clock runs through one;
+the strategy service stops the driver's clock for it and leaves laps driven
+under it out of the burn. `fuel_marks` holds "this many litres were in the
+tank at this moment" as the crew knows it, which the counter fuel model
+re-bases on.
+
 ### Laps
 
 | Table | Key | Holds |
@@ -273,7 +295,8 @@ The working index is `pit_metrics(source, metric, time DESC)`.
 ```
 race_plans(plan_id, session_id -> sessions, revision, race_end_at, race_end_laps, end_authority,
            tank_l, usable_fuel_l, refuel_min_s, service_typical_s, driver_limits JSONB,
-           planned_stops JSONB, car_number, updated_at, updated_by)   UNIQUE (session_id, revision)
+           planned_stops JSONB, car_number, updated_at, updated_by,
+           fuel_used_scale)                                          UNIQUE (session_id, revision)
 ```
 
 The facts about the event the car cannot report (migration 009, P7.8):
@@ -289,6 +312,13 @@ will ask about at 9 am, so an edit inserts and nothing is ever updated.
 computes from; `v_race_plan_history` is all of them. Constraints hold the
 shape honest in the database, not only in the form: usable fuel never
 exceeds the tank, and the authoritative end condition must be present.
+
+`fuel_used_scale` (migration 013, default 1.0) is the litres actually
+burned per litre the ECU's fuel-used counter reports. It multiplies every
+counter figure the strategy service uses. It lives in the plan rather than
+the environment because it is learned during the race -- the
+`strategy.fuel_calibration` finding proposes a value after each
+full-to-surge-light run -- and must be correctable without a restart.
 
 ### The alert ledger
 
@@ -345,6 +375,24 @@ during a refuelling stop -- the car stationary, the engine not yet turning),
 `session_start`, `moving` (the latest on-track level reading, when the
 current stint spans the stop and so has no stationary reading after it),
 `plan` (no reading at all; the plan's tank figure assumed) or `none`.
+
+That is the level model (`OPENLAPS_STRATEGY_FUEL_MODEL=level`), for a car
+whose level sender reads litres. The default **counter model** is for one
+whose sender does not. It stands on the latest moment the tank's contents
+were actually known and subtracts the fuel-used counter since, summed
+straight from the `car.fuel_total_used` samples (restarts from zero
+included) and multiplied by the plan's `fuel_used_scale`; it falls back to
+the per-lap deltas only when the counter has no samples since the anchor.
+`rebase_confidence` then names the anchor: `plan` (the session start, a
+full tank assumed), `full` (the end of a refuelling stop at which the
+sender read full), `assumed_full` (a refuelling stop nobody and nothing
+confirmed), `operator` (a `fuel_marks` row; one made during a stop
+replaces that stop's own anchor) or `surge` (the surge-tank switch stayed
+closed for `OPENLAPS_STRATEGY_SURGE_HOLD_S`: the main tank is empty and
+`OPENLAPS_STRATEGY_SURGE_RESERVE_L` usable litres were left). The sender's
+"full" reading and the switch's "closed" reading are a channel, a
+threshold and a side each, set in the environment; with no threshold set
+neither is looked for. `fuel_added_l` is NULL under this model.
 `burn_laps` is how many clean laps the mean rests on; in-laps, out-laps,
 counter resets and lap-time outliers are excluded. `stop_plan` is the
 remaining stops the numbers now say (`lap`, `type`, `driver_in`, `reason`,
@@ -480,6 +528,8 @@ to keep stable, and it is these views:
 | `v_session_active` | `vehicle_id, session_id, session_type, track_name, started` — one row per open session |
 | `v_race_plan` | The latest `race_plans` revision per session |
 | `v_race_plan_history` | Every `race_plans` revision |
+| `v_session_flags` | `session_id, vehicle_id, kind, started, ended` — red-flag periods, `ended` NULL while the flag is out |
+| `v_fuel_marks` | `session_id, vehicle_id, at, level_l` — what the crew recorded was in the tank |
 | `v_watch_findings` | `finding_id, vehicle_id, monitor, opened_at, closed_at, severity, peak_score, summary` |
 | `v_strategy_latest` | The latest `strategy_state` row per vehicle |
 | `v_strategy_history` | Every `strategy_state` row |

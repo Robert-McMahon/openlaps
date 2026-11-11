@@ -321,6 +321,114 @@ def test_a_restart_adopts_the_open_findings_instead_of_opening_a_second_row(seed
         assert conn.execute("SELECT count(*) FROM watch_findings").fetchone()[0] == 2
 
 
+def test_the_counter_model_reads_its_anchors_and_the_counter_from_the_database(seeded):
+    """The counter fuel model end to end against the seeded race.
+
+    The seed's refuel stop runs 950-1440 s with the level at 59.5 from key-on
+    at 1430 s, and the counter restarts from zero at key-on and reaches
+    1,300 cc by 1600 s. A surge switch and a red flag are added here.
+    """
+    from pit.strategy.model import StrategyPolicy
+
+    with psycopg.connect(seeded) as conn:
+        surge = conn.execute(
+            "INSERT INTO channels (vehicle_id, name, units, value_type) "
+            "VALUES (%s, 'car.surge_tank_switch', 'V', 1) RETURNING channel_key",
+            (VEHICLE,),
+        ).fetchone()[0]
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO samples (time, channel_key, value) VALUES (%s, %s, %s)",
+                [
+                    (T0 + timedelta(seconds=second), surge, volts)
+                    # Off, a two-second flicker at 700 s, then on from 900 s
+                    # until the car is switched off in the stop, off after.
+                    for second, volts in [(0, 0.0), (700, 5.0), (702, 0.0), (900, 5.0)]
+                    + [(second, 5.0) for second in range(905, 950, 5)]
+                    + [(1430, 0.0), (1600, 0.0)]
+                ],
+            )
+        conn.execute(
+            "INSERT INTO session_flags (session_id, kind, started, ended) "
+            "VALUES ('s-1', 'red', %s, %s)",
+            (T0 + timedelta(seconds=300), T0 + timedelta(seconds=420)),
+        )
+        conn.commit()
+
+    now = T0 + timedelta(seconds=1650)
+    # Two level readings fall inside the stop (key-on at 1430 s, exit at 1440 s).
+    policy = StrategyPolicy(
+        fuel_model="counter", full_threshold=59.0, full_min_samples=2, surge_threshold=2.5
+    )
+    database = StrategyDatabase(seeded, VEHICLE, policy)
+    inputs = database.read_inputs("s-1", T0, now)
+
+    assert [(red.started, red.ended) for red in inputs.reds] == [
+        (T0 + timedelta(seconds=300), T0 + timedelta(seconds=420))
+    ]
+    (stop,) = inputs.stops
+    assert stop.full_confirmed is True
+    assert inputs.surge_episodes == [
+        (T0 + timedelta(seconds=700), T0 + timedelta(seconds=702)),
+        (T0 + timedelta(seconds=900), T0 + timedelta(seconds=1430)),
+    ]
+    # The anchor is the confirmed fill at the stop's exit; the surge episode
+    # before it calibrates against the session-start assumption only if that
+    # had been a real reading, which it was not.
+    assert [(span.start, span.end) for span in inputs.counter_spans] == [
+        (T0 + timedelta(seconds=1440), None)
+    ]
+    # 300 cc at 1500 s to 1,300 cc at 1600 s: one litre since the fill.
+    assert inputs.counter_spans[0].used_l == pytest.approx(1.0)
+
+    service = StrategyService(
+        _settings(seeded, policy=policy), database=database, clock=_ticking(now)
+    )
+    state = service.step()
+    assert state is not None
+    assert state.rebase_confidence == "full"
+    assert state.fuel_remaining_l == pytest.approx(60.0 - 1.0)
+    database.close()
+
+    # A threshold the sender never reached leaves the fill unconfirmed.
+    strict = StrategyDatabase(
+        seeded, VEHICLE, StrategyPolicy(fuel_model="counter", full_threshold=80.0)
+    )
+    (stop,) = strict.read_inputs("s-1", T0, now).stops
+    assert stop.full_confirmed is False
+    strict.close()
+
+
+def test_the_counter_span_survives_a_counter_restart(seeded):
+    """From the session start the counter ran to 9,400 cc, restarted, and ran to 1,300."""
+    from pit.strategy.model import FuelMarkFact, StrategyPolicy
+
+    now = T0 + timedelta(seconds=1650)
+    with psycopg.connect(seeded) as conn:
+        conn.execute(
+            "INSERT INTO fuel_marks (session_id, at, level_l) VALUES ('s-1', %s, 50)",
+            (T0 + timedelta(seconds=100),),
+        )
+        conn.commit()
+    database = StrategyDatabase(seeded, VEHICLE, StrategyPolicy(fuel_model="counter"))
+    inputs = database.read_inputs("s-1", T0, now)
+    assert inputs.fuel_marks == [FuelMarkFact(T0 + timedelta(seconds=100), 50.0)]
+    # The unconfirmed refuel at 1440 s is the latest anchor.
+    assert inputs.counter_spans[0].start == T0 + timedelta(seconds=1440)
+    database.close()
+
+    with psycopg.connect(seeded) as conn:
+        count, used = conn.execute(
+            cast(
+                LiteralString, __import__("pit.strategy.database").strategy.database._COUNTER_USED
+            ),
+            (VEHICLE, "car.fuel_total_used", T0 + timedelta(seconds=100), now),
+        ).fetchone()
+    # 1,000 cc at 100 s up to 9,400 cc, then 0 -> 1,300 cc after the restart.
+    assert count > 0
+    assert float(used) == pytest.approx(8400.0 + 1300.0)
+
+
 def test_settings_come_from_the_environment_and_refuse_nonsense():
     env = {
         "TIMESCALE_DSN": "postgresql://x/y",

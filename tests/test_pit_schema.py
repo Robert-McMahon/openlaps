@@ -130,6 +130,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "010_strategy.sql",
             "011_field_timing.sql",
             "012_pit_stops_guarded_json.sql",
+            "013_session_annotations.sql",
         ]
 
     # A real upgrade runs later in a new process/connection, so deployment
@@ -146,6 +147,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "010_strategy.sql",
             "011_field_timing.sql",
             "012_pit_stops_guarded_json.sql",
+            "013_session_annotations.sql",
         ]
         assert pending(conn) == []
 
@@ -221,6 +223,7 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "010_strategy.sql",
             "011_field_timing.sql",
             "012_pit_stops_guarded_json.sql",
+            "013_session_annotations.sql",
         ]
         assert apply_migrations(conn) == [
             "002_trace_read_surface.sql",
@@ -234,6 +237,7 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "010_strategy.sql",
             "011_field_timing.sql",
             "012_pit_stops_guarded_json.sql",
+            "013_session_annotations.sql",
         ]
         assert pending(conn) == []
 

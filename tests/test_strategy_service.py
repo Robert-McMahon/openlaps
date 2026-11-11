@@ -188,7 +188,7 @@ def _ticking(start: datetime):
 def seeded(timescale_dsn):
     with psycopg.connect(timescale_dsn) as conn:
         apply_migrations(conn)
-        _seed(conn, max_continuous_min=20)
+        _seed(conn, max_continuous_min=13)
     return timescale_dsn
 
 
@@ -219,11 +219,12 @@ def test_one_step_writes_the_state_its_findings_and_the_views_read_back(seeded):
     assert state.window_close_lap == 12 + 52
     assert state.window_open_lap == max(12, 200 - 3 * 55)
     assert state.driver == "Driver B"
-    # Driver B started 650 s ago against a 20-minute continuous limit: within
-    # the 10-minute margin, so the finding is open; the first computed stop
+    # Driver B took over 650 s ago but sat in the stop for 440 s of that, so
+    # has driven 210 s against a 13-minute continuous limit: within the
+    # 10-minute margin, so the finding is open; the first computed stop
     # is therefore driver-limited five laps out, refuelling while stopped,
     # and 23 laps ahead of the operator's lap-40 plan, which is drift.
-    assert state.driver_time_remaining_s == pytest.approx(1200 - 650)
+    assert state.driver_time_remaining_s == pytest.approx(780 - 210)
     assert state.stop_plan[0]["lap"] == 12 + 5
     assert state.stop_plan[0]["reason"] == "driver" and state.stop_plan[0]["type"] == "refuel"
     assert state.stop_plan[0]["driver_in"] == "Driver A"

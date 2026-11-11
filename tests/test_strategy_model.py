@@ -276,10 +276,11 @@ def test_time_authority_stop_plan_charges_stop_time_and_folds_refuels_into_drive
     state = evaluate(_inputs(2750, B_PLAN, B_LAPS, B_STINTS, [B_STOP]), POLICY, "lap")
     laps_lo = math.floor(state.laps_to_dry_lo)  # 43
     first = 23 + laps_lo
-    # Driver B has 7200 - 750 s of continuous time; the first stop (fuel) does
-    # not change driver, so the second is driver-limited 21 laps later and,
-    # with the fuel unable to reach the end anyway, refuels at the same time.
-    second = first + math.floor((7200 - 750 - laps_lo * 100) / 100)
+    # Driver B took over at 2000 but sat in the stop until 2450, which is not
+    # drive time: 7200 - 300 s of continuous time left. The first stop (fuel)
+    # does not change driver, so the second is driver-limited later and, with
+    # the fuel unable to reach the end anyway, refuels at the same time.
+    second = first + math.floor((7200 - 300 - laps_lo * 100) / 100)
     assert [stop["lap"] for stop in state.stop_plan][:2] == [first, second]
     assert state.stop_plan[0]["reason"] == "fuel"
     assert state.stop_plan[1]["reason"] == "driver" and state.stop_plan[1]["type"] == "refuel"
@@ -301,10 +302,13 @@ C_OPEN_STOP = StopFact(entry_at=_at(1400), exit_at=None, is_open=True, stop_type
 
 
 def test_driver_within_the_margin_of_a_limit_is_a_warning_finding():
-    state = evaluate(_inputs(1500, C_PLAN, C_LAPS, [C_STINT], [C_OPEN_STOP]), POLICY, "pit")
+    state = evaluate(_inputs(1500, C_PLAN, C_LAPS, [C_STINT]), POLICY, "lap")
     assert state.driver == "Driver A"
     assert state.driver_time_remaining_s == pytest.approx(1800 - 1500)
     assert state.driver_total_remaining_s == pytest.approx(3600 - 1500)
+    # In the pits since 1400 the clock has been stopped for those 100 s.
+    parked = evaluate(_inputs(1500, C_PLAN, C_LAPS, [C_STINT], [C_OPEN_STOP]), POLICY, "pit")
+    assert parked.driver_time_remaining_s == pytest.approx(1800 - 1400)
     finding = next(f for f in state.findings if f.monitor == "strategy.driver_time")
     assert finding.severity == "warning"
     assert finding.summary["limit"] == "continuous"
@@ -313,7 +317,7 @@ def test_driver_within_the_margin_of_a_limit_is_a_warning_finding():
 
 
 def test_driver_over_the_limit_is_critical_and_a_fresh_driver_is_nothing():
-    over = evaluate(_inputs(1900, C_PLAN, C_LAPS, [C_STINT], [C_OPEN_STOP]), POLICY, "pit")
+    over = evaluate(_inputs(1900, C_PLAN, C_LAPS, [C_STINT]), POLICY, "lap")
     finding = next(f for f in over.findings if f.monitor == "strategy.driver_time")
     assert finding.severity == "critical" and finding.summary["remaining_s"] < 0
 
@@ -627,6 +631,44 @@ def test_a_red_flag_pauses_the_driver_clock():
     stopped = evaluate(inputs, POLICY, "timer")
     assert stopped.driver_time_remaining_s == pytest.approx(7200 - 3600 + 600)
     assert stopped.driver_total_remaining_s == pytest.approx(21600 - 7200 + 1200 + 600)
+
+
+def test_a_pit_stop_with_the_same_driver_pauses_the_driver_clock():
+    """Sixty minutes, twenty in the pits, then another sixty before the change."""
+    plan = _plan(driver_limits={"max_continuous_min": 120, "max_total_min": 360})
+    stop = StopFact(_at(3600), _at(4800), False, "service")
+
+    # One stint straddling the stop, as when nobody touches session control.
+    one = [StintFact(1, "Driver A", T0, None, 0, None, None)]
+    state = evaluate(_inputs(4800 + 1800, plan, A_LAPS, one, [stop]), POLICY, "timer")
+    assert state.driver_time_remaining_s == pytest.approx(7200 - 3600 - 1800)
+    assert state.driver_total_remaining_s == pytest.approx(21600 - 3600 - 1800)
+
+    # Still in the pits: the clock is stopped, and a red over the stop counts once.
+    parked = RaceInputs(
+        now=_at(4200),
+        vehicle_id="example-club-racer",
+        session_id="s-1",
+        session_started=T0,
+        plan=plan,
+        laps=A_LAPS,
+        stints=one,
+        stops=[StopFact(_at(3600), None, True, "service")],
+        reds=[FlagFact(_at(3900), None)],
+    )
+    assert evaluate(parked, POLICY, "timer").driver_time_remaining_s == pytest.approx(3600)
+
+    # The same stop recorded by hand as two stints by the same driver: the
+    # continuous clock carries over, and only a different driver resets it.
+    split = [
+        StintFact(1, "Driver A", T0, _at(3600), 0, None, None),
+        StintFact(2, "Driver A", _at(4800), None, 0, None, None),
+    ]
+    state = evaluate(_inputs(4800 + 1800, plan, A_LAPS, split), POLICY, "timer")
+    assert state.driver_time_remaining_s == pytest.approx(7200 - 3600 - 1800)
+    changed = [split[0], StintFact(2, "Driver B", _at(4800), None, 0, None, None)]
+    state = evaluate(_inputs(4800 + 1800, plan, A_LAPS, changed), POLICY, "timer")
+    assert state.driver_time_remaining_s == pytest.approx(7200 - 1800)
 
 
 def test_laps_under_a_red_flag_are_not_racing_burn():

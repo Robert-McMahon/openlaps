@@ -388,7 +388,7 @@ def evaluate(inputs: RaceInputs, policy: StrategyPolicy, trigger: str) -> Strate
 
     stint = stints[-1] if stints else None
     driver_remaining, total_remaining = _driver_time(
-        stint, stints, plan, now, findings, policy, reds
+        stint, stints, plan, now, findings, policy, reds, stops
     )
 
     stop_plan: list[dict[str, Any]] = []
@@ -860,6 +860,34 @@ def _counter_fuel(
     return rebase, fuel
 
 
+def _paused(
+    reds: list[FlagFact], stops: list[StopFact], now: datetime
+) -> list[tuple[datetime, datetime]]:
+    """Red flags and pit stops as merged intervals, so an overlap counts once."""
+    spans = sorted(
+        [(red.started, red.ended or now) for red in reds]
+        + [(stop.entry_at, stop.exit_at or now) for stop in stops]
+    )
+    merged: list[tuple[datetime, datetime]] = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _overlap_seconds(
+    start: datetime, end: datetime, spans: list[tuple[datetime, datetime]]
+) -> float:
+    total = 0.0
+    for span_start, span_end in spans:
+        overlap = (min(end, span_end) - max(start, span_start)).total_seconds()
+        if overlap > 0:
+            total += overlap
+    return total
+
+
 def _driven_seconds(start: datetime, end: datetime, stops: list[StopFact]) -> float:
     """Seconds between ``start`` and ``end`` not spent inside a pit stop."""
     if end <= start:
@@ -1067,23 +1095,34 @@ def _driver_time(
     findings: list[Finding],
     policy: StrategyPolicy,
     reds: list[FlagFact] | None = None,
+    stops: list[StopFact] | None = None,
 ) -> tuple[float | None, float | None]:
-    """Drive time left on each limit; a red flag stops the driver's clock.
+    """Drive time left on each limit; the clock stops while the car is stopped.
 
     A stint runs from the pit-exit line to the pit-entry line, so the stop
-    before it is already outside it. The race clock runs through a red flag
-    but the car is parked, so those seconds are not drive time either.
+    before it is already outside it. A pit stop the same driver sits through
+    and a red flag both pause the clock rather than reset it: the continuous
+    limit counts drive time since the last driver change, across consecutive
+    stints by the same driver.
     """
     if stint is None or plan is None:
         return None, None
-    reds = reds or []
-    continuous_s = (now - stint.started).total_seconds() - red_seconds(stint.started, now, reds)
-    total_s = sum(
-        ((candidate.ended or now) - candidate.started).total_seconds()
-        - red_seconds(candidate.started, candidate.ended or now, reds)
-        for candidate in stints
-        if candidate.driver == stint.driver
-    )
+    paused = _paused(reds or [], stops or [], now)
+
+    def driven(candidate: StintFact) -> float:
+        end = candidate.ended or now
+        return max(
+            (end - candidate.started).total_seconds()
+            - _overlap_seconds(candidate.started, end, paused),
+            0.0,
+        )
+
+    continuous_s = 0.0
+    for candidate in reversed(stints):
+        if candidate.driver != stint.driver:
+            break
+        continuous_s += driven(candidate)
+    total_s = sum(driven(candidate) for candidate in stints if candidate.driver == stint.driver)
     limits = plan.driver_limits
     remaining = total_remaining = None
     if limits.get("max_continuous_min"):

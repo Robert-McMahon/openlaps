@@ -195,7 +195,9 @@ fuel_marks(mark_id, session_id -> sessions, at, level_l)
 `session_flags` holds red-flag periods (`kind = 'red'`, the only kind so
 far; `ended` NULL while the flag is out). The race clock runs through one;
 the strategy service stops the driver's clock for it and leaves laps driven
-under it out of the burn. `fuel_marks` holds "this many litres were in the
+under it out of the burn. A pit stop (`v_pit_stops`) pauses the driver's
+clock the same way; the continuous limit counts drive time since the last
+change of driver, across consecutive stints by the same driver. `fuel_marks` holds "this many litres were in the
 tank at this moment" as the crew knows it, which the counter fuel model
 re-bases on.
 

@@ -27,6 +27,7 @@ from pit.strategy.model import (
     StintFact,
     StopFact,
     StrategyPolicy,
+    _driven_seconds,
     clean_laps,
     counter_requests,
     evaluate,
@@ -675,3 +676,12 @@ def test_laps_under_a_red_flag_are_not_racing_burn():
     red = FlagFact(_at(450), _at(650))  # touches laps 5, 6 and 7
     kept = [lap.lap_number for lap in clean_laps(A_LAPS, [], POLICY, [red])]
     assert kept == [1, 2, 3, 8, 9, 10]
+
+
+def test_a_refuel_stop_nested_in_the_pit_lane_comes_off_the_driven_time_once():
+    # Collie nests its lines, so a fuel stop is two stops: the pit lane and
+    # the refuel bay inside it. Subtracting both counted the bay twice.
+    lane = StopFact(_at(1000), _at(1300), False, "unknown")
+    bay = StopFact(_at(1050), _at(1250), False, "refuel")
+
+    assert _driven_seconds(_at(0), _at(2000), [lane, bay]) == 1700.0

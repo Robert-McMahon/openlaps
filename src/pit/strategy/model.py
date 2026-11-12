@@ -892,13 +892,10 @@ def _driven_seconds(start: datetime, end: datetime, stops: list[StopFact]) -> fl
     """Seconds between ``start`` and ``end`` not spent inside a pit stop."""
     if end <= start:
         return 0.0
-    driven = (end - start).total_seconds()
-    for stop in stops:
-        stop_end = stop.exit_at or end
-        overlap = (min(end, stop_end) - max(start, stop.entry_at)).total_seconds()
-        if overlap > 0:
-            driven -= overlap
-    return max(driven, 0.0)
+    # Merged first: a refuel stop sits inside the pit-lane stop around it
+    # where a track nests its lines, and that time must come off once.
+    in_pits = _overlap_seconds(start, end, _paused([], stops, end))
+    return max((end - start).total_seconds() - in_pits, 0.0)
 
 
 # --- the race end, the window and the stop plan ------------------------------------

@@ -170,8 +170,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
-          "decimals": 3,
+          "unit": "time:m:ss.S",
           "color": {
             "mode": "palette-classic"
           },
@@ -249,10 +248,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT crossed_at AS time, concat(COALESCE(driver, 'unattributed'), ', stint ', COALESCE(stint_number::text, '-')) AS \"metric\", lap_time_s AS \"Lap time\" FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') ORDER BY crossed_at"
+          "rawSql": "SELECT crossed_at AS time, concat(COALESCE(driver, 'unattributed'), ', stint ', COALESCE(stint_number::text, '-')) AS \"metric\", lap_time_s * 1000 AS \"Lap time\" FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') ORDER BY crossed_at"
         }
       ],
-      "description": "One point per lap at the time it was completed, one colour per driver and stint. The legend gives each stint's best, mean and latest lap."
+      "description": "One point per lap at the time it was completed, one colour per driver and stint. The legend gives each stint's best, mean and latest lap. Lap times read minutes:seconds.tenths; the query hands Grafana milliseconds so it can format them as a clock."
     },
     {
       "id": 2,

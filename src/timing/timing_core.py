@@ -57,6 +57,11 @@ class EventType(str, Enum):  # noqa: UP042 - preserve predecessor enum behaviour
     PIT_EXIT = "pit_exit"
 
 
+def _pit_zone(line_name: str) -> str:
+    """What a pit line bounds: ``PitEntryRefuel`` and ``PitExitRefuel`` -> ``pitrefuel``."""
+    return line_name.lower().replace("entry", "").replace("exit", "")
+
+
 @dataclass
 class TimingEvent:
     type: EventType
@@ -83,6 +88,10 @@ class TimingState:
     segment_start_time: float = 0.0
     sectors_done: int = 0  # accepted sector crossings since lap start
     pit_status: str = "track"  # "track" | "pit"
+    # Pit zones entered and not yet left, outermost first. A track can nest
+    # them: at Collie the refuel bay's entry and exit lines sit inside the
+    # pit lane's, so the car is in the pits until the *outer* exit.
+    pit_zones: list[str] = field(default_factory=list)
     lap_valid: bool = True  # current lap eligible for best
     best_lap_time: float = 0.0  # 0 == none yet
     last_lap_time: float = 0.0
@@ -224,13 +233,24 @@ class TimingEngine:
 
     def _handle_pit(self, line, hit, gps) -> list[TimingEvent]:
         ctime, direction, _ = hit
+        zones = self.state.pit_zones
+        zone = _pit_zone(line.name)
         if line.line_type == LineType.PIT_ENTRY:
-            self.state.pit_status = "pit"
+            if zone in zones:  # its exit was missed last time round
+                del zones[zones.index(zone) :]
+            zones.append(zone)
             self.state.lap_valid = False  # this lap is an in-lap
             etype = EventType.PIT_ENTRY
         else:  # pit exit
-            self.state.pit_status = "track"
+            if zone in zones:
+                # Leaving a zone leaves everything entered inside it too, so
+                # a missed inner exit cannot hold the car "in the pits".
+                del zones[zones.index(zone) :]
+            # An exit with no entry on record (the car started the day in
+            # its garage, or an inner entry was missed) closes nothing: the
+            # zones already open stay open.
             etype = EventType.PIT_EXIT
+        self.state.pit_status = "pit" if zones else "track"
         return [
             TimingEvent(
                 type=etype,

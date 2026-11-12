@@ -559,12 +559,19 @@ join.
 
 `v_lap_sectors` emits one row per recorded sector and deliberately emits no
 NULL row for a lap with no sectors. `v_pit_stops` is the one stable view that
-parses raw `lap.event` JSON. It pairs each entry only with the immediately
-following exit for that vehicle, and only when that exit's line type (refuel,
-service, or unknown) matches the entry's — a mismatch means a crossing was
-missed somewhere between them, and closing across it would fabricate a stop.
-It discards orphan exits, keeps an entry with no exit (or a mismatched one) as
-`is_open`, and evaluates an open duration against the current clock.
+parses raw `lap.event` JSON. It pairs each entry with the next pit event of
+its own line type (refuel, service, or unknown) for that vehicle, and only
+when that event is an exit — an entry answered by another entry of its kind
+means a crossing was missed between them, and closing across it would
+fabricate a stop. Pairing within a line type lets stops nest: at Collie a
+fuel stop crosses PitEntry, PitEntryRefuel, PitExitRefuel, PitExit and is two
+rows, the pit-lane stop and the refuel stop inside it, so anything totalling
+time in the pits must merge overlaps. It discards orphan exits, keeps an
+entry with no exit of its kind as `is_open`, and evaluates an open duration
+against the current clock. A stop ends no later than the session it began in:
+once that session has ended, a stop with no exit before then closes at the
+session's end with a NULL `exit_line` (the car finished parked in the pits),
+and a later exit, which belongs to the next session, does not stretch it.
 The JSON/window work makes it more expensive than the other views; materialise
 it later if a race-length query proves too slow.
 

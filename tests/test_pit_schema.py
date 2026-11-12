@@ -131,6 +131,8 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "011_field_timing.sql",
             "012_pit_stops_guarded_json.sql",
             "013_session_annotations.sql",
+            "014_pit_stops_nested.sql",
+            "015_pit_stops_session_cap.sql",
         ]
 
     # A real upgrade runs later in a new process/connection, so deployment
@@ -148,6 +150,8 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "011_field_timing.sql",
             "012_pit_stops_guarded_json.sql",
             "013_session_annotations.sql",
+            "014_pit_stops_nested.sql",
+            "015_pit_stops_session_cap.sql",
         ]
         assert pending(conn) == []
 
@@ -224,6 +228,8 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "011_field_timing.sql",
             "012_pit_stops_guarded_json.sql",
             "013_session_annotations.sql",
+            "014_pit_stops_nested.sql",
+            "015_pit_stops_session_cap.sql",
         ]
         assert apply_migrations(conn) == [
             "002_trace_read_surface.sql",
@@ -238,6 +244,8 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "011_field_timing.sql",
             "012_pit_stops_guarded_json.sql",
             "013_session_annotations.sql",
+            "014_pit_stops_nested.sql",
+            "015_pit_stops_session_cap.sql",
         ]
         assert pending(conn) == []
 
@@ -679,6 +687,117 @@ def test_pit_stops_stay_open_on_a_mismatched_exit_line_type(migrated):
         "SELECT exit_at, is_open, stop_type, entry_line, exit_line FROM v_pit_stops"
     ).fetchall()
     assert rows == [(None, True, "refuel", "PitEntryRefuel", None)]
+
+
+def test_a_refuel_stop_nested_in_the_pit_lane_closes_both_stops(migrated):
+    """Collie, 2026-11-12: the refuel bay's lines sit inside the pit lane's.
+    The pit-lane stop used to be answered by the refuel entry and stay open
+    for good."""
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    _insert_pit_events(
+        migrated,
+        [
+            (start, "pit_entry", "PitEntry"),
+            (start + timedelta(seconds=20), "pit_entry", "PitEntryRefuel"),
+            (start + timedelta(seconds=200), "pit_exit", "PitExitRefuel"),
+            (start + timedelta(seconds=230), "pit_exit", "PitExit"),
+        ],
+    )
+
+    rows = migrated.execute(
+        "SELECT entry_at, exit_at, duration_s, is_open, stop_type, entry_line, exit_line "
+        "FROM v_pit_stops ORDER BY entry_at"
+    ).fetchall()
+    assert rows == [
+        (start, start + timedelta(seconds=230), 230.0, False, "unknown", "PitEntry", "PitExit"),
+        (
+            start + timedelta(seconds=20),
+            start + timedelta(seconds=200),
+            180.0,
+            False,
+            "refuel",
+            "PitEntryRefuel",
+            "PitExitRefuel",
+        ),
+    ]
+
+
+def test_an_entry_followed_by_another_entry_of_its_kind_stays_open(migrated):
+    """The exit between them was missed; closing the first on the second
+    stop's exit would fabricate one long stop."""
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    _insert_pit_events(
+        migrated,
+        [
+            (start, "pit_entry", "PitEntry"),
+            (start + timedelta(minutes=30), "pit_entry", "PitEntry"),
+            (start + timedelta(minutes=31), "pit_exit", "PitExit"),
+        ],
+    )
+
+    rows = migrated.execute(
+        "SELECT entry_at, is_open FROM v_pit_stops ORDER BY entry_at"
+    ).fetchall()
+    assert rows == [(start, True), (start + timedelta(minutes=30), False)]
+
+
+def _end_session(conn: psycopg.Connection, ended: datetime, session_id: str = "s-1") -> None:
+    conn.execute(
+        "UPDATE sessions SET ended = %s, status = 'ended' WHERE session_id = %s",
+        (ended, session_id),
+    )
+
+
+def test_a_stop_still_open_when_its_session_ends_closes_at_the_session_end(migrated):
+    """Collie, 2026-11-12: the car finished practice parked in the pits, never
+    crossed PitExit, and the stop went on counting for hours after the
+    session was ended."""
+    _open_session(migrated)
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    _insert_pit_events(migrated, [(start + timedelta(minutes=50), "pit_entry", "PitEntry")])
+    query = "SELECT exit_at, duration_s, is_open, exit_line FROM v_pit_stops"
+
+    assert migrated.execute(query).fetchone()[::2] == (None, True)
+
+    _end_session(migrated, start + timedelta(minutes=60))
+    assert migrated.execute(query).fetchall() == [
+        (start + timedelta(minutes=60), 600.0, False, None)
+    ]
+
+
+def test_an_exit_after_the_session_ended_does_not_stretch_the_stop(migrated):
+    """The car leaves the pits the next morning, in another session."""
+    _open_session(migrated)
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    _end_session(migrated, start + timedelta(minutes=60))
+    _insert_pit_events(
+        migrated,
+        [
+            (start + timedelta(minutes=50), "pit_entry", "PitEntry"),
+            (start + timedelta(hours=14), "pit_exit", "PitExit"),
+        ],
+    )
+
+    assert migrated.execute(
+        "SELECT exit_at, duration_s, is_open, exit_line FROM v_pit_stops"
+    ).fetchall() == [(start + timedelta(minutes=60), 600.0, False, None)]
+
+
+def test_a_stop_closed_by_its_exit_ignores_the_later_session_end(migrated):
+    _open_session(migrated)
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+    _end_session(migrated, start + timedelta(minutes=60))
+    _insert_pit_events(
+        migrated,
+        [
+            (start + timedelta(minutes=10), "pit_entry", "PitEntry"),
+            (start + timedelta(minutes=12), "pit_exit", "PitExit"),
+        ],
+    )
+
+    assert migrated.execute(
+        "SELECT exit_at, duration_s, is_open, exit_line FROM v_pit_stops"
+    ).fetchall() == [(start + timedelta(minutes=12), 120.0, False, "PitExit")]
 
 
 def test_pit_stops_ignore_non_json_text_on_other_channels(migrated):

@@ -169,11 +169,11 @@
     },
     {
       "id": 1,
-      "title": "Lap",
+      "title": "Race laps completed",
       "type": "stat",
       "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
       },
       "gridPos": {
         "x": 0,
@@ -208,7 +208,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/^Race laps completed$/",
           "values": false
         }
       },
@@ -216,27 +216,17 @@
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
-          "topic": "openlaps/$vehicle/lap.number"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, count(*) AS \"Race laps completed\" FROM v_laps l WHERE l.vehicle_id = '$vehicle' AND l.session_id = (SELECT session_id FROM v_session_active WHERE vehicle_id = '$vehicle') AND l.crossed_at > (SELECT started FROM v_session_active WHERE vehicle_id = '$vehicle')"
         }
       ],
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "value"
-              ]
-            }
-          }
-        }
-      ],
-      "timeFrom": "1m",
       "maxDataPoints": 600,
-      "hideTimeOverride": true
+      "description": "Start/finish crossings since the session start set in session control, so formation laps before the start are not counted. Move the start under Edit timeline and this follows."
     },
     {
       "id": 2,
@@ -1193,7 +1183,7 @@
         "w": 8,
         "h": 12
       },
-      "description": "Newest lap first, for the session the latest lap belongs to. To best is seconds off the fastest valid lap of that session. Lap numbers come from the car and restart when its agent restarts.",
+      "description": "Newest lap first, for the session the latest lap belongs to. Laps are numbered from the session start set in session control; crossings before it read pre-start. To best is seconds off the fastest valid lap since the start. Once the session has ended every lap is numbered.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -1224,7 +1214,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 55
+                "value": 80
               }
             ]
           },
@@ -1292,7 +1282,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT lap_number AS \"Lap\",\n       concat(floor(lap_time_s / 60)::int, ':', to_char(lap_time_s - 60 * floor(lap_time_s / 60), 'FM00.000')) AS \"Time\",\n       round((lap_time_s - min(lap_time_s) FILTER (WHERE valid) OVER ())::numeric, 3) AS \"To best\",\n       COALESCE(driver, '-') AS \"Driver\",\n       concat_ws(', ', NULLIF(pit_status, 'track'), CASE WHEN NOT valid THEN 'invalid' END) AS \"Note\",\n       crossed_at AS time\nFROM v_laps\nWHERE vehicle_id = '$vehicle'\n  AND session_id IS NOT DISTINCT FROM (SELECT session_id FROM v_laps WHERE vehicle_id = '$vehicle' ORDER BY crossed_at DESC LIMIT 1)\nORDER BY crossed_at DESC\nLIMIT 25"
+          "rawSql": "SELECT CASE WHEN l.crossed_at > COALESCE(a.started, '-infinity') THEN (count(*) FILTER (WHERE l.crossed_at > COALESCE(a.started, '-infinity')) OVER (PARTITION BY l.session_id ORDER BY l.crossed_at))::text ELSE 'pre-start' END AS \"Lap\",\n       concat(floor(lap_time_s / 60)::int, ':', to_char(lap_time_s - 60 * floor(lap_time_s / 60), 'FM00.000')) AS \"Time\",\n       round((lap_time_s - min(lap_time_s) FILTER (WHERE valid AND l.crossed_at > COALESCE(a.started, '-infinity')) OVER ())::numeric, 3) AS \"To best\",\n       COALESCE(driver, '-') AS \"Driver\",\n       concat_ws(', ', NULLIF(pit_status, 'track'), CASE WHEN NOT valid THEN 'invalid' END) AS \"Note\",\n       l.crossed_at AS time\nFROM v_laps l\nLEFT JOIN v_session_active a ON a.session_id = l.session_id AND a.vehicle_id = l.vehicle_id\nWHERE l.vehicle_id = '$vehicle'\n  AND l.session_id IS NOT DISTINCT FROM (SELECT session_id FROM v_laps WHERE vehicle_id = '$vehicle' ORDER BY crossed_at DESC LIMIT 1)\nORDER BY l.crossed_at DESC\nLIMIT 25"
         }
       ]
     }

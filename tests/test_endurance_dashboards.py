@@ -80,7 +80,6 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation_and_fix_quality() 
     assert len(alert_strips) == 1
     assert len(non_row_panels) - len(alert_strips) <= 13
     assert {
-        "openlaps/$vehicle/lap.number",
         "openlaps/$vehicle/timing.lap_elapsed_pit",
         "openlaps/$vehicle/timing.sector_elapsed_pit",
         "openlaps/$vehicle/lap.last_time",

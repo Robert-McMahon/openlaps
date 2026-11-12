@@ -59,8 +59,8 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
-        "query": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "definition": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
         "refresh": 1,
         "options": [],
         "includeAll": true,
@@ -200,6 +200,10 @@
         "overrides": []
       },
       "options": {
+        "text": {
+          "titleSize": 16,
+          "valueSize": 44
+        },
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -267,6 +271,10 @@
         "overrides": []
       },
       "options": {
+        "text": {
+          "titleSize": 16,
+          "valueSize": 44
+        },
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -343,6 +351,10 @@
         "overrides": []
       },
       "options": {
+        "text": {
+          "titleSize": 16,
+          "valueSize": 44
+        },
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -411,6 +423,10 @@
         "overrides": []
       },
       "options": {
+        "text": {
+          "titleSize": 16,
+          "valueSize": 44
+        },
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -487,6 +503,10 @@
         "overrides": []
       },
       "options": {
+        "text": {
+          "titleSize": 16,
+          "valueSize": 44
+        },
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -542,7 +562,7 @@
         "x": 0,
         "y": 9,
         "w": 16,
-        "h": 10
+        "h": 20
       },
       "fieldConfig": {
         "defaults": {
@@ -562,9 +582,10 @@
       },
       "options": {
         "view": {
-          "id": "fit",
-          "allLayers": true,
-          "padding": 15
+          "id": "coords",
+          "lat": -33.4334,
+          "lon": 116.2444,
+          "zoom": 16.2
         },
         "controls": {
           "showZoom": true,
@@ -575,9 +596,11 @@
           "showDebug": false
         },
         "basemap": {
-          "type": "default",
+          "type": "esri-xyz",
           "name": "Basemap",
-          "config": {}
+          "config": {
+            "server": "world-imagery"
+          }
         },
         "tooltip": {
           "mode": "details"
@@ -699,7 +722,7 @@
         "x": 16,
         "y": 9,
         "w": 8,
-        "h": 5
+        "h": 4
       },
       "fieldConfig": {
         "defaults": {
@@ -830,9 +853,9 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 14,
+        "y": 29,
         "w": 8,
-        "h": 5
+        "h": 4
       },
       "fieldConfig": {
         "defaults": {
@@ -895,7 +918,7 @@
       "title": "Current driver",
       "gridPos": {
         "x": 16,
-        "y": 19,
+        "y": 25,
         "w": 4,
         "h": 4
       },
@@ -923,7 +946,7 @@
       },
       "gridPos": {
         "x": 20,
-        "y": 19,
+        "y": 25,
         "w": 4,
         "h": 4
       },
@@ -1004,7 +1027,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 29,
         "w": 8,
         "h": 4
       },
@@ -1085,7 +1108,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 19,
+        "y": 29,
         "w": 8,
         "h": 4
       },
@@ -1153,6 +1176,123 @@
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT now() AS time, to_timestamp(max((value_text::jsonb ->> 'time')::double precision)) AS \"Last sector crossing\" FROM v_samples_named WHERE vehicle_id = '$vehicle' AND channel = 'lap.event' AND value_text::jsonb ->> 'type' IN ('sector_completed', 'lap_completed') AND $__timeFilter(time)"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Recent laps",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 13,
+        "w": 8,
+        "h": 12
+      },
+      "description": "Newest lap first, for the session the latest lap belongs to. To best is seconds off the fastest valid lap of that session. Lap numbers come from the car and restart when its agent restarts.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lap"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 55
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "To best"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "time"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Crossed"
+              },
+              {
+                "id": "unit",
+                "value": "time:HH:mm:ss"
+              },
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false,
+          "reducer": [
+            "sum"
+          ],
+          "countRows": false,
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT lap_number AS \"Lap\",\n       concat(floor(lap_time_s / 60)::int, ':', to_char(lap_time_s - 60 * floor(lap_time_s / 60), 'FM00.000')) AS \"Time\",\n       round((lap_time_s - min(lap_time_s) FILTER (WHERE valid) OVER ())::numeric, 3) AS \"To best\",\n       COALESCE(driver, '-') AS \"Driver\",\n       concat_ws(', ', NULLIF(pit_status, 'track'), CASE WHEN NOT valid THEN 'invalid' END) AS \"Note\",\n       crossed_at AS time\nFROM v_laps\nWHERE vehicle_id = '$vehicle'\n  AND session_id IS NOT DISTINCT FROM (SELECT session_id FROM v_laps WHERE vehicle_id = '$vehicle' ORDER BY crossed_at DESC LIMIT 1)\nORDER BY crossed_at DESC\nLIMIT 25"
         }
       ]
     }

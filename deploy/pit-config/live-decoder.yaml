@@ -78,6 +78,13 @@ channels:
     max_hz: 1
   - match: "car.oil_temp"
     max_hz: 1
+  # TEMPERATURE2's gearbox oil and TEMPERATURE1's inlet air, for the car
+  # dashboard's live gauges. Same reasoning and the same Kelvin caveat as
+  # the two above. Adds a nominal 2 msg/s to the aggregate; not re-measured.
+  - match: "car.gearbox_oil_temp"
+    max_hz: 1
+  - match: "car.air_temp"
+    max_hz: 1
 
   # ---- fuel ----
   # FUEL_LEVEL at ~4.2 Hz. The tank drains over laps, not seconds, and the

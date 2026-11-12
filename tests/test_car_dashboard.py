@@ -24,6 +24,8 @@ LIVE_CHANNELS = {
     "car.fuel_pressure",
     "car.fuel_level",
     "car.fuel_total_used",
+    "car.gearbox_oil_temp",
+    "car.air_temp",
 }
 CONTEXT_CHANNELS = {
     "lap.number",
@@ -149,9 +151,10 @@ def test_temperature_panels_declare_units_and_dashboard_has_no_credentials() -> 
             assert unit == "celsius"
             assert _has_kelvin_to_celsius_conversion(panel)
         else:
-            # Trace panels plot the stored samples as-is, which are Kelvin.
-            assert unit == "kelvin"
+            # Trace panels convert the stored Kelvin samples in the query.
+            assert unit == "celsius"
             assert not _has_kelvin_to_celsius_conversion(panel)
+            assert all("- 273.15" in target["rawSql"] for target in panel["targets"])
 
     serialized = json.dumps(dashboard).lower()
     assert not any(term in serialized for term in ("password", "api_key", "bearer "))

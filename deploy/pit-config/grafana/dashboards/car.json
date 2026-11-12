@@ -1346,6 +1346,224 @@
       "type": "stat"
     },
     {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "max": 150,
+          "min": 20,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 110
+              },
+              {
+                "color": "red",
+                "value": 130
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 19
+      },
+      "hideTimeOverride": true,
+      "id": 45,
+      "maxDataPoints": 600,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.gearbox_oil_temp"
+        }
+      ],
+      "timeFrom": "1m",
+      "title": "Gearbox oil temperature",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "fixed": "273.1"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
+        }
+      ],
+      "type": "gauge",
+      "description": "Haltech GEARBOX_OIL_TEMPERATURE, converted from Kelvin in-panel. Colour steps (110 / 130 °C) are generic placeholders, not limits set for this gearbox."
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 19
+      },
+      "hideTimeOverride": true,
+      "id": 46,
+      "maxDataPoints": 600,
+      "options": {
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.air_temp"
+        }
+      ],
+      "timeFrom": "1m",
+      "title": "Inlet air temperature",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "fixed": "273.1"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
+        }
+      ],
+      "type": "gauge",
+      "description": "Haltech AIR_TEMPERATURE (the inlet air sensor), converted from Kelvin in-panel. Colour steps (60 / 80 °C) are generic placeholders, not limits set for this engine."
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -2667,7 +2885,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Throttle is percent on the left axis; the brake is a pedal switch (0 released, 1 applied) on the right axis, so its average over a bucket is the share of that bucket spent on the brake.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2781,6 +2999,42 @@
               {
                 "id": "custom.lineWidth",
                 "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^Brake /"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Brake switch (0 = released, 1 = applied)"
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "stepAfter"
               }
             ]
           }
@@ -3147,7 +3401,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3196,7 +3450,7 @@
               }
             ]
           },
-          "unit": "kelvin"
+          "unit": "celsius"
         },
         "overrides": [
           {
@@ -3265,7 +3519,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Coolant Average\", min(min) AS \"Coolant Minimum\", max(max) AS \"Coolant Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.coolant_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) - 273.15 AS \"Coolant Average\", min(min) - 273.15 AS \"Coolant Minimum\", max(max) - 273.15 AS \"Coolant Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.coolant_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "A"
         },
         {
@@ -3276,7 +3530,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Coolant Average\", min(value) AS \"Coolant Minimum\", max(value) AS \"Coolant Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.coolant_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) - 273.15 AS \"Coolant Average\", min(value) - 273.15 AS \"Coolant Minimum\", max(value) - 273.15 AS \"Coolant Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.coolant_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "B"
         }
       ],
@@ -3288,7 +3542,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3337,7 +3591,7 @@
               }
             ]
           },
-          "unit": "kelvin"
+          "unit": "celsius"
         },
         "overrides": [
           {
@@ -3406,7 +3660,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Oil temperature Average\", min(min) AS \"Oil temperature Minimum\", max(max) AS \"Oil temperature Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) - 273.15 AS \"Oil temperature Average\", min(min) - 273.15 AS \"Oil temperature Minimum\", max(max) - 273.15 AS \"Oil temperature Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "A"
         },
         {
@@ -3417,7 +3671,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Oil temperature Average\", min(value) AS \"Oil temperature Minimum\", max(value) AS \"Oil temperature Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) - 273.15 AS \"Oil temperature Average\", min(value) - 273.15 AS \"Oil temperature Minimum\", max(value) - 273.15 AS \"Oil temperature Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "B"
         }
       ],
@@ -4188,7 +4442,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Axis is fixed at 0 to 132.5 L, the full tank.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4237,7 +4491,9 @@
               }
             ]
           },
-          "unit": "litre"
+          "unit": "litre",
+          "min": 0,
+          "max": 132.5
         },
         "overrides": [
           {
@@ -4464,6 +4720,288 @@
       ],
       "title": "Fuel used since engine start",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gearbox oil temperature Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Gearbox oil temperature Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gearbox oil temperature Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 95
+      },
+      "id": 47,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) - 273.15 AS \"Gearbox oil temperature Average\", min(min) - 273.15 AS \"Gearbox oil temperature Minimum\", max(max) - 273.15 AS \"Gearbox oil temperature Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.gearbox_oil_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) - 273.15 AS \"Gearbox oil temperature Average\", min(value) - 273.15 AS \"Gearbox oil temperature Minimum\", max(value) - 273.15 AS \"Gearbox oil temperature Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.gearbox_oil_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Gearbox oil temperature",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inlet air temperature Minimum"
+            },
+            "properties": [
+              {
+                "id": "custom.fillBelowTo",
+                "value": "Inlet air temperature Maximum"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 18
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Inlet air temperature Maximum"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 103
+      },
+      "id": 48,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) - 273.15 AS \"Inlet air temperature Average\", min(min) - 273.15 AS \"Inlet air temperature Minimum\", max(max) - 273.15 AS \"Inlet air temperature Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.air_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) - 273.15 AS \"Inlet air temperature Average\", min(value) - 273.15 AS \"Inlet air temperature Minimum\", max(value) - 273.15 AS \"Inlet air temperature Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.air_temp'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Inlet air temperature",
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -4507,12 +5045,12 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "definition": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
         "includeAll": true,
         "label": "Session (completed laps)",
         "name": "session",
         "options": [],
-        "query": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
         "refresh": 1,
         "regex": "",
         "regexApplyTo": "value",

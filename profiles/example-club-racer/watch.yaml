@@ -110,9 +110,9 @@ monitors:
     gate: on_track
   oil_pump_envelope:
     kind: envelope
-    target: car.oil_pump_current
+    target: car.cam_scavenge_pump_current
     conditioned_on:
-    - channel: car.oil_pump_load
+    - channel: car.cam_scavenge_pump_load
       bins: 1
       active_above: 0
     - channel: car.battery_v
@@ -249,9 +249,9 @@ monitors:
     gate: on_track
   oil_pump_drift:
     kind: drift
-    target: car.oil_pump_current
+    target: car.cam_scavenge_pump_current
     when:
-    - channel: car.oil_pump_load
+    - channel: car.cam_scavenge_pump_load
       above: 0
     baseline_laps: 5
     min_lap_samples: 20

@@ -212,17 +212,27 @@ class SerialCollector:
 
     def _read_until_error(self, port: SerialPort, stop: threading.Event) -> bool:
         received = False
+        pending: list[bytes] = []
+        buffer = bytearray()
+        chunked = hasattr(port, "read") and hasattr(port, "in_waiting")
+        t_mono_ns = 0
         while not stop.is_set():
-            try:
-                line = port.readline(MAX_SENTENCE_BYTES + 1)
-            except (serial.SerialException, OSError) as exc:
-                self.stats.read_errors += 1
-                logger.warning("serial %s: read failed: %s", self.name, exc)
-                return received
-            if not line:
+            if not pending:
+                try:
+                    if chunked:
+                        t_mono_ns = self._read_chunk(port, buffer, pending)
+                    else:
+                        line = port.readline(MAX_SENTENCE_BYTES + 1)
+                        t_mono_ns = time.monotonic_ns()
+                        if line:
+                            pending.append(line)
+                except (serial.SerialException, OSError) as exc:
+                    self.stats.read_errors += 1
+                    logger.warning("serial %s: read failed: %s", self.name, exc)
+                    return received
                 continue
+            line = pending.pop(0)
             received = True
-            t_mono_ns = time.monotonic_ns()
             if self._raw_log_dir is not None:
                 # Before the oversized check on purpose: raw capture keeps
                 # everything the port produced, including what decode skips.
@@ -238,6 +248,43 @@ class SerialCollector:
                 self._time_feed.handle_line(line, arrival_ns)
             self.handle_line(line, t_mono_ns=t_mono_ns)
         return received
+
+    @staticmethod
+    def _read_chunk(port: SerialPort, buffer: bytearray, pending: list[bytes]) -> int:
+        """Read whatever has arrived and split it into lines; returns the arrival stamp.
+
+        pyserial's ``readline`` fetches one byte per call, and every call
+        gives up the GIL. With the agent's main thread busy, getting it back
+        costs up to a switch interval (5 ms) *per byte*, which caps the
+        reader near 2 kB/s against the receiver's 5 kB/s at 50 Hz: on
+        2026-11-12 the car's fixes reached the pit 11 minutes late and
+        replayed at a third of real speed, stamped as fresh, and chrony
+        dropped the PPS because its RMC seconds were stale. One read per
+        burst costs one GIL round trip however many bytes it carries.
+
+        Lines completed by the same read share its stamp. At 115200 baud a
+        blocked read returns within a byte time of data arriving, so that is
+        the terminator's arrival to well under a millisecond unless the
+        thread was held off, and then by no more than it was held off.
+        """
+        waiting = port.in_waiting  # type: ignore[attr-defined]
+        chunk = port.read(max(1, min(waiting, 65536)))  # type: ignore[attr-defined]
+        t_mono_ns = time.monotonic_ns()
+        if not chunk:
+            return t_mono_ns
+        buffer += chunk
+        while True:
+            end = buffer.find(b"\n")
+            if end < 0:
+                break
+            pending.append(bytes(buffer[: end + 1]))
+            del buffer[: end + 1]
+        if len(buffer) > MAX_SENTENCE_BYTES:
+            # No terminator in sight: hand it on unterminated so the caller
+            # counts it as oversized, as readline's size cap used to.
+            pending.append(bytes(buffer))
+            buffer.clear()
+        return t_mono_ns
 
     def _raw_capture(self, line: bytes, t_mono_ns: int) -> None:
         """Tee one received line, wall-clock stamped, to the capture run.

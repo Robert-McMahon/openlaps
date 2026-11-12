@@ -85,6 +85,15 @@ function serverNow() {
   return Date.now() + clockOffsetMs;
 }
 
+// When the session clock stops: an ended session has no end time of its
+// own in the payload, but its last stint closes at the same instant.
+function sessionEnd() {
+  if (session.status !== "ended") return serverNow();
+  const stints = session.stints || [];
+  const last = stints[stints.length - 1];
+  return last !== undefined && last.end_ms != null ? last.end_ms : serverNow();
+}
+
 function renderSession() {
   const badge = $("status-badge");
   const detail = $("status-detail");
@@ -109,7 +118,7 @@ function renderSession() {
       ["Track", session.track_name || "—"],
       ["Car", session.car || "—"],
       ["Stint", "#" + session.stint_number + " — " + session.driver],
-      ["Session time", fmtDuration(serverNow() - session.session_start)],
+      ["Session time", fmtDuration(sessionEnd() - session.session_start)],
     ];
     if (active) {
       rows.push(["Stint time", fmtDuration(serverNow() - session.stint_start)]);

@@ -308,3 +308,63 @@ def test_the_retry_loop_handles_any_drivers_configuration_error():
 
     assert attempts, "the driver was never asked to configure"
     assert collector.stats.configuration_failures == len(attempts)
+
+
+class BurstSerial(FakeSerial):
+    """A port with pyserial's `read`/`in_waiting`: bytes arrive in bursts."""
+
+    def __init__(self, bursts: list[bytes], stop: threading.Event) -> None:
+        super().__init__([], stop)
+        self.bursts = list(bursts)
+        self.reads = 0
+
+    @property
+    def in_waiting(self) -> int:
+        return len(self.bursts[0]) if self.bursts else 0
+
+    def read(self, size: int = 1) -> bytes:
+        self.reads += 1
+        if not self.bursts:
+            assert self.stop is not None
+            self.stop.set()
+            return b""
+        burst, self.bursts[0] = self.bursts[0][:size], self.bursts[0][size:]
+        if not self.bursts[0]:
+            self.bursts.pop(0)
+        return burst
+
+    def readline(self, size: int = -1) -> bytes:
+        raise AssertionError("a port that can read in bursts must not be read a byte at a time")
+
+
+def test_a_burst_of_sentences_costs_one_read_not_one_per_byte():
+    # pyserial's readline is one read per byte, each giving up the GIL; under
+    # a busy main thread that starved the reader to a third of the receiver's
+    # rate on 2026-11-12 and delivered fixes 11 minutes late.
+    stop = threading.Event()
+    emitted: list[Sample] = []
+    port = BurstSerial([RMC[:20], RMC[20:] + RMC + RMC[:5], RMC[5:]], stop)
+    collector = SerialCollector(
+        _config(configure_on_start=False), emitted.append, serial_factory=lambda _: port
+    )
+
+    collector.run(stop)
+
+    assert collector.stats.lines == 3
+    assert collector.stats.oversized_lines == 0
+    assert port.reads == 4  # three bursts and the empty read that ends the run
+    assert len(emitted) == 3 * (len(emitted) // 3) > 0
+
+
+def test_a_burst_without_a_terminator_is_counted_oversized_and_dropped():
+    stop = threading.Event()
+    emitted: list[Sample] = []
+    port = BurstSerial([b"x" * 2000, b"\r\n" + RMC], stop)
+    collector = SerialCollector(
+        _config(configure_on_start=False), emitted.append, serial_factory=lambda _: port
+    )
+
+    collector.run(stop)
+
+    assert collector.stats.oversized_lines == 1
+    assert emitted  # the sentence after the junk still decodes

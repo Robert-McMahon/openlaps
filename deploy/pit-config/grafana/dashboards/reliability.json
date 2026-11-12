@@ -485,7 +485,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.pd16_total_current' THEN avg END) AS \"PDM total\", max(CASE WHEN channel = 'car.thermo_fan_1_current' THEN avg END) AS \"Thermo fan\", max(CASE WHEN channel = 'car.fuel_pump_current' THEN avg END) AS \"Fuel pump\", max(CASE WHEN channel = 'car.ign_coils_current' THEN avg END) AS \"Ignition coils\", max(CASE WHEN channel = 'car.power_steering_pump_1_current' THEN avg END) AS \"Power steering\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.pd16_total_current','car.thermo_fan_1_current','car.fuel_pump_current','car.ign_coils_current','car.power_steering_pump_1_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.pd16_total_current' THEN avg END) AS \"PDM total\", max(CASE WHEN channel = 'car.thermo_fan_1_current' THEN avg END) AS \"Thermo fan\", max(CASE WHEN channel = 'car.fuel_pump_current' THEN avg END) AS \"Fuel pump\", max(CASE WHEN channel = 'car.ign_coils_current' THEN avg END) AS \"Ignition coils\", max(CASE WHEN channel = 'car.power_steering_pump_1_current' THEN avg END) AS \"Power steering\", max(CASE WHEN channel IN ('car.inj_current', 'car.water_injection_pump_current') THEN avg END) AS \"Water injection pump\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.pd16_total_current','car.thermo_fan_1_current','car.fuel_pump_current','car.ign_coils_current','car.power_steering_pump_1_current','car.inj_current','car.water_injection_pump_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
       ]
     },

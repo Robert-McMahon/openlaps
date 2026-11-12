@@ -157,7 +157,7 @@
     {
       "id": 1,
       "title": "Lap-time scatter by driver and stint",
-      "type": "xychart",
+      "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
@@ -171,9 +171,45 @@
       "fieldConfig": {
         "defaults": {
           "unit": "s",
+          "decimals": 3,
           "color": {
             "mode": "palette-classic"
           },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "points",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 0,
+            "pointSize": 7,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "always",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -186,7 +222,23 @@
         },
         "overrides": []
       },
-      "options": {},
+      "options": {
+        "legend": {
+          "calcs": [
+            "min",
+            "mean",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
       "targets": [
         {
           "refId": "A",
@@ -197,9 +249,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT crossed_at AS time, lap_time_s AS \"Lap time\", stint_number AS \"Stint number\" FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') ORDER BY crossed_at"
+          "rawSql": "SELECT crossed_at AS time, concat(COALESCE(driver, 'unattributed'), ', stint ', COALESCE(stint_number::text, '-')) AS \"metric\", lap_time_s AS \"Lap time\" FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') ORDER BY crossed_at"
         }
-      ]
+      ],
+      "description": "One point per lap at the time it was completed, one colour per driver and stint. The legend gives each stint's best, mean and latest lap."
     },
     {
       "id": 2,
@@ -300,10 +353,10 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT a.crossed_at AS time, to_char(make_interval(secs => a.split_time_s), 'FMMI:SS.MS') AS \"Selected lap sector\", to_char(make_interval(secs => b.split_time_s), 'FMMI:SS.MS') AS \"Comparison lap sector\", to_char(a.split_time_s - b.split_time_s, 'S990.000') AS \"Sector delta\" FROM v_lap_sectors a JOIN v_lap_sectors b ON b.vehicle_id = a.vehicle_id AND b.sector = a.sector WHERE a.lap_id::text = '$lap' AND b.lap_id::text = '$lap_compare' AND a.vehicle_id = '$vehicle' ORDER BY a.sector"
+          "rawSql": "WITH pick AS (SELECT CASE WHEN '$lap' = 'all' THEN (SELECT lap_id::text FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') ORDER BY crossed_at DESC LIMIT 1) ELSE '$lap' END AS selected_id, CASE WHEN '$lap_compare' = 'all' THEN (SELECT lap_id::text FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND valid AND pit_status = 'track' ORDER BY lap_time_s LIMIT 1) ELSE '$lap_compare' END AS compare_id) SELECT a.crossed_at AS time, a.sector AS \"Sector\", concat('Lap ', a.lap_number) AS \"Selected lap\", to_char(make_interval(secs => a.split_time_s), 'FMMI:SS.MS') AS \"Selected lap sector\", concat('Lap ', b.lap_number) AS \"Comparison lap\", to_char(make_interval(secs => b.split_time_s), 'FMMI:SS.MS') AS \"Comparison lap sector\", to_char(a.split_time_s - b.split_time_s, 'S990.000') AS \"Sector delta\" FROM pick JOIN v_lap_sectors a ON a.lap_id::text = pick.selected_id JOIN v_lap_sectors b ON b.lap_id::text = pick.compare_id AND b.vehicle_id = a.vehicle_id AND b.sector = a.sector WHERE a.vehicle_id = '$vehicle' ORDER BY a.sector"
         }
       ],
-      "description": "Both pickers are keyed by lap_id, never by a possibly repeated lap number. Sector times are definitive and show milliseconds; the delta is signed seconds."
+      "description": "Pick two laps to compare sector by sector. With a picker left on All, the selected lap is the latest lap and the comparison lap is the fastest clean lap in the time range. Both pickers are keyed by lap_id, never by a possibly repeated lap number. The delta is signed seconds, selected minus comparison."
     },
     {
       "id": 4,
@@ -322,9 +375,33 @@
       "fieldConfig": {
         "defaults": {
           "unit": "s",
+          "decimals": 3,
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "semi-dark-blue"
           },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 60,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 0,
+            "pointSize": {
+              "fixed": 7
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "show": "points"
+          },
+          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -335,9 +412,112 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lap in stint"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Lap in stint"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lap time"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "Lap time"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Excluded lap time"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
       },
-      "options": {},
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mapping": "manual",
+        "series": [
+          {
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            },
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "Lap in stint"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Lap time"
+              }
+            }
+          },
+          {
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            },
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "Lap in stint"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Excluded lap time"
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
       "targets": [
         {
           "refId": "A",
@@ -346,12 +526,12 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT crossed_at AS time, lap_time_s AS \"Lap time\", row_number() OVER (PARTITION BY session_id, stint_number ORDER BY crossed_at) AS \"Lap in stint\", CASE WHEN valid AND pit_status = 'track' THEN 0 ELSE 1 END AS \"Excluded outlier\" FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$stint' = 'all' OR stint_number::text = '$stint') ORDER BY crossed_at"
+          "rawSql": "SELECT crossed_at AS time, lap_in_stint AS \"Lap in stint\", CASE WHEN clean THEN lap_time_s END AS \"Lap time\", CASE WHEN NOT clean THEN lap_time_s END AS \"Excluded lap time\" FROM (SELECT crossed_at, lap_time_s, row_number() OVER (PARTITION BY session_id, stint_number ORDER BY crossed_at) AS lap_in_stint, (valid AND pit_status = 'track') AS clean FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND ('$stint' = 'all' OR stint_number::text = '$stint')) laps ORDER BY crossed_at"
         }
       ],
-      "description": "Traffic, pit and invalid laps remain visible but are explicitly excluded from the degradation trend."
+      "description": "Lap time against the lap's position in its stint. Blue points are clean laps; red points are pit and invalid laps, shown but not part of the trend."
     }
   ]
 }

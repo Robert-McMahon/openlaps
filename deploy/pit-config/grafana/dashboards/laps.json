@@ -531,7 +531,8 @@
           "rawSql": "SELECT crossed_at AS time, lap_in_stint AS \"Lap in stint\", CASE WHEN clean THEN lap_time_s * 1000 END AS \"Lap time\", CASE WHEN NOT clean THEN lap_time_s * 1000 END AS \"Excluded lap time\" FROM (SELECT crossed_at, lap_time_s, row_number() OVER (PARTITION BY session_id, stint_number ORDER BY crossed_at) AS lap_in_stint, (valid AND pit_status = 'track') AS clean FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND ('$stint' = 'all' OR stint_number::text = '$stint')) laps ORDER BY crossed_at"
         }
       ],
-      "description": "Lap time against the lap's position in its stint. Blue points are clean laps; red points are pit and invalid laps, shown but not part of the trend."
+      "description": "Lap time against the lap's position in its stint. Blue points are clean laps; red points are pit and invalid laps, shown but not part of the trend.",
+      "pluginVersion": "12.4.9"
     }
   ]
 }

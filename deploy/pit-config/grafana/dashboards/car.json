@@ -1436,24 +1436,32 @@
     },
     {
       "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
       },
-      "description": "Haltech TOTAL_FUEL_USED (car.fuel_total_used), converted from cc to litres in-panel. The ECU zeroes this counter at every engine start, so it reads 0 from key-on until first fire and holds the previous run's total until the next start. Fuel out only: it knows nothing about fuel added at a stop.",
+      "description": "The strategy service's counter-based fuel remaining: the last anchor (full tank, operator fuel mark, or the surge switch closing, which re-anchors to 1.8 L) minus the Haltech fuel-used counter since then, carried across engine restarts. Updates about once a lap. It only rises after a stop once the refuel is recorded in session control.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "decimals": 2,
+          "decimals": 1,
           "mappings": [],
           "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
                 "color": "green",
-                "value": 0
+                "value": 20
               }
             ]
           },
@@ -1467,9 +1475,7 @@
         "x": 6,
         "y": 19
       },
-      "hideTimeOverride": true,
       "id": 43,
-      "maxDataPoints": 600,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
@@ -1480,7 +1486,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/^Fuel remaining$/",
           "values": false
         },
         "showPercentChange": false,
@@ -1491,49 +1497,18 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
           "refId": "A",
-          "topic": "openlaps/$vehicle/car.fuel_total_used"
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT time, fuel_remaining_l AS \"Fuel remaining\" FROM v_strategy_history WHERE $__timeFilter(time) AND vehicle_id = '$vehicle' ORDER BY time DESC LIMIT 1"
         }
       ],
-      "timeFrom": "1m",
-      "title": "Fuel used since engine start",
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "value"
-              ]
-            }
-          }
-        },
-        {
-          "id": "calculateField",
-          "options": {
-            "binary": {
-              "left": {
-                "matcher": {
-                  "id": "byName",
-                  "options": "value"
-                }
-              },
-              "operator": "/",
-              "right": {
-                "fixed": "1000"
-              }
-            },
-            "mode": "binary",
-            "reduce": {
-              "reducer": "sum"
-            },
-            "replaceFields": true
-          }
-        }
-      ],
+      "title": "Fuel remaining (counter)",
+      "transformations": [],
       "type": "stat"
     },
     {

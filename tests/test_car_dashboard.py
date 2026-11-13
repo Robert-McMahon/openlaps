@@ -23,7 +23,6 @@ LIVE_CHANNELS = {
     "car.battery_v",
     "car.fuel_pressure",
     "car.fuel_level",
-    "car.fuel_total_used",
     "car.gearbox_oil_temp",
     "car.air_temp",
 }
@@ -41,7 +40,7 @@ HANDLING_CHANNELS = {
     "car.accel_x",
     "car.accel_y",
 }
-TRACE_CHANNELS = LIVE_CHANNELS | {"car.knock_level1", "car.fuel_level"}
+TRACE_CHANNELS = LIVE_CHANNELS | {"car.knock_level1", "car.fuel_level", "car.fuel_total_used"}
 
 
 def _dashboard() -> dict[str, Any]:

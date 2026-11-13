@@ -561,14 +561,14 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.pd16_total_current' THEN avg END) AS \"PDM total\", max(CASE WHEN channel = 'car.thermo_fan_1_current' THEN avg END) AS \"Thermo fan\", max(CASE WHEN channel = 'car.fuel_pump_current' THEN avg END) AS \"Fuel pump\", max(CASE WHEN channel = 'car.ign_coils_current' THEN avg END) AS \"Ignition coils\", max(CASE WHEN channel = 'car.power_steering_pump_1_current' THEN avg END) AS \"Power steering\", max(CASE WHEN channel IN ('car.inj_current', 'car.water_injection_pump_current') THEN avg END) AS \"Water injection pump\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.pd16_total_current','car.thermo_fan_1_current','car.fuel_pump_current','car.ign_coils_current','car.power_steering_pump_1_current','car.inj_current','car.water_injection_pump_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, max(CASE WHEN channel IN ('car.pd16_total_current') THEN avg END) AS \"PDM total\", max(CASE WHEN channel IN ('car.thermo_fan_1_current') THEN avg END) AS \"Thermo fan\", max(CASE WHEN channel IN ('car.ign_coils_current') THEN avg END) AS \"Ignition coils\", max(CASE WHEN channel IN ('car.head_light_current') THEN avg END) AS \"Head lights\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.pd16_total_current','car.thermo_fan_1_current','car.ign_coils_current','car.head_light_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
       ],
-      "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
+      "description": "PDM total, thermo fan, head lights and the coils output (25A-HCO3, Coils/Deutsch). Pumps are on the chart alongside. One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
     },
     {
-      "id": 7,
-      "title": "Night electrical load and battery",
+      "id": 10,
+      "title": "PDM pump currents",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -609,10 +609,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.head_light_current' THEN avg END) AS \"Head lights\", max(CASE WHEN channel = 'car.head_light' THEN max END) AS \"Head light state\", max(CASE WHEN channel = 'car.pd16_total_current' THEN avg END) AS \"PDM total\", max(CASE WHEN channel = 'car.battery_v' THEN min END) AS \"Battery minimum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.head_light_current','car.head_light','car.pd16_total_current','car.battery_v') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, max(CASE WHEN channel IN ('car.fuel_pump_current') THEN avg END) AS \"Fuel pump\", max(CASE WHEN channel IN ('car.lift_pump_current') THEN avg END) AS \"Lift pump\", max(CASE WHEN channel IN ('car.gearbox_pump_current') THEN avg END) AS \"Gearbox pump\", max(CASE WHEN channel IN ('car.cam_scavenge_pump_current', 'car.oil_pump_current') THEN avg END) AS \"Cam scavenge pump\", max(CASE WHEN channel IN ('car.power_steering_pump_1_current') THEN avg END) AS \"Power steering 1\", max(CASE WHEN channel IN ('car.power_steering_pump_2_current') THEN avg END) AS \"Power steering 2\", max(CASE WHEN channel IN ('car.water_injection_pump_current', 'car.inj_current') THEN avg END) AS \"Water injection pump\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.fuel_pump_current','car.lift_pump_current','car.gearbox_pump_current','car.cam_scavenge_pump_current','car.oil_pump_current','car.power_steering_pump_1_current','car.power_steering_pump_2_current','car.water_injection_pump_current','car.inj_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
       ],
-      "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
+      "description": "Every pump on the PDM, named as in the Haltech wiring report. Cam scavenge and water injection also read their pre-rename channels, so history from before 13 Nov still shows. One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
     },
     {
       "id": 8,

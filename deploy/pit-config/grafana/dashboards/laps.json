@@ -217,7 +217,9 @@
                 "value": null
               }
             ]
-          }
+          },
+          "min": 80000,
+          "max": 110000
         },
         "overrides": []
       },
@@ -251,7 +253,7 @@
           "rawSql": "SELECT crossed_at AS time, concat(COALESCE(driver, 'unattributed'), ', stint ', COALESCE(stint_number::text, '-')) AS \"metric\", lap_time_s * 1000 AS \"Lap time\" FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') ORDER BY crossed_at"
         }
       ],
-      "description": "One point per lap at the time it was completed, one colour per driver and stint. The legend gives each stint's best, mean and latest lap. Lap times read minutes:seconds.tenths; the query hands Grafana milliseconds so it can format them as a clock."
+      "description": "One point per lap at the time it was completed, one colour per driver and stint. The legend gives each stint's best, mean and latest lap. Lap times read minutes:seconds.tenths; the query hands Grafana milliseconds so it can format them as a clock. The axis is fixed at 1:20 to 1:50, so slower laps (pit, safety car) fall off the top."
     },
     {
       "id": 2,

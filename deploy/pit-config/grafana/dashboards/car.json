@@ -4922,7 +4922,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Axis is fixed at 0 to 132.5 L, the full tank.",
+      "description": "Tank sender (Haltech FUEL_LEVEL): average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Orange is the strategy service's counter-based fuel remaining: the last full-tank or fuel mark minus the Haltech fuel-used counter, one point per lap. Axis is fixed at 0 to 132.5 L, the full tank.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5007,6 +5007,33 @@
                 "value": 0
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Fuel remaining (counter)"
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.spanNulls",
+                "value": true
+              }
+            ]
           }
         ]
       },
@@ -5055,9 +5082,20 @@
           "rawQuery": true,
           "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Fuel level Average\", min(value) AS \"Fuel level Minimum\", max(value) AS \"Fuel level Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_level'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "refId": "C",
+          "rawSql": "SELECT time, fuel_remaining_l AS \"Fuel remaining (counter)\"\nFROM v_strategy_history\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND ('$session' = 'all' OR session_id::text = '$session')\nORDER BY time"
         }
       ],
-      "title": "Fuel level",
+      "title": "Fuel level: tank sender and counter-based remaining",
       "type": "timeseries",
       "maxDataPoints": 1000,
       "interval": "1s"

@@ -500,7 +500,7 @@ groups:
       dashboardUID: reliability
       runbook_url: /d/reliability/reliability?var-alert=publish-lag-high
       summary: Publish lag high
-      panelID: '7'
+      panelID: '6'
     labels:
       service: openlaps
       kind: threshold
@@ -577,7 +577,7 @@ groups:
       dashboardUID: reliability
       runbook_url: /d/reliability/reliability?var-alert=can-bus-stalled
       summary: CAN bus stalled on the vehicle box (watchdog rebooting it)
-      panelID: '7'
+      panelID: '6'
     labels:
       service: openlaps
       kind: threshold
@@ -723,7 +723,7 @@ groups:
       dashboardUID: reliability
       runbook_url: /d/reliability/reliability?var-alert=live-feed-stale
       summary: Live feed stale while on track
-      panelID: '7'
+      panelID: '6'
     labels:
       service: openlaps
       kind: stale

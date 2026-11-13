@@ -3012,7 +3012,7 @@
             "properties": [
               {
                 "id": "unit",
-                "value": "rpm"
+                "value": "rotrpm"
               },
               {
                 "id": "decimals",
@@ -3153,7 +3153,7 @@
               }
             ]
           },
-          "unit": "rpm"
+          "unit": "rotrpm"
         },
         "overrides": [
           {

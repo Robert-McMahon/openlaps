@@ -2911,6 +2911,109 @@
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
+      "description": "Surge tank float switch voltage (PDM16 SPI 1), lowest reading in each interval so a blip of a fraction of a second still shows. 5 V is fuel in the surge tank; a drop towards 0 V is the switch closing (surge light). Widen the time range to see how often it blips.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "volt",
+          "min": 0,
+          "max": 5.5
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "id": 53,
+      "options": {
+        "legend": {
+          "calcs": [
+            "min",
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, min(value) AS \"Surge switch lowest\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.surge_tank_switch'\nGROUP BY 1\nORDER BY 1"
+        }
+      ],
+      "title": "Surge tank switch",
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
       "description": "Driver's pedal against the drive-by-wire throttle blade, both in percent on one axis.",
       "fieldConfig": {
         "defaults": {
@@ -2969,7 +3072,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 47
+        "y": 55
       },
       "id": 50,
       "options": {
@@ -3121,7 +3224,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 47
+        "y": 55
       },
       "id": 51,
       "options": {
@@ -3265,7 +3368,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 55
+        "y": 63
       },
       "id": 25,
       "options": {
@@ -3477,7 +3580,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 55
+        "y": 63
       },
       "id": 26,
       "options": {
@@ -3643,7 +3746,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 63
+        "y": 71
       },
       "id": 27,
       "options": {
@@ -3787,7 +3890,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 63
+        "y": 71
       },
       "id": 28,
       "options": {
@@ -3930,7 +4033,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 71
+        "y": 79
       },
       "id": 29,
       "options": {
@@ -4073,7 +4176,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 71
+        "y": 79
       },
       "id": 30,
       "options": {
@@ -4249,7 +4352,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 79
+        "y": 87
       },
       "id": 31,
       "options": {
@@ -4415,7 +4518,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 79
+        "y": 87
       },
       "id": 32,
       "options": {
@@ -4558,7 +4661,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 87
+        "y": 95
       },
       "id": 33,
       "options": {
@@ -4701,7 +4804,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 87
+        "y": 95
       },
       "id": 34,
       "options": {
@@ -4844,7 +4947,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 95
+        "y": 103
       },
       "id": 35,
       "options": {
@@ -5016,7 +5119,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 95
+        "y": 103
       },
       "id": 36,
       "options": {
@@ -5170,7 +5273,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 103
+        "y": 111
       },
       "id": 44,
       "options": {
@@ -5313,7 +5416,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 103
+        "y": 111
       },
       "id": 47,
       "options": {
@@ -5456,7 +5559,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 111
+        "y": 119
       },
       "id": 48,
       "options": {
@@ -5599,7 +5702,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 111
+        "y": 119
       },
       "id": 49,
       "options": {

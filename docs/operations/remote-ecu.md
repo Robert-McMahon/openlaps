@@ -202,8 +202,10 @@ reach the ECU.
 
 A key-off or power cycle makes the ECU leave the bus and return as a new
 device. The vehicle loop rebinds it, the pit's attach loop reattaches it, the
-stream that was feeding the guest ends and the redirect loop starts a new one
-for the new device. Expect NSP to report a lost connection and reconnect
+redirect loop sees the old bus-devnum leave (`5-N left the bus; ending its
+stream`), kills that stream and starts a new one for the new device.
+usbredirect itself only exits when the guest side closes, so the loop does
+this watching; without it the guest keeps a dead placeholder device. Expect NSP to report a lost connection and reconnect
 within roughly ten to fifteen seconds. No VM restart is involved; the same
 holds after a vehicle reboot or a disarm and re-arm.
 
@@ -237,5 +239,5 @@ Note where NSP starts timing out. That is the margin the link has to keep.
 | `vhci-hcd not loaded` on the pit | `usbip` package not installed, or the kernel lacks the module |
 | `status` shows attached on the pit but the guest has no device | `journalctl -u openlaps-ecu-redirect`: `is not running` means `OPENLAPS_ECU_VM` names the wrong container; `usbredirect not found` means the package is missing |
 | Redirect journal shows `redirecting ...` then `stream ... ended` at once, repeatedly | the host cannot reach QEMU's port: `docker exec <vm> iptables -t nat -S QEMU_DNAT \| head -2` should show the RETURN for the port; a stale `usb-host` for the ECU in the VM's `ARGUMENTS` also steals the device at boot |
-| Guest loses the ECU after a reset and does not get it back | the attach loop has it back (`status`) but no new `redirecting` line: restart `openlaps-ecu-redirect` and report it |
+| Guest loses the ECU after a reset and does not get it back | the attach loop has it back (`status`) but the redirect journal shows no `left the bus` / new `redirecting` line: `systemctl restart openlaps-ecu-redirect` and report it |
 | NSP connects but times out on reads | link latency; see step 6, and try a narrower HaLow channel for margin |

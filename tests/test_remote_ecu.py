@@ -249,6 +249,35 @@ def test_redirect_streams_the_attached_ecu_into_the_guest(tmp_path):
     assert "redirecting 5-7" in proc.stderr
 
 
+def test_redirect_ends_a_stream_whose_ecu_has_reset(tmp_path):
+    """usbredirect does not exit when its device leaves the bus; the loop must
+    notice the devnum change itself or the guest keeps a dead placeholder."""
+    root = tmp_path / "sys"
+    _device(root, "platform/vhci_hcd.0/usb5", "5-1", VID, PID, "ftdi_sio")
+    node = root / "devices/platform/vhci_hcd.0/usb5/5-1"
+    (node / "busnum").write_text("5\n")
+    (node / "devnum").write_text("7\n")
+    _stub_vm(tmp_path)
+    # This usbredirect simulates the ECU resetting under it (new devnum) and
+    # then hangs around the way the real one does.
+    (tmp_path / "bin" / "usbredirect").write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo "$*" >> {tmp_path / "usbredirect.calls"}\n'
+        f"echo 8 > {node / 'devnum'}\n"
+        "exec sleep 30\n"
+    )
+
+    proc, _ = _run(tmp_path, "redirect", OPENLAPS_ECU_LOOPS="1", OPENLAPS_ECU_POLL_S="0")
+
+    assert proc.returncode == 0, proc.stderr
+    assert "redirecting 5-7" in proc.stderr
+    assert "5-7 left the bus; ending its stream" in proc.stderr
+    assert "stream for 5-7 ended" in proc.stderr
+    assert not subprocess.run(["pgrep", "-f", "^sleep 30$"], capture_output=True).stdout, (
+        "the stale usbredirect must be killed, not left behind"
+    )
+
+
 def test_redirect_waits_while_nothing_is_attached_or_the_vm_is_down(tmp_path):
     (tmp_path / "sys" / "bus").mkdir(parents=True)
     _stub_vm(tmp_path)

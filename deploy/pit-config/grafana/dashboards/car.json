@@ -1340,8 +1340,8 @@
     },
     {
       "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
       },
       "fieldConfig": {
         "defaults": {
@@ -1397,9 +1397,7 @@
         "x": 3,
         "y": 19
       },
-      "hideTimeOverride": true,
       "id": 52,
-      "maxDataPoints": 600,
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -1410,7 +1408,7 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/^Surge switch$/",
           "values": false
         },
         "showPercentChange": false,
@@ -1421,29 +1419,20 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
           "refId": "A",
-          "topic": "openlaps/$vehicle/car.surge_tank_switch"
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT time, value AS \"Surge switch\" FROM v_samples_named WHERE $__timeFilter(time) AND vehicle_id = '$vehicle' AND channel = 'car.surge_tank_switch' ORDER BY time DESC LIMIT 1"
         }
       ],
-      "timeFrom": "1m",
       "title": "Fuel status",
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "value"
-              ]
-            }
-          }
-        }
-      ],
+      "transformations": [],
       "type": "stat",
-      "description": "Surge tank float switch (PDM16 SPI 1), live. 5 V with fuel in the surge tank; below 2.5 V the surge light is on and the panel turns red and reads LOW FUEL."
+      "description": "Surge tank float switch (PDM16 SPI 1). 5 V with fuel in the surge tank; below 2.5 V the surge light is on and the panel turns red and reads LOW FUEL. Shows the newest sample in the database on every dashboard refresh, because the switch only reports every 5 s and a streaming panel sits on No data between reports. If the car drops offline this holds its last reading."
     },
     {
       "datasource": {

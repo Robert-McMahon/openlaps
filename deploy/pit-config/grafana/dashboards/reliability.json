@@ -617,7 +617,7 @@
     },
     {
       "id": 11,
-      "title": "Knock, lambda and manifold pressure",
+      "title": "Knock count, lambda and manifold pressure",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -629,10 +629,10 @@
         "w": 24,
         "h": 8
       },
-      "description": "Knock level (peak in each interval, dB) on the left axis; lambda and manifold pressure (psi gauge, negative is vacuum) each on their own right axis. One-second detail when the time range is an hour or less, one-minute aggregates beyond that.",
+      "description": "Knock count (samples with a non-zero knock level in each interval, the same count as the knock counts chart) on the left axis; lambda and manifold pressure (psi gauge, negative is vacuum) each on their own right axis. One-second detail when the time range is an hour or less, one-minute aggregates beyond that.",
       "fieldConfig": {
         "defaults": {
-          "unit": "dB",
+          "unit": "none",
           "color": {
             "mode": "palette-classic"
           },
@@ -641,7 +641,7 @@
             "showPoints": "never",
             "spanNulls": true,
             "axisPlacement": "left",
-            "axisLabel": "Knock level"
+            "axisLabel": "Knock count"
           },
           "thresholds": {
             "mode": "absolute",
@@ -745,7 +745,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.knock_level1' THEN max END) AS \"Knock level 1\", max(CASE WHEN channel = 'car.knock_level2' THEN max END) AS \"Knock level 2\", avg(CASE WHEN channel = 'car.lambda1' THEN avg END) AS \"Lambda\", (avg(CASE WHEN channel = 'car.map' THEN avg END) - 101.325) * 0.145038 AS \"Manifold pressure\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.knock_level1','car.knock_level2','car.lambda1','car.map') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, sum(CASE WHEN channel IN ('car.knock_level1','car.knock_level2') AND max > 0 THEN count ELSE 0 END) AS \"Knock count\", avg(CASE WHEN channel = 'car.lambda1' THEN avg END) AS \"Lambda\", (avg(CASE WHEN channel = 'car.map' THEN avg END) - 101.325) * 0.145038 AS \"Manifold pressure\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.knock_level1','car.knock_level2','car.lambda1','car.map') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
       ]
     },

@@ -56,6 +56,7 @@ def _all_topics(dashboard: dict[str, Any]) -> set[str]:
 # the GNSS work.
 NON_ENDURANCE = {
     "car.json": "car",
+    "handling.json": "handling",
     "video.json": "video",
     "system.json": "system-status",
 }

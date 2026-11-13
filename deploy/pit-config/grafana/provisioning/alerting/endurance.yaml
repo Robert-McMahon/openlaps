@@ -262,7 +262,7 @@ groups:
       dashboardUID: reliability
       runbook_url: /d/reliability/reliability?var-alert=battery-voltage-low
       summary: Battery voltage low
-      panelID: '7'
+      panelID: '6'
     labels:
       service: openlaps
       kind: threshold

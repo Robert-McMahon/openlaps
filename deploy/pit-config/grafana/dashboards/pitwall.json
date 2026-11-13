@@ -797,7 +797,7 @@
         "w": 4,
         "h": 4
       },
-      "description": "Counts up in this browser from the current stint's first crossing; nothing streams or repaints behind it.",
+      "description": "Time since the current stint's first start/finish crossing in the active session. Not limited by the dashboard time range. Runs up to a lap behind the driver change itself, which happens in the pits before that first crossing.",
       "options": {
         "mode": "countup",
         "refresh": "sec",
@@ -860,7 +860,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT now() AS time, min(crossed_at) AS \"Stint started\" FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND stint_number = (SELECT max(stint_number) FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session')) AND $__timeFilter(crossed_at)"
+          "rawSql": "SELECT now() AS time, min(l.crossed_at) AS \"Stint started\" FROM v_laps l JOIN v_session_active a ON a.vehicle_id = l.vehicle_id AND a.session_id = l.session_id WHERE l.vehicle_id = '$vehicle' AND l.stint_number = (SELECT max(l2.stint_number) FROM v_laps l2 JOIN v_session_active a2 ON a2.vehicle_id = l2.vehicle_id AND a2.session_id = l2.session_id WHERE l2.vehicle_id = '$vehicle')"
         }
       ]
     },

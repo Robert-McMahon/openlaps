@@ -69,7 +69,7 @@ def test_phase_6_adds_exactly_five_endurance_dashboards() -> None:
     assert actual == {**NON_ENDURANCE, **EXPECTED}
 
 
-def test_pitwall_is_sparse_live_timing_with_pit_extrapolation_and_fix_quality() -> None:
+def test_pitwall_is_sparse_live_timing_with_pit_extrapolation() -> None:
     dashboard = _dashboard("pitwall.json")
     panels = _panels(dashboard)
     topics = _all_topics(dashboard)
@@ -82,11 +82,8 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation_and_fix_quality() 
     assert {
         "openlaps/$vehicle/timing.lap_elapsed_pit",
         "openlaps/$vehicle/timing.sector_elapsed_pit",
-        "openlaps/$vehicle/lap.last_time",
-        "openlaps/$vehicle/lap.best_time",
         "openlaps/$vehicle/timing.delta_best",
         "openlaps/$vehicle/timing.predicted_lap",
-        "openlaps/$vehicle/position.fix_quality",
     } <= topics
     assert any("extrapolat" in panel.get("description", "").lower() for panel in panels)
 

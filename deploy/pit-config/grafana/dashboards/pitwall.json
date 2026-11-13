@@ -385,8 +385,8 @@
       "title": "Last / best lap",
       "type": "stat",
       "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
       },
       "gridPos": {
         "x": 14,
@@ -421,44 +421,27 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "/.*/",
+          "fields": "/^(Last lap|Best lap)$/",
           "values": false
-        }
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name"
       },
       "targets": [
         {
           "refId": "A",
           "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
           },
-          "topic": "openlaps/$vehicle/lap.last_time"
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
-          },
-          "topic": "openlaps/$vehicle/lap.best_time"
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT now() AS time, (SELECT concat(floor(lap_time_s / 60)::int, ':', to_char(lap_time_s - 60 * floor(lap_time_s / 60), 'FM00.000')) FROM v_laps WHERE vehicle_id = '$vehicle' ORDER BY crossed_at DESC LIMIT 1) AS \"Last lap\", (SELECT concat(floor(min(lap_time_s) / 60)::int, ':', to_char(min(lap_time_s) - 60 * floor(min(lap_time_s) / 60), 'FM00.000')) FROM v_laps WHERE vehicle_id = '$vehicle' AND valid AND pit_status = 'track' AND session_id IS NOT DISTINCT FROM (SELECT session_id FROM v_laps WHERE vehicle_id = '$vehicle' ORDER BY crossed_at DESC LIMIT 1) AND crossed_at > COALESCE((SELECT started FROM v_session_active WHERE vehicle_id = '$vehicle'), '-infinity')) AS \"Best lap\""
         }
       ],
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "display"
-              ]
-            }
-          }
-        }
-      ],
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "hideTimeOverride": true,
-      "description": "Definitive completed times from the vehicle, shown to 0.001 s."
+      "description": "The most recent completed lap, and the fastest clean lap of its session since the race start. Read from the stored laps, to 0.001 s."
     },
     {
       "id": 5,
@@ -701,139 +684,6 @@
       "hideTimeOverride": true
     },
     {
-      "id": 7,
-      "title": "GNSS fix quality",
-      "type": "stat",
-      "datasource": {
-        "type": "grafana-mqtt-datasource",
-        "uid": "mqtt-live"
-      },
-      "gridPos": {
-        "x": 16,
-        "y": 9,
-        "w": 8,
-        "h": 4
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "V": {
-                  "text": "Invalid (V)",
-                  "color": "dark-red",
-                  "index": 0
-                },
-                "N": {
-                  "text": "No fix (N)",
-                  "color": "dark-red",
-                  "index": 1
-                },
-                "E": {
-                  "text": "Dead reckoning (E)",
-                  "color": "red",
-                  "index": 2
-                },
-                "M": {
-                  "text": "Manual input (M)",
-                  "color": "purple",
-                  "index": 3
-                },
-                "S": {
-                  "text": "Simulator (S)",
-                  "color": "purple",
-                  "index": 4
-                },
-                "A": {
-                  "text": "Autonomous / SPP (A)",
-                  "color": "orange",
-                  "index": 5
-                },
-                "D": {
-                  "text": "Differential (D)",
-                  "color": "yellow",
-                  "index": 6
-                },
-                "F": {
-                  "text": "RTK Float (F)",
-                  "color": "semi-dark-green",
-                  "index": 7
-                },
-                "P": {
-                  "text": "High precision (P)",
-                  "color": "light-green",
-                  "index": 8
-                },
-                "R": {
-                  "text": "RTK Fixed (R)",
-                  "color": "green",
-                  "index": 9
-                }
-              }
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "noValue": "no fix reported"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "value",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "textMode": "value",
-        "wideLayout": true,
-        "percentChangeColorMode": "standard",
-        "showPercentChange": false
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-mqtt-datasource",
-            "uid": "mqtt-live"
-          },
-          "topic": "openlaps/$vehicle/position.fix_quality"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "filterFieldsByName",
-          "options": {
-            "include": {
-              "names": [
-                "value"
-              ]
-            }
-          }
-        }
-      ],
-      "timeFrom": "1m",
-      "maxDataPoints": 600,
-      "description": "UM980 RMC field 13 (mode indicator). Differential is NOT RTK: D is code-phase DGNSS (sub-metre), F is RTK float, R is RTK fixed (cm). Reads the string field explicitly -- the default numeric-only reducer cannot see it.",
-      "hideTimeOverride": true
-    },
-    {
       "id": 8,
       "title": "Timing authority",
       "type": "text",
@@ -900,8 +750,14 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/^Driver$/",
           "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "text": {
+          "valueSize": 36
         }
       },
       "id": 9,
@@ -920,11 +776,12 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT now() AS time, max(driver) AS \"Driver\" FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at)"
+          "rawSql": "SELECT now() AS time, (SELECT driver FROM v_laps WHERE vehicle_id = '$vehicle' ORDER BY crossed_at DESC LIMIT 1) AS \"Driver\""
         }
-      ]
+      ],
+      "description": "The driver on the most recently completed lap, so it changes on a new driver's first lap."
     },
     {
       "id": 10,
@@ -1179,9 +1036,9 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 13,
+        "y": 9,
         "w": 8,
-        "h": 12
+        "h": 16
       },
       "description": "Newest lap first, for the session the latest lap belongs to. Laps are numbered from the session start set in session control; crossings before it read pre-start. To best is seconds off the fastest valid lap since the start. Once the session has ended every lap is numbered.",
       "fieldConfig": {

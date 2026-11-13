@@ -685,3 +685,18 @@ def test_a_refuel_stop_nested_in_the_pit_lane_comes_off_the_driven_time_once():
     bay = StopFact(_at(1050), _at(1250), False, "refuel")
 
     assert _driven_seconds(_at(0), _at(2000), [lane, bay]) == 1700.0
+
+
+def test_a_blip_followed_by_silence_is_not_a_held_surge_closure():
+    # Collie 2026-11-13: the switch read low for 0.12 s, and the sparse
+    # channel's next reading came 10 s later. That is not a 10 s closure.
+    from pit.strategy.database import surge_episodes
+
+    blip = [(_at(900), True, _at(895)), (_at(910), False, _at(900))]
+    assert surge_episodes(blip, _at(2000)) == [(_at(900), _at(900))]
+
+    held = [(_at(900), True, _at(895)), (_at(960), False, _at(955))]
+    assert surge_episodes(held, _at(2000)) == [(_at(900), _at(955))]
+
+    still_on = [(_at(900), True, _at(895))]
+    assert surge_episodes(still_on, _at(930)) == [(_at(900), _at(930))]

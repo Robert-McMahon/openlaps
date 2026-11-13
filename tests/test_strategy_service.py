@@ -369,9 +369,13 @@ def test_the_counter_model_reads_its_anchors_and_the_counter_from_the_database(s
     ]
     (stop,) = inputs.stops
     assert stop.full_confirmed is True
+    # Each episode ends at the last reading that still showed the switch
+    # closed, not at the (possibly much later) reading that showed it open:
+    # the flicker is one reading long, and the real closure is known to have
+    # lasted until its last heartbeat at 945 s.
     assert inputs.surge_episodes == [
-        (T0 + timedelta(seconds=700), T0 + timedelta(seconds=702)),
-        (T0 + timedelta(seconds=900), T0 + timedelta(seconds=1430)),
+        (T0 + timedelta(seconds=700), T0 + timedelta(seconds=700)),
+        (T0 + timedelta(seconds=900), T0 + timedelta(seconds=945)),
     ]
     # The anchor is the confirmed fill at the stop's exit; the surge episode
     # before it calibrates against the session-start assumption only if that

@@ -1286,7 +1286,7 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 6,
+        "w": 3,
         "x": 0,
         "y": 19
       },
@@ -1337,6 +1337,113 @@
       ],
       "type": "stat",
       "description": "Haltech FUEL_LEVEL as reported by the ECU, in litres. Colour steps are a generic low-fuel warning; the strategy service on the Fuel dashboard owns the real laps-to-dry call."
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "range",
+              "options": {
+                "from": null,
+                "to": 2.5,
+                "result": {
+                  "index": 0,
+                  "text": "LOW FUEL",
+                  "color": "red"
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 2.5,
+                "to": null,
+                "result": {
+                  "index": 1,
+                  "text": "OK",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 2.5
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 3,
+        "x": 3,
+        "y": 19
+      },
+      "hideTimeOverride": true,
+      "id": 52,
+      "maxDataPoints": 600,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.surge_tank_switch"
+        }
+      ],
+      "timeFrom": "1m",
+      "title": "Fuel status",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        }
+      ],
+      "type": "stat",
+      "description": "Surge tank float switch (PDM16 SPI 1), live. 5 V with fuel in the surge tank; below 2.5 V the surge light is on and the panel turns red and reads LOW FUEL."
     },
     {
       "datasource": {

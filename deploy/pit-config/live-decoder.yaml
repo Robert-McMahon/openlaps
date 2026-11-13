@@ -99,6 +99,11 @@ channels:
   # nothing a reader could see. Another nominal 1 msg/s; not re-measured.
   - match: "car.fuel_total_used"
     max_hz: 1
+  # Surge tank float switch (PDM16 SPI 1): 5 V with fuel in the surge tank,
+  # 0 V once it runs low. Drives the car dashboard's LOW FUEL panel. The car
+  # sends it on change and at least every 5 s.
+  - match: "car.surge_tank_switch"
+    max_hz: 1
 
   # ---- drivetrain and electrics ----
   # MISC10 / MISC3 at ~17 Hz. Gear is an int that changes a handful of

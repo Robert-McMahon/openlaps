@@ -249,6 +249,8 @@ def _render_sql(raw_sql: str, *, start: datetime, end: datetime) -> str:
         rendered,
     )
     rendered = rendered.replace("$__interval", "1 second")
+    rendered = rendered.replace("$__timeFrom()", f"'{start.isoformat()}'")
+    rendered = rendered.replace("$__timeTo()", f"'{end.isoformat()}'")
     rendered = rendered.replace("$vehicle", VEHICLE)
     rendered = rendered.replace("$session", "s-1")
     rendered = rendered.replace("$driver", "Driver A")

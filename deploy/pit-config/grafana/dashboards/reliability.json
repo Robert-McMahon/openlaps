@@ -5,9 +5,9 @@
   "editable": false,
   "schemaVersion": 41,
   "version": 1,
-  "refresh": "1m",
+  "refresh": "10s",
   "time": {
-    "from": "now-36h",
+    "from": "now-15m",
     "to": "now"
   },
   "timezone": "browser",
@@ -183,10 +183,33 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "pressurekpa",
+          "unit": "pressurepsi",
+          "decimals": 1,
           "color": {
             "mode": "palette-classic"
           },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 60,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 0,
+            "pointSize": {
+              "fixed": 4
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "show": "points"
+          },
+          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -206,7 +229,15 @@
             "properties": [
               {
                 "id": "unit",
-                "value": "rpm"
+                "value": "rotrpm"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Engine speed"
               }
             ]
           },
@@ -217,26 +248,69 @@
             },
             "properties": [
               {
-                "id": "unit",
-                "value": "pressurekpa"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Oil pressure maximum"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "pressurekpa"
+                "id": "custom.axisLabel",
+                "value": "Oil pressure (psi gauge)"
               }
             ]
           }
         ]
       },
-      "options": {},
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mapping": "manual",
+        "series": [
+          {
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            },
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "RPM"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Oil pressure minimum"
+              }
+            }
+          },
+          {
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            },
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "RPM"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Oil pressure maximum"
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
       "targets": [
         {
           "refId": "A",
@@ -245,11 +319,12 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.rpm' THEN avg END) AS \"RPM\", min(CASE WHEN channel = 'car.oil_pressure' THEN min END) AS \"Oil pressure minimum\", max(CASE WHEN channel = 'car.oil_pressure' THEN max END) AS \"Oil pressure maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.oil_pressure','car.rpm') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.rpm' THEN avg END) AS \"RPM\", min(CASE WHEN channel = 'car.oil_pressure' THEN min END) * 0.145038 AS \"Oil pressure minimum\", max(CASE WHEN channel = 'car.oil_pressure' THEN max END) * 0.145038 AS \"Oil pressure maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.oil_pressure','car.rpm') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
-      ]
+      ],
+      "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that. Oil pressure is gauge pressure in psi."
     },
     {
       "id": 2,
@@ -294,10 +369,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.coolant_temp' AND $__timeFilter(time) ORDER BY time"
+          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel = 'car.coolant_temp' AND $__timeFilter(time) ORDER BY time"
         }
       ],
-      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C."
+      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C. One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
     },
     {
       "id": 3,
@@ -342,10 +417,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.oil_temp' AND $__timeFilter(time) ORDER BY time"
+          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel = 'car.oil_temp' AND $__timeFilter(time) ORDER BY time"
         }
       ],
-      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C."
+      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C. One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
     },
     {
       "id": 4,
@@ -390,10 +465,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel = 'car.gearbox_oil_temp' AND $__timeFilter(time) ORDER BY time"
+          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel = 'car.gearbox_oil_temp' AND $__timeFilter(time) ORDER BY time"
         }
       ],
-      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C."
+      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C. One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
     },
     {
       "id": 5,
@@ -438,9 +513,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, sum(CASE WHEN channel IN ('car.knock_level1','car.knock_level2') AND max > 0 THEN count ELSE 0 END) AS \"Knock count\", max(CASE WHEN channel = 'car.engine_protection_severity' THEN max END) AS \"Protection severity\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.knock_level1','car.knock_level2','car.engine_protection_severity') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, sum(CASE WHEN channel IN ('car.knock_level1','car.knock_level2') AND max > 0 THEN count ELSE 0 END) AS \"Knock count\", max(CASE WHEN channel = 'car.engine_protection_severity' THEN max END) AS \"Protection severity\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.knock_level1','car.knock_level2','car.engine_protection_severity') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
-      ]
+      ],
+      "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
     },
     {
       "id": 6,
@@ -485,9 +561,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.pd16_total_current' THEN avg END) AS \"PDM total\", max(CASE WHEN channel = 'car.thermo_fan_1_current' THEN avg END) AS \"Thermo fan\", max(CASE WHEN channel = 'car.fuel_pump_current' THEN avg END) AS \"Fuel pump\", max(CASE WHEN channel = 'car.ign_coils_current' THEN avg END) AS \"Ignition coils\", max(CASE WHEN channel = 'car.power_steering_pump_1_current' THEN avg END) AS \"Power steering\", max(CASE WHEN channel IN ('car.inj_current', 'car.water_injection_pump_current') THEN avg END) AS \"Water injection pump\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.pd16_total_current','car.thermo_fan_1_current','car.fuel_pump_current','car.ign_coils_current','car.power_steering_pump_1_current','car.inj_current','car.water_injection_pump_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.pd16_total_current' THEN avg END) AS \"PDM total\", max(CASE WHEN channel = 'car.thermo_fan_1_current' THEN avg END) AS \"Thermo fan\", max(CASE WHEN channel = 'car.fuel_pump_current' THEN avg END) AS \"Fuel pump\", max(CASE WHEN channel = 'car.ign_coils_current' THEN avg END) AS \"Ignition coils\", max(CASE WHEN channel = 'car.power_steering_pump_1_current' THEN avg END) AS \"Power steering\", max(CASE WHEN channel IN ('car.inj_current', 'car.water_injection_pump_current') THEN avg END) AS \"Water injection pump\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.pd16_total_current','car.thermo_fan_1_current','car.fuel_pump_current','car.ign_coils_current','car.power_steering_pump_1_current','car.inj_current','car.water_injection_pump_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
-      ]
+      ],
+      "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
     },
     {
       "id": 7,
@@ -532,9 +609,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.head_light_current' THEN avg END) AS \"Head lights\", max(CASE WHEN channel = 'car.head_light' THEN max END) AS \"Head light state\", max(CASE WHEN channel = 'car.pd16_total_current' THEN avg END) AS \"PDM total\", max(CASE WHEN channel = 'car.battery_v' THEN min END) AS \"Battery minimum\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.head_light_current','car.head_light','car.pd16_total_current','car.battery_v') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.head_light_current' THEN avg END) AS \"Head lights\", max(CASE WHEN channel = 'car.head_light' THEN max END) AS \"Head light state\", max(CASE WHEN channel = 'car.pd16_total_current' THEN avg END) AS \"PDM total\", max(CASE WHEN channel = 'car.battery_v' THEN min END) AS \"Battery minimum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.head_light_current','car.head_light','car.pd16_total_current','car.battery_v') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
-      ]
+      ],
+      "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
     },
     {
       "id": 8,
@@ -579,9 +657,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.engine_protection_severity' THEN max END) AS \"Protection severity\", max(CASE WHEN channel = 'car.engine_protection_reason_number' THEN max END) AS \"Protection reason number\", max(CASE WHEN channel = 'car.engine_protection_reason_letter' THEN max END) AS \"Protection reason letter\", max(CASE WHEN channel = 'car.check_engine_light' THEN max END) AS \"Check engine light\" FROM v_samples_1m_named WHERE vehicle_id = '$vehicle' AND channel IN ('car.engine_protection_severity','car.engine_protection_reason_number','car.engine_protection_reason_letter','car.check_engine_light') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.engine_protection_severity' THEN max END) AS \"Protection severity\", max(CASE WHEN channel = 'car.engine_protection_reason_number' THEN max END) AS \"Protection reason number\", max(CASE WHEN channel = 'car.engine_protection_reason_letter' THEN max END) AS \"Protection reason letter\", max(CASE WHEN channel = 'car.check_engine_light' THEN max END) AS \"Check engine light\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.engine_protection_severity','car.engine_protection_reason_number','car.engine_protection_reason_letter','car.check_engine_light') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
-      ]
+      ],
+      "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
     }
   ]
 }

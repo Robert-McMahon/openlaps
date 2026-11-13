@@ -735,26 +735,26 @@
           },
           "decimals": 0,
           "mappings": [],
-          "max": 1000,
+          "max": 145,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "red",
-                "value": 0
+                "value": null
               },
               {
                 "color": "orange",
-                "value": 200
+                "value": 30
               },
               {
                 "color": "green",
-                "value": 300
+                "value": 45
               }
             ]
           },
-          "unit": "pressurekpa"
+          "unit": "pressurepsi"
         },
         "overrides": []
       },
@@ -805,9 +805,33 @@
               ]
             }
           }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "psi",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "*",
+              "right": {
+                "fixed": "0.145038"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "description": "Gauge pressure in psi, converted from the ECU's kPa in-panel."
     },
     {
       "datasource": {
@@ -819,28 +843,28 @@
           "color": {
             "mode": "thresholds"
           },
-          "decimals": 0,
+          "decimals": 1,
           "mappings": [],
-          "max": 300,
-          "min": 0,
+          "max": 30,
+          "min": -15,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
-                "value": 0
+                "value": null
               },
               {
                 "color": "orange",
-                "value": 220
+                "value": 17
               },
               {
                 "color": "red",
-                "value": 260
+                "value": 23
               }
             ]
           },
-          "unit": "pressurekpa"
+          "unit": "pressurepsi"
         },
         "overrides": []
       },
@@ -891,9 +915,56 @@
               ]
             }
           }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "gauge kPa",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "fixed": "101.325"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "psi",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "gauge kPa"
+                }
+              },
+              "operator": "*",
+              "right": {
+                "fixed": "0.145038"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "description": "Gauge pressure: the ECU's absolute reading less 101.3 kPa, in psi, so vacuum reads negative and boost positive."
     },
     {
       "datasource": {
@@ -1081,26 +1152,26 @@
           },
           "decimals": 0,
           "mappings": [],
-          "max": 1000,
+          "max": 145,
           "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "red",
-                "value": 0
+                "value": null
               },
               {
                 "color": "orange",
-                "value": 250
+                "value": 36
               },
               {
                 "color": "green",
-                "value": 350
+                "value": 51
               }
             ]
           },
-          "unit": "pressurekpa"
+          "unit": "pressurepsi"
         },
         "overrides": []
       },
@@ -1151,9 +1222,33 @@
               ]
             }
           }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "psi",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "*",
+              "right": {
+                "fixed": "0.145038"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
         }
       ],
-      "type": "gauge"
+      "type": "gauge",
+      "description": "Gauge pressure in psi, converted from the ECU's kPa in-panel."
     },
     {
       "datasource": {
@@ -2723,7 +2818,9 @@
       ],
       "timeFrom": "5m",
       "title": "Lateral and longitudinal g",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "collapsed": false,
@@ -2737,6 +2834,269 @@
       "panels": [],
       "title": "Traces",
       "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Driver's pedal against the drive-by-wire throttle blade, both in percent on one axis.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 47
+      },
+      "id": 50,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) FILTER (WHERE channel = 'car.accel_pedal_pos') AS \"Throttle pedal\", avg(avg) FILTER (WHERE channel = 'car.throttle_pos') AS \"Throttle position (TPS)\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel IN ('car.accel_pedal_pos', 'car.throttle_pos')\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) FILTER (WHERE channel = 'car.accel_pedal_pos') AS \"Throttle pedal\", avg(value) FILTER (WHERE channel = 'car.throttle_pos') AS \"Throttle position (TPS)\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel IN ('car.accel_pedal_pos', 'car.throttle_pos')\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Throttle pedal and throttle position",
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Throttle position in percent on the left axis; engine speed and manifold pressure (psi gauge) each on their own right-hand axis.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Engine speed"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "rpm"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Manifold pressure"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "pressurepsi"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 47
+      },
+      "id": 51,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) FILTER (WHERE channel = 'car.throttle_pos') AS \"Throttle position (TPS)\", avg(avg) FILTER (WHERE channel = 'car.rpm') AS \"Engine speed\", (avg(avg) FILTER (WHERE channel = 'car.map') - 101.325) * 0.145038 AS \"Manifold pressure\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel IN ('car.throttle_pos', 'car.rpm', 'car.map')\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) FILTER (WHERE channel = 'car.throttle_pos') AS \"Throttle position (TPS)\", avg(value) FILTER (WHERE channel = 'car.rpm') AS \"Engine speed\", (avg(value) FILTER (WHERE channel = 'car.map') - 101.325) * 0.145038 AS \"Manifold pressure\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel IN ('car.throttle_pos', 'car.rpm', 'car.map')\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Throttle position, engine speed and manifold pressure",
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -2834,7 +3194,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 47
+        "y": 55
       },
       "id": 25,
       "options": {
@@ -2878,7 +3238,9 @@
         }
       ],
       "title": "Engine speed",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -3044,7 +3406,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 47
+        "y": 55
       },
       "id": 26,
       "options": {
@@ -3110,7 +3472,9 @@
         }
       ],
       "title": "Throttle and brake",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -3208,7 +3572,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 55
+        "y": 63
       },
       "id": 27,
       "options": {
@@ -3252,7 +3616,9 @@
         }
       ],
       "title": "Vehicle speed",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -3350,7 +3716,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 55
+        "y": 63
       },
       "id": 28,
       "options": {
@@ -3394,7 +3760,9 @@
         }
       ],
       "title": "Gear",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -3491,7 +3859,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 63
+        "y": 71
       },
       "id": 29,
       "options": {
@@ -3535,7 +3903,9 @@
         }
       ],
       "title": "Coolant temperature",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -3632,7 +4002,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 63
+        "y": 71
       },
       "id": 30,
       "options": {
@@ -3676,14 +4046,16 @@
         }
       ],
       "title": "Oil temperature",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Gauge pressure in psi, converted from the stored kPa.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3732,7 +4104,8 @@
               }
             ]
           },
-          "unit": "pressurekpa"
+          "unit": "pressurepsi",
+          "decimals": 1
         },
         "overrides": [
           {
@@ -3805,7 +4178,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 71
+        "y": 79
       },
       "id": 31,
       "options": {
@@ -3833,7 +4206,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Oil pressure Average\", min(min) AS \"Oil pressure Minimum\", max(max) AS \"Oil pressure Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) * 0.145038 AS \"Oil pressure Average\", min(min) * 0.145038 AS \"Oil pressure Minimum\", max(max) * 0.145038 AS \"Oil pressure Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "A"
         },
         {
@@ -3844,7 +4217,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Oil pressure Average\", min(value) AS \"Oil pressure Minimum\", max(value) AS \"Oil pressure Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) * 0.145038 AS \"Oil pressure Average\", min(value) * 0.145038 AS \"Oil pressure Minimum\", max(value) * 0.145038 AS \"Oil pressure Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.oil_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "B"
         },
         {
@@ -3855,7 +4228,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"Fuel pressure Average\", min(min) AS \"Fuel pressure Minimum\", max(max) AS \"Fuel pressure Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) * 0.145038 AS \"Fuel pressure Average\", min(min) * 0.145038 AS \"Fuel pressure Minimum\", max(max) * 0.145038 AS \"Fuel pressure Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "C"
         },
         {
@@ -3866,19 +4239,21 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"Fuel pressure Average\", min(value) AS \"Fuel pressure Minimum\", max(value) AS \"Fuel pressure Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) * 0.145038 AS \"Fuel pressure Average\", min(value) * 0.145038 AS \"Fuel pressure Minimum\", max(value) * 0.145038 AS \"Fuel pressure Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.fuel_pressure'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "D"
         }
       ],
       "title": "Oil and fuel pressure",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Gauge pressure in psi: the stored absolute kPa less 101.3 kPa.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3927,7 +4302,8 @@
               }
             ]
           },
-          "unit": "pressurekpa"
+          "unit": "pressurepsi",
+          "decimals": 1
         },
         "overrides": [
           {
@@ -3968,7 +4344,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 71
+        "y": 79
       },
       "id": 32,
       "options": {
@@ -3996,7 +4372,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(avg) AS \"MAP Average\", min(min) AS \"MAP Minimum\", max(max) AS \"MAP Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.map'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, (avg(avg) - 101.325) * 0.145038 AS \"MAP Average\", (min(min) - 101.325) * 0.145038 AS \"MAP Minimum\", (max(max) - 101.325) * 0.145038 AS \"MAP Maximum\"\nFROM v_samples_1s_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.map'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_1s_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "A"
         },
         {
@@ -4007,12 +4383,14 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, avg(value) AS \"MAP Average\", min(value) AS \"MAP Minimum\", max(value) AS \"MAP Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.map'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS time, (avg(value) - 101.325) * 0.145038 AS \"MAP Average\", (min(value) - 101.325) * 0.145038 AS \"MAP Minimum\", (max(value) - 101.325) * 0.145038 AS \"MAP Maximum\"\nFROM v_samples_named\nWHERE $__timeFilter(time)\n  AND vehicle_id = '$vehicle'\n  AND channel = 'car.map'\n  AND (\n    '$session' = 'all'\n    OR time BETWEEN\n      COALESCE((SELECT min(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), '-infinity'::timestamptz)\n      AND COALESCE((SELECT max(crossed_at) FROM v_laps WHERE session_id::text = '$session' AND vehicle_id = '$vehicle'), 'infinity'::timestamptz)\n  )\n  AND '$trace_source' = 'v_samples_named'\nGROUP BY 1\nORDER BY 1",
           "refId": "B"
         }
       ],
       "title": "Manifold pressure",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -4109,7 +4487,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 79
+        "y": 87
       },
       "id": 33,
       "options": {
@@ -4153,7 +4531,9 @@
         }
       ],
       "title": "Lambda",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -4250,7 +4630,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 79
+        "y": 87
       },
       "id": 34,
       "options": {
@@ -4294,7 +4674,9 @@
         }
       ],
       "title": "Battery voltage",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -4391,7 +4773,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 87
+        "y": 95
       },
       "id": 35,
       "options": {
@@ -4435,7 +4817,9 @@
         }
       ],
       "title": "Knock level",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -4534,7 +4918,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 87
+        "y": 95
       },
       "id": 36,
       "options": {
@@ -4578,7 +4962,9 @@
         }
       ],
       "title": "Fuel level",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -4675,7 +5061,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 95
+        "y": 103
       },
       "id": 44,
       "options": {
@@ -4719,7 +5105,9 @@
         }
       ],
       "title": "Fuel used since engine start",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -4816,7 +5204,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 95
+        "y": 103
       },
       "id": 47,
       "options": {
@@ -4860,7 +5248,9 @@
         }
       ],
       "title": "Gearbox oil temperature",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -4957,7 +5347,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 103
+        "y": 111
       },
       "id": 48,
       "options": {
@@ -5001,7 +5391,9 @@
         }
       ],
       "title": "Inlet air temperature",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     },
     {
       "datasource": {
@@ -5098,7 +5490,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 103
+        "y": 111
       },
       "id": 49,
       "options": {
@@ -5142,7 +5534,9 @@
         }
       ],
       "title": "Water injection pump current",
-      "type": "timeseries"
+      "type": "timeseries",
+      "maxDataPoints": 1000,
+      "interval": "1s"
     }
   ],
   "preload": false,
@@ -5291,7 +5685,7 @@
     ]
   },
   "time": {
-    "from": "now-6h",
+    "from": "now-15m",
     "to": "now"
   },
   "timepicker": {},

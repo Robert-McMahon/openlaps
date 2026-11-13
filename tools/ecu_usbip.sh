@@ -254,7 +254,7 @@ cmd_redirect() {
 		exit 3
 	fi
 	log "streaming $VID:$PID into $VM (QEMU port $VM_PORT), checking every ${POLL}s"
-	local busdev ip waiting_vm=0 waiting_dev=0 pass=0
+	local busdev ip stream waiting_vm=0 waiting_dev=0 pass=0
 	while :; do
 		[[ -z "$LOOPS" ]] || ((pass++ < LOOPS)) || break
 		if ! vm_running; then
@@ -267,9 +267,22 @@ cmd_redirect() {
 		elif ensure_vm_binding && ip="$(vm_ip)" && [[ -n "$ip" ]]; then
 			waiting_vm=0 waiting_dev=0
 			log "redirecting $busdev ($VID:$PID) to $VM at $ip:$VM_PORT"
-			# Blocks for the life of the stream: returns when the ECU leaves
-			# the bus (reset, disarm, link drop) or the VM goes away.
-			usbredirect --device "$busdev" --to "$ip:$VM_PORT" -k || true
+			usbredirect --device "$busdev" --to "$ip:$VM_PORT" -k &
+			stream=$!
+			# usbredirect exits when the VM side closes, but not when its
+			# device leaves the bus: an ECU reset leaves it holding the old
+			# bus-devnum with a dead placeholder in the guest (pit host,
+			# 2026-11-13). Watch the device here and end the stream as soon
+			# as it is gone or has come back as a new one.
+			while kill -0 "$stream" 2>/dev/null; do
+				if [[ "$(host_busdev || true)" != "$busdev" ]]; then
+					log "$busdev left the bus; ending its stream"
+					kill "$stream" 2>/dev/null || true
+					break
+				fi
+				sleep "$POLL"
+			done
+			wait "$stream" 2>/dev/null || true
 			log "stream for $busdev ended"
 		fi
 		sleep "$POLL"

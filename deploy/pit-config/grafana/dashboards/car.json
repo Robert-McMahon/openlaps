@@ -2570,8 +2570,8 @@
       ],
       "title": "Surge tank switch",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
@@ -2681,8 +2681,8 @@
       ],
       "title": "Throttle pedal and throttle position",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
@@ -2833,15 +2833,15 @@
       ],
       "title": "Throttle position, engine speed and manifold pressure",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2977,15 +2977,15 @@
       ],
       "title": "Engine speed",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Throttle is percent on the left axis; the brake is a pedal switch (0 released, 1 applied) on the right axis, so its average over a bucket is the share of that bucket spent on the brake.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample. Throttle is percent on the left axis; the brake is a pedal switch (0 released, 1 applied) on the right axis, so its average over a bucket is the share of that bucket spent on the brake.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3211,15 +3211,15 @@
       ],
       "title": "Throttle and brake",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3355,15 +3355,15 @@
       ],
       "title": "Vehicle speed",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3499,15 +3499,15 @@
       ],
       "title": "Gear",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3642,15 +3642,15 @@
       ],
       "title": "Coolant temperature",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3785,15 +3785,15 @@
       ],
       "title": "Oil temperature",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Gauge pressure in psi, converted from the stored kPa.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample. Gauge pressure in psi, converted from the stored kPa.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3983,15 +3983,15 @@
       ],
       "title": "Oil and fuel pressure",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Gauge pressure in psi: the stored absolute kPa less 101.3 kPa.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample. Gauge pressure in psi: the stored absolute kPa less 101.3 kPa.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4127,15 +4127,15 @@
       ],
       "title": "Manifold pressure",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4270,15 +4270,15 @@
       ],
       "title": "Lambda",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4413,15 +4413,15 @@
       ],
       "title": "Battery voltage",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4556,15 +4556,15 @@
       ],
       "title": "Knock level",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Tank sender (Haltech FUEL_LEVEL): average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Orange is the strategy service's counter-based fuel remaining: the last full-tank or fuel mark minus the Haltech fuel-used counter, one point per lap. Axis is fixed at 0 to 132.5 L, the full tank.",
+      "description": "Tank sender (Haltech FUEL_LEVEL): average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample. Orange is the strategy service's counter-based fuel remaining: the last full-tank or fuel mark minus the Haltech fuel-used counter, one point per lap. Axis is fixed at 0 to 132.5 L, the full tank.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4739,15 +4739,15 @@
       ],
       "title": "Fuel level: tank sender and counter-based remaining",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "ECU TOTAL_FUEL_USED in litres; drops to zero at each engine start. Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "ECU TOTAL_FUEL_USED in litres; drops to zero at each engine start. Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -4882,15 +4882,15 @@
       ],
       "title": "Fuel used since engine start",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5025,15 +5025,15 @@
       ],
       "title": "Gearbox oil temperature",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
+      "description": "Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample. Stored samples are Kelvin; the query subtracts 273.15 so the axis reads in °C.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5168,15 +5168,15 @@
       ],
       "title": "Inlet air temperature",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     },
     {
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "PDM output 8A-HCO6, which the Haltech wiring report assigns to Water Injection. The car currently publishes it as car.inj_current; the query also accepts car.water_injection_pump_current for when the catalog is renamed. Average line with the one-second minimum/maximum envelope; choose Raw (lap) for sample-resolution traces.",
+      "description": "PDM output 8A-HCO6, which the Haltech wiring report assigns to Water Injection. The car currently publishes it as car.inj_current; the query also accepts car.water_injection_pump_current for when the catalog is renamed. Average line with the one-second minimum/maximum envelope; choose Raw in the Trace detail picker and zoom to a minute or less for every stored sample.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -5311,8 +5311,8 @@
       ],
       "title": "Water injection pump current",
       "type": "timeseries",
-      "maxDataPoints": 1000,
-      "interval": "1s"
+      "maxDataPoints": 2000,
+      "interval": "20ms"
     }
   ],
   "preload": false,
@@ -5450,11 +5450,11 @@
           },
           {
             "selected": false,
-            "text": "Raw (lap)",
+            "text": "Raw (every sample when zoomed in)",
             "value": "v_samples_named"
           }
         ],
-        "query": "Session (1 s envelope) : v_samples_1s_named,Raw (lap) : v_samples_named",
+        "query": "Session (1 s envelope) : v_samples_1s_named,Raw (every sample when zoomed in) : v_samples_named",
         "type": "custom",
         "valuesFormat": "csv"
       }

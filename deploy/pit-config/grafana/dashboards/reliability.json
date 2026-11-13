@@ -355,6 +355,9 @@
                 "value": null
               }
             ]
+          },
+          "custom": {
+            "spanNulls": 5000
           }
         },
         "overrides": []
@@ -370,10 +373,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel = 'car.coolant_temp' AND $__timeFilter(time) ORDER BY time"
+          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour' AND $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '5 minutes' UNION ALL SELECT time, vehicle_id, channel, units, value AS avg, value AS min, value AS max, 1::bigint AS count FROM v_samples_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '5 minutes') src WHERE vehicle_id = '$vehicle' AND channel = 'car.coolant_temp' AND $__timeFilter(time) ORDER BY time"
         }
       ],
-      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C. One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
+      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C. One-second detail when the time range is an hour or less, one-minute aggregates beyond that. At a time range of 5 minutes or less it shows every stored sample."
     },
     {
       "id": 3,
@@ -403,6 +406,9 @@
                 "value": null
               }
             ]
+          },
+          "custom": {
+            "spanNulls": 5000
           }
         },
         "overrides": []
@@ -418,10 +424,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel = 'car.oil_temp' AND $__timeFilter(time) ORDER BY time"
+          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour' AND $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '5 minutes' UNION ALL SELECT time, vehicle_id, channel, units, value AS avg, value AS min, value AS max, 1::bigint AS count FROM v_samples_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '5 minutes') src WHERE vehicle_id = '$vehicle' AND channel = 'car.oil_temp' AND $__timeFilter(time) ORDER BY time"
         }
       ],
-      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C. One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
+      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C. One-second detail when the time range is an hour or less, one-minute aggregates beyond that. At a time range of 5 minutes or less it shows every stored sample."
     },
     {
       "id": 4,
@@ -451,6 +457,9 @@
                 "value": null
               }
             ]
+          },
+          "custom": {
+            "spanNulls": 5000
           }
         },
         "overrides": []
@@ -466,10 +475,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel = 'car.gearbox_oil_temp' AND $__timeFilter(time) ORDER BY time"
+          "rawSql": "SELECT time, avg - 273.15 AS \"Average\", min - 273.15 AS \"Minimum\", max - 273.15 AS \"Maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour' AND $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '5 minutes' UNION ALL SELECT time, vehicle_id, channel, units, value AS avg, value AS min, value AS max, 1::bigint AS count FROM v_samples_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '5 minutes') src WHERE vehicle_id = '$vehicle' AND channel = 'car.gearbox_oil_temp' AND $__timeFilter(time) ORDER BY time"
         }
       ],
-      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C. One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
+      "description": "Stored samples are Kelvin (see docs/CATALOG.md); the query subtracts 273.15 so the axis reads in °C. One-second detail when the time range is an hour or less, one-minute aggregates beyond that. At a time range of 5 minutes or less it shows every stored sample."
     },
     {
       "id": 5,
@@ -499,6 +508,9 @@
                 "value": null
               }
             ]
+          },
+          "custom": {
+            "spanNulls": 5000
           }
         },
         "overrides": []
@@ -514,10 +526,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, sum(CASE WHEN channel IN ('car.knock_level1','car.knock_level2') AND max > 0 THEN count ELSE 0 END) AS \"Knock count\", max(CASE WHEN channel = 'car.engine_protection_severity' THEN max END) AS \"Protection severity\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.knock_level1','car.knock_level2','car.engine_protection_severity') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, sum(CASE WHEN channel IN ('car.knock_level1','car.knock_level2') AND max > 0 THEN count ELSE 0 END) AS \"Knock count\", max(CASE WHEN channel = 'car.engine_protection_severity' THEN max END) AS \"Protection severity\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour' AND $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '5 minutes' UNION ALL SELECT time, vehicle_id, channel, units, value AS avg, value AS min, value AS max, 1::bigint AS count FROM v_samples_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '5 minutes') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.knock_level1','car.knock_level2','car.engine_protection_severity') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
       ],
-      "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
+      "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that. At a time range of 5 minutes or less it shows every stored sample."
     },
     {
       "id": 6,
@@ -547,6 +559,9 @@
                 "value": null
               }
             ]
+          },
+          "custom": {
+            "spanNulls": 5000
           }
         },
         "overrides": []
@@ -562,10 +577,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel IN ('car.pd16_total_current') THEN avg END) AS \"PDM total\", max(CASE WHEN channel IN ('car.thermo_fan_1_current') THEN avg END) AS \"Thermo fan\", max(CASE WHEN channel IN ('car.ign_coils_current') THEN avg END) AS \"Ignition coils\", max(CASE WHEN channel IN ('car.head_light_current') THEN avg END) AS \"Head lights\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.pd16_total_current','car.thermo_fan_1_current','car.ign_coils_current','car.head_light_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, max(CASE WHEN channel IN ('car.pd16_total_current') THEN avg END) AS \"PDM total\", max(CASE WHEN channel IN ('car.thermo_fan_1_current') THEN avg END) AS \"Thermo fan\", max(CASE WHEN channel IN ('car.ign_coils_current') THEN avg END) AS \"Ignition coils\", max(CASE WHEN channel IN ('car.head_light_current') THEN avg END) AS \"Head lights\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour' AND $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '5 minutes' UNION ALL SELECT time, vehicle_id, channel, units, value AS avg, value AS min, value AS max, 1::bigint AS count FROM v_samples_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '5 minutes') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.pd16_total_current','car.thermo_fan_1_current','car.ign_coils_current','car.head_light_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
       ],
-      "description": "PDM total, thermo fan, head lights and the coils output (25A-HCO3, Coils/Deutsch). Pumps are on the chart alongside. One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
+      "description": "PDM total, thermo fan, head lights and the coils output (25A-HCO3, Coils/Deutsch). Pumps are on the chart alongside. One-second detail when the time range is an hour or less, one-minute aggregates beyond that. At a time range of 5 minutes or less it shows every stored sample."
     },
     {
       "id": 10,
@@ -595,6 +610,9 @@
                 "value": null
               }
             ]
+          },
+          "custom": {
+            "spanNulls": 5000
           }
         },
         "overrides": []
@@ -610,10 +628,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel IN ('car.fuel_pump_current') THEN avg END) AS \"Fuel pump\", max(CASE WHEN channel IN ('car.lift_pump_current') THEN avg END) AS \"Lift pump\", max(CASE WHEN channel IN ('car.gearbox_pump_current') THEN avg END) AS \"Gearbox pump\", max(CASE WHEN channel IN ('car.cam_scavenge_pump_current', 'car.oil_pump_current') THEN avg END) AS \"Cam scavenge pump\", max(CASE WHEN channel IN ('car.power_steering_pump_1_current') THEN avg END) AS \"Power steering 1\", max(CASE WHEN channel IN ('car.power_steering_pump_2_current') THEN avg END) AS \"Power steering 2\", max(CASE WHEN channel IN ('car.water_injection_pump_current', 'car.inj_current') THEN avg END) AS \"Water injection pump\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.fuel_pump_current','car.lift_pump_current','car.gearbox_pump_current','car.cam_scavenge_pump_current','car.oil_pump_current','car.power_steering_pump_1_current','car.power_steering_pump_2_current','car.water_injection_pump_current','car.inj_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, max(CASE WHEN channel IN ('car.fuel_pump_current') THEN avg END) AS \"Fuel pump\", max(CASE WHEN channel IN ('car.lift_pump_current') THEN avg END) AS \"Lift pump\", max(CASE WHEN channel IN ('car.gearbox_pump_current') THEN avg END) AS \"Gearbox pump\", max(CASE WHEN channel IN ('car.cam_scavenge_pump_current', 'car.oil_pump_current') THEN avg END) AS \"Cam scavenge pump\", max(CASE WHEN channel IN ('car.power_steering_pump_1_current') THEN avg END) AS \"Power steering 1\", max(CASE WHEN channel IN ('car.power_steering_pump_2_current') THEN avg END) AS \"Power steering 2\", max(CASE WHEN channel IN ('car.water_injection_pump_current', 'car.inj_current') THEN avg END) AS \"Water injection pump\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour' AND $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '5 minutes' UNION ALL SELECT time, vehicle_id, channel, units, value AS avg, value AS min, value AS max, 1::bigint AS count FROM v_samples_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '5 minutes') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.fuel_pump_current','car.lift_pump_current','car.gearbox_pump_current','car.cam_scavenge_pump_current','car.oil_pump_current','car.power_steering_pump_1_current','car.power_steering_pump_2_current','car.water_injection_pump_current','car.inj_current') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
       ],
-      "description": "Every pump on the PDM, named as in the Haltech wiring report. Cam scavenge and water injection also read their pre-rename channels, so history from before 13 Nov still shows. One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
+      "description": "Every pump on the PDM, named as in the Haltech wiring report. Cam scavenge and water injection also read their pre-rename channels, so history from before 13 Nov still shows. One-second detail when the time range is an hour or less, one-minute aggregates beyond that. At a time range of 5 minutes or less it shows every stored sample."
     },
     {
       "id": 11,
@@ -629,7 +647,7 @@
         "w": 24,
         "h": 8
       },
-      "description": "Knock count (samples with a non-zero knock level in each interval, the same count as the knock counts chart) on the left axis, drawn as large red dots only where knock occurred (no dot means no knock); lambda and manifold pressure (psi gauge, negative is vacuum) each on their own right axis. One-second detail when the time range is an hour or less, one-minute aggregates beyond that.",
+      "description": "Knock count (samples with a non-zero knock level in each interval, the same count as the knock counts chart) on the left axis, drawn as large red dots only where knock occurred (no dot means no knock); lambda and manifold pressure (psi gauge, negative is vacuum) each on their own right axis. One-second detail when the time range is an hour or less, one-minute aggregates beyond that. At a time range of 5 minutes or less it shows every stored sample.",
       "fieldConfig": {
         "defaults": {
           "unit": "none",
@@ -784,7 +802,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT time, NULLIF(sum(CASE WHEN channel IN ('car.knock_level1','car.knock_level2') AND max > 0 THEN count ELSE 0 END), 0) AS \"Knock count\", avg(CASE WHEN channel = 'car.lambda1' THEN avg END) AS \"Lambda\", (avg(CASE WHEN channel = 'car.map' THEN avg END) - 101.325) * 0.145038 AS \"Manifold pressure\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.knock_level1','car.knock_level2','car.lambda1','car.map') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, NULLIF(sum(CASE WHEN channel IN ('car.knock_level1','car.knock_level2') AND max > 0 THEN count ELSE 0 END), 0) AS \"Knock count\", avg(CASE WHEN channel = 'car.lambda1' THEN avg END) AS \"Lambda\", (avg(CASE WHEN channel = 'car.map' THEN avg END) - 101.325) * 0.145038 AS \"Manifold pressure\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour' AND $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '5 minutes' UNION ALL SELECT time, vehicle_id, channel, units, value AS avg, value AS min, value AS max, 1::bigint AS count FROM v_samples_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '5 minutes') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.knock_level1','car.knock_level2','car.lambda1','car.map') AND $__timeFilter(time) GROUP BY time ORDER BY time"
         }
       ]
     },

@@ -236,7 +236,7 @@
       "gridPos": {
         "x": 4,
         "y": 3,
-        "w": 4,
+        "w": 3,
         "h": 5
       },
       "fieldConfig": {
@@ -284,6 +284,77 @@
       "description": "The number that gets radioed is the lower bound: usable fuel at the low end over burn at the high end (mean + 2 sd of the last clean laps). `Laps in burn` is how many laps that mean rests on -- three laps and a full stint must not look alike."
     },
     {
+      "id": 15,
+      "title": "Time to empty (lower bound)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 7,
+        "y": 3,
+        "w": 3,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dthms",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Empty at"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:HH:mm"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, time_to_dry_s_lo AS \"Time to empty\", time_to_dry_s_hi AS \"Upper bound\", time + time_to_dry_s_lo * interval '1 second' AS \"Empty at\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "Laps to dry turned into running time at the reference lap time the strategy service uses. Lower bound: counter-based fuel remaining at its low end over burn at its high end. `Empty at` is the clock time that lower bound falls on. Under a safety car the burn per lap drops and this stretches out."
+    },
+    {
       "id": 9,
       "title": "Pit window",
       "type": "stat",
@@ -292,7 +363,7 @@
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 8,
+        "x": 10,
         "y": 3,
         "w": 4,
         "h": 5
@@ -350,9 +421,9 @@
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 12,
+        "x": 14,
         "y": 3,
-        "w": 4,
+        "w": 3,
         "h": 5
       },
       "fieldConfig": {
@@ -408,7 +479,7 @@
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 16,
+        "x": 17,
         "y": 3,
         "w": 4,
         "h": 5
@@ -466,9 +537,9 @@
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 20,
+        "x": 21,
         "y": 3,
-        "w": 4,
+        "w": 3,
         "h": 5
       },
       "fieldConfig": {
@@ -578,7 +649,7 @@
     },
     {
       "id": 2,
-      "title": "Fuel level cross-check and counter divergence",
+      "title": "Fuel remaining (counter), with bounds",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -619,10 +690,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT started AS time, level_start_l AS \"Fuel level start cross-check\", level_end_l AS \"Fuel level end cross-check\", level_used_l - COALESCE((SELECT sum(fuel_used_l) FROM v_lap_fuel lf WHERE lf.vehicle_id = sf.vehicle_id AND lf.session_id = sf.session_id AND lf.stint_number = sf.stint_number AND lf.measurement_status = 'clean'), 0.0) AS \"Level vs counter divergence\" FROM v_stint_fuel_level sf WHERE vehicle_id = '$vehicle' AND $__timeFilter(started) AND ('$session' = 'all' OR session_id::text = '$session') ORDER BY started"
+          "rawSql": "SELECT time, fuel_remaining_l AS \"Fuel remaining\", fuel_remaining_lo_l AS \"Lower bound\", fuel_remaining_hi_l AS \"Upper bound\" FROM v_strategy_history WHERE vehicle_id = '$vehicle' AND $__timeFilter(time) AND ('$session' = 'all' OR session_id::text = '$session') ORDER BY time"
         }
       ],
-      "description": "The slow-smoothed level sender is a cross-check. It re-bases only after a refuel; fuel temperature correction is not included."
+      "description": "Fuel remaining from the Haltech fuel-used counter, counted down from the last anchor (a full tank or an operator fuel mark). The tank level sender is not drawn here."
     },
     {
       "id": 3,
@@ -940,7 +1011,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Every projection here is computed by the strategy service and read from `v_strategy_latest` / `v_strategy_history`; no panel does the arithmetic. Counter-reset laps are omitted from the burn, not treated as zero; in-laps, out-laps and lap-time outliers are excluded too. `car.fuel_level` is the **cross-check** except at a post-refuel re-base, where it is the model's anchor -- the `Re-base` label says which. Radio the lower bound. The refuelling legal minimum comes from the race plan, not from this dashboard."
+        "content": "Every projection here is computed by the strategy service and read from `v_strategy_latest` / `v_strategy_history`; no panel does the arithmetic. Fuel remaining is the **Haltech fuel-used counter** counted down from the last anchor (full tank, operator fuel mark or a held surge-tank closure) -- the `Re-base` label says which. The tank level sender is not drawn on this dashboard. Counter-reset laps are omitted from the burn, not treated as zero; in-laps, out-laps and lap-time outliers are excluded too. Radio the lower bound. The refuelling legal minimum comes from the race plan, not from this dashboard."
       },
       "targets": []
     }

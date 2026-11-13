@@ -142,7 +142,11 @@ def test_fuel_dashboard_is_a_consumer_of_the_strategy_views() -> None:
     # The measurements are still drawn from the fuel views; every projection
     # comes from the strategy service's table through its views.
     assert "v_lap_fuel" in sql
-    assert "v_stint_fuel_level" in sql
+    # Every fuel level on this dashboard is the counter-based one; the tank
+    # level sender does not read the bottom of the tank and is not drawn.
+    assert "v_stint_fuel_level" not in sql
+    assert "car.fuel_level" not in text
+    assert "time_to_dry_s_lo" in sql
     assert "v_strategy_latest" in sql and "v_strategy_history" in sql
     assert "v_watch_findings" in sql and "strategy.%" in sql
     for column in (
@@ -163,7 +167,6 @@ def test_fuel_dashboard_is_a_consumer_of_the_strategy_views() -> None:
     assert "level_end_l / fuel_used_l" not in sql
     assert "480.0" not in sql and "interval '8 minutes'" not in sql
     assert "reset" in text
-    assert "cross-check" in text
     assert "lower bound" in text
     assert all(
         name in {item["name"] for item in dashboard["templating"]["list"]}

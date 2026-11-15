@@ -133,6 +133,14 @@ def pit_stream_config(
     )
 
 
+# How long to wait for the server to answer a stream request. The client's
+# default is 5 s. After the BEERS 36 Hour the stream held 23.6 million
+# messages in 10 GB and nats-server took 45 s to answer the update that
+# converges it ("Internal subscription ... took too long"); the provisioner
+# timed out, exited 1, and every service that waits on it stayed down.
+API_TIMEOUT_S = 180.0
+
+
 async def ensure_pit_stream(
     js: JetStreamContext, config: api.StreamConfig | None = None
 ) -> api.StreamInfo:
@@ -178,7 +186,7 @@ async def run(args: argparse.Namespace) -> int:
     )
     client = await nats.connect(args.server, user_credentials=args.creds or None)
     try:
-        info = await ensure_pit_stream(client.jetstream(), config)
+        info = await ensure_pit_stream(client.jetstream(timeout=API_TIMEOUT_S), config)
         vehicle_max_age = await source_max_age_s(client, args.source_stream, args.domain)
     finally:
         await client.close()

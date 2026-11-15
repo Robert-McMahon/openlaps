@@ -143,6 +143,10 @@ services:
     <<: [*openlaps-image, *pit-env]
     command: ["openlaps-migrate"]
     environment:
+      # Stored on the Grafana role for the alert rules to read, on every
+      # bring-up (pit.db.migrate.configure_deployment). Restart Grafana
+      # after changing it: a role setting is read when a connection opens.
+      OPENLAPS_VEHICLE_ID: ${OPENLAPS_VEHICLE_ID:-example-club-racer}
       TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}
       TIMESCALE_PORT: "5432"
     depends_on:

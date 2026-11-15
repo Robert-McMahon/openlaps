@@ -54,7 +54,7 @@
         <h3>Red flags</h3>
         <p class="hint">The race clock keeps running under a red flag; the
         driver's clock does not. Time in the pits pauses the driver's clock
-        too, and only a change of driver resets it.</p>
+        too, and only a new stint resets it.</p>
         <div id="timeline-reds" class="rows"></div>
         <button type="button" id="timeline-add-red" class="secondary">Add a red flag period</button>
         <h3>Fuel marks</h3>
@@ -95,18 +95,23 @@
         <label>New driver
           <select id="driver-select" required></select>
         </label>
+        <label id="driver-same" class="hidden">This driver is already in the car
+          <select id="driver-same-mode">
+            <option value="new_stint">Back in after a stop: new stint, stint clock resets</option>
+            <option value="correct">Correct when the current stint began</option>
+          </select>
+        </label>
         <label>Old driver out at <span class="hint">(pit entry; optional,
           leave empty for the same moment as below)</span>
           <span class="pick" data-for="driver-out-at" data-kinds="pit_entry lap_completed"></span>
           <input type="datetime-local" id="driver-out-at" step="1">
         </label>
         <label>New driver in at <span class="hint">(pit exit; optional,
-          leave empty for now. Picking the driver already in the car with
-          only this time corrects when their stint began.)</span>
+          leave empty for now)</span>
           <span class="pick" data-for="driver-at" data-kinds="pit_exit lap_completed"></span>
           <input type="datetime-local" id="driver-at" step="1">
         </label>
-        <button type="submit" class="primary">Change driver</button>
+        <button type="submit" class="primary" id="driver-submit">Change driver</button>
       </form>
     </section>
 

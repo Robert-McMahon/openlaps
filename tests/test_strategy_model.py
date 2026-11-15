@@ -659,14 +659,15 @@ def test_a_pit_stop_with_the_same_driver_pauses_the_driver_clock():
     )
     assert evaluate(parked, POLICY, "timer").driver_time_remaining_s == pytest.approx(3600)
 
-    # The same stop recorded by hand as two stints by the same driver: the
-    # continuous clock carries over, and only a different driver resets it.
+    # The same driver out and back in, recorded as two stints: a new stint
+    # resets the continuous clock whoever drives it; the total still counts.
     split = [
         StintFact(1, "Driver A", T0, _at(3600), 0, None, None),
         StintFact(2, "Driver A", _at(4800), None, 0, None, None),
     ]
     state = evaluate(_inputs(4800 + 1800, plan, A_LAPS, split), POLICY, "timer")
-    assert state.driver_time_remaining_s == pytest.approx(7200 - 3600 - 1800)
+    assert state.driver_time_remaining_s == pytest.approx(7200 - 1800)
+    assert state.driver_total_remaining_s == pytest.approx(21600 - 3600 - 1800)
     changed = [split[0], StintFact(2, "Driver B", _at(4800), None, 0, None, None)]
     state = evaluate(_inputs(4800 + 1800, plan, A_LAPS, changed), POLICY, "timer")
     assert state.driver_time_remaining_s == pytest.approx(7200 - 1800)

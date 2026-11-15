@@ -78,6 +78,26 @@ def test_driver_change_validation():
     assert state.stints == []
 
 
+def test_the_same_driver_can_get_back_in_for_a_new_stint():
+    state = started()
+    driver = state.driver
+
+    # Out at pit entry, maintenance, back in at pit exit.
+    payload = state.change_driver(
+        driver, now_ms=T0 + 50 * MIN, out_ms=T0 + 40 * MIN, same_driver=True
+    )
+    assert payload["driver"] == driver
+    assert payload["stint_number"] == 2
+    assert payload["stint_start"] == T0 + 50 * MIN
+    assert state.stints == [
+        {"driver": driver, "stint_number": 1, "start_ms": T0, "end_ms": T0 + 40 * MIN}
+    ]
+
+    restored = SessionState.from_dict(state.to_dict())
+    assert restored.driver == driver
+    assert restored.stint_number == 2
+
+
 def test_amend_stint_start_moves_the_boundary_both_directions():
     state = started()
     state.change_driver("Bob", now_ms=T0 + 30 * MIN)

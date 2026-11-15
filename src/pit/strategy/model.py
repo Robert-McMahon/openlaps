@@ -1097,10 +1097,10 @@ def _driver_time(
     """Drive time left on each limit; the clock stops while the car is stopped.
 
     A stint runs from the pit-exit line to the pit-entry line, so the stop
-    before it is already outside it. A pit stop the same driver sits through
-    and a red flag both pause the clock rather than reset it: the continuous
-    limit counts drive time since the last driver change, across consecutive
-    stints by the same driver.
+    before it is already outside it. A pit stop inside a stint and a red flag
+    both pause the clock rather than reset it. A new stint resets it, also
+    when the same driver gets back in: the continuous limit counts drive time
+    in the current stint only. The total limit counts all of a driver's stints.
     """
     if stint is None or plan is None:
         return None, None
@@ -1114,11 +1114,7 @@ def _driver_time(
             0.0,
         )
 
-    continuous_s = 0.0
-    for candidate in reversed(stints):
-        if candidate.driver != stint.driver:
-            break
-        continuous_s += driven(candidate)
+    continuous_s = driven(stint)
     total_s = sum(driven(candidate) for candidate in stints if candidate.driver == stint.driver)
     limits = plan.driver_limits
     remaining = total_remaining = None

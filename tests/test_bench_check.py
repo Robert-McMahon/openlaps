@@ -86,7 +86,9 @@ def test_the_candump_fixtures_predict_the_rate_they_actually_contain(tmp_path: P
 
     mix = bench_check.predict_can(profile, catalog, CANDUMPS)
 
-    assert mix.rate(bench_check.CAN_CLASS) == pytest.approx(2067.7, rel=0.01)
+    # 2067.7 until 0af3c0a mapped the PDM and keypad outputs the Haltech
+    # wiring report names (2026-11-13).
+    assert mix.rate(bench_check.CAN_CLASS) == pytest.approx(2182.5, rel=0.01)
     assert mix.rate(bench_check.IMU_CLASS) == pytest.approx(752.5, rel=0.01)
     devices = mix.device_rates()
     assert set(devices) == {"haltech", "haltech2", "wideband", "imu"}
@@ -313,7 +315,8 @@ def test_predict_mode_needs_no_hardware_and_reports_the_model_gap():
     assert "Predicted bench mix vs. LINK_BUDGET.md §2 model" in text
     # P7.5 adds five PDM load signals and repairs three current mappings.
     # The current host catalog also includes six channels added since the old 5.6/s pin.
-    assert "3076.9" in text and "4262.2" in text
+    # 0af3c0a (the Haltech wiring report) added the PDM and keypad outputs.
+    assert "3191.8" in text and "4262.2" in text
 
 
 def test_the_model_gap_can_be_made_fatal_for_those_who_want_it():

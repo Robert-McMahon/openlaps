@@ -25,7 +25,12 @@ from pit.registry_cache import (
 )
 from pit.timing_display import pit_clock_display
 from pit.timing_extrapolator.config import TimingConfig, load_config
-from pit.timing_extrapolator.engine import ClockPolicy, ClockValue, TimingExtrapolator
+from pit.timing_extrapolator.engine import (
+    OUTPUT_CHANNELS,
+    ClockPolicy,
+    ClockValue,
+    TimingExtrapolator,
+)
 from pit.timing_extrapolator.health import HealthState, serve_health
 
 logger = logging.getLogger(__name__)
@@ -93,7 +98,7 @@ def mqtt_message(
     status: str,
     reason: str | None,
 ) -> tuple[str, bytes]:
-    if channel not in {"timing.lap_elapsed_pit", "timing.sector_elapsed_pit"}:
+    if channel not in OUTPUT_CHANNELS:
         raise ValueError(f"refusing to publish non-pit timing channel {channel!r}")
     document: dict[str, object] = {
         "time": round(now_s * 1000),
@@ -147,7 +152,9 @@ class TimingService:
         self.cache = RegistryCache()
         self.health = HealthState(settings.stream, self.subject_filter)
         self.ready = asyncio.Event()
-        self._outbox: asyncio.Queue[tuple[str, ClockValue, float]] = asyncio.Queue(maxsize=2)
+        self._outbox: asyncio.Queue[tuple[str, ClockValue, float]] = asyncio.Queue(
+            maxsize=len(OUTPUT_CHANNELS)
+        )
         self.publish = self._queue_publish
 
     @property

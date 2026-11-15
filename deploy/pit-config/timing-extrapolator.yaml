@@ -1,5 +1,5 @@
 # Pit-side timing extrapolation policy. This service consumes only the
-# authoritative timing/clock channels it needs and publishes only the two
+# authoritative timing/clock channels it needs and publishes only the
 # explicitly pit-owned channels listed in its code.
 publish_hz: 10
 max_clock_offset_s: 0.1

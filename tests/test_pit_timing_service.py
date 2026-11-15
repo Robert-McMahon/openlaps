@@ -42,9 +42,14 @@ def test_shipped_config_is_strict_and_names_only_pit_owned_outputs(tmp_path):
     # `test_the_shipped_config_names_no_vehicle_at_all` for the history.
     assert config.vehicle is None
     assert config.publish_hz == 10
-    assert config.output_channels == (
+    assert config.output_channels[:3] == (
         "timing.lap_elapsed_pit",
         "timing.sector_elapsed_pit",
+        "timing.sector_1_pit",
+    )
+    assert all(
+        channel.startswith("timing.") and channel.endswith("_pit")
+        for channel in config.output_channels
     )
 
     invalid = tmp_path / "invalid.yaml"
@@ -121,8 +126,11 @@ def test_service_decodes_authoritative_inputs_and_emits_only_pit_channels(tmp_pa
 
     assert sent
     assert {item[0] for item in sent} <= set(service.config.output_channels)
-    assert sent[-1][0] == "timing.sector_elapsed_pit"
-    assert sent[-2][0] == "timing.lap_elapsed_pit"
+    assert [item[0] for item in sent[-3:]] == [
+        "timing.lap_elapsed_pit",
+        "timing.sector_elapsed_pit",
+        "timing.sector_1_pit",
+    ]
 
 
 def test_settings_name_the_sourced_stream_and_dedicated_health_port(tmp_path):

@@ -111,3 +111,64 @@ def test_lap_completion_publishes_vehicle_time_then_resets_both_running_clocks()
     assert completed["timing.lap_elapsed_pit"].status == "authoritative"
     assert running["timing.lap_elapsed_pit"].value == pytest.approx(3.0)
     assert running["timing.sector_elapsed_pit"].value == pytest.approx(3.0)
+
+
+def test_each_sector_holds_its_time_until_the_car_is_in_it_again():
+    engine = TimingExtrapolator(ClockPolicy())
+    healthy(engine)
+    engine.observe("lap.event", event("lap_completed", 1_000.0, lap_time=100.0))
+
+    # Sector 1 runs; the others have not been timed yet and are not listed.
+    first = engine.tick(1_010.0)
+    assert first["timing.sector_1_pit"].value == pytest.approx(10.0)
+    assert "timing.sector_2_pit" not in first
+
+    done = engine.observe(
+        "lap.event", event("sector_completed", 1_035.0, sector=1, split_time=35.0)
+    )
+    assert done["timing.sector_1_pit"] == done["timing.sector_elapsed_pit"]
+    second = engine.tick(1_040.0)
+    assert second["timing.sector_1_pit"].value == pytest.approx(35.0)
+    assert second["timing.sector_1_pit"].status == "authoritative"
+    assert second["timing.sector_2_pit"].value == pytest.approx(5.0)
+    assert second["timing.sector_2_pit"].status == "extrapolating"
+
+    engine.observe("lap.event", event("sector_completed", 1_075.0, sector=2, split_time=40.0))
+    third = engine.tick(1_080.0)
+    assert third["timing.sector_2_pit"].value == pytest.approx(40.0)
+    assert third["timing.sector_3_pit"].value == pytest.approx(5.0)
+
+    # The lap ends: sector 1 runs again, sectors 2 and 3 keep their times.
+    engine.observe("lap.event", event("sector_completed", 1_108.0, sector=3, split_time=33.0))
+    engine.observe("lap.event", event("lap_completed", 1_108.0, lap_time=108.0))
+    new_lap = engine.tick(1_110.0)
+    assert new_lap["timing.sector_1_pit"].value == pytest.approx(2.0)
+    assert new_lap["timing.sector_2_pit"].value == pytest.approx(40.0)
+    assert new_lap["timing.sector_3_pit"].value == pytest.approx(33.0)
+    assert "timing.sector_4_pit" not in new_lap
+
+
+def test_a_gated_clock_blanks_the_running_sector_but_keeps_completed_times():
+    engine = TimingExtrapolator(ClockPolicy())
+    healthy(engine)
+    engine.observe("lap.event", event("lap_completed", 1_000.0, lap_time=100.0))
+    engine.observe("lap.event", event("sector_completed", 1_035.0, sector=1, split_time=35.0))
+    engine.observe("sys.host.clock_stratum", 9)
+
+    output = engine.tick(1_040.0)
+
+    assert output["timing.sector_1_pit"].value == pytest.approx(35.0)
+    assert output["timing.sector_2_pit"].status == "gated"
+
+
+def test_a_sector_joined_mid_lap_is_marked_not_timed():
+    engine = TimingExtrapolator(ClockPolicy())
+    healthy(engine)
+    engine.observe("lap.event", event("sector_completed", 1_075.0, sector=2, split_time=40.0))
+
+    output = engine.tick(1_080.0)
+
+    assert output["timing.sector_1_pit"].status == "pending"
+    assert output["timing.sector_1_pit"].value is None
+    assert output["timing.sector_2_pit"].value == pytest.approx(40.0)
+    assert output["timing.sector_3_pit"].value == pytest.approx(5.0)

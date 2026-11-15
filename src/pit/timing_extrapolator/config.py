@@ -9,6 +9,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from pit.live_decoder.config import _UniqueKeyLoader
+from pit.timing_extrapolator.engine import OUTPUT_CHANNELS
 
 _NON_EMPTY = Annotated[str, Field(min_length=1)]
 _POSITIVE = Annotated[float, Field(gt=0, allow_inf_nan=False)]
@@ -32,8 +33,8 @@ class TimingConfig(BaseModel):
     fallback_max_lap_s: _POSITIVE = 300.0
 
     @property
-    def output_channels(self) -> tuple[str, str]:
-        return ("timing.lap_elapsed_pit", "timing.sector_elapsed_pit")
+    def output_channels(self) -> tuple[str, ...]:
+        return OUTPUT_CHANNELS
 
 
 def load_config(path: str | Path) -> TimingConfig:

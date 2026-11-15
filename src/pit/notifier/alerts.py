@@ -28,6 +28,11 @@ TEST_ALERT_NAME = "notifier-test"
 _GENERATOR_UID = re.compile(r"/alerting/grafana/([^/?#]+)/view")
 
 
+# What Grafana names the alert it raises when a rule could not be evaluated
+# (`execErrState: Error`, `noDataState: NoData`) rather than when it fired.
+_EVALUATION_FAILURES = frozenset({"DatasourceError", "DatasourceNoData"})
+
+
 def severity_rank(severity: str) -> int:
     return SEVERITIES.index(severity) if severity in SEVERITIES else SEVERITIES.index("critical")
 
@@ -105,6 +110,16 @@ def parse_notification(payload: Any, now: datetime) -> list[Alert]:
             # A rule that forgot to say is treated as the loud kind; a quiet
             # default is how an alert gets lost.
             severity = "critical"
+        summary = annotations.get("summary") or name
+        if name in _EVALUATION_FAILURES:
+            # The rule's query failed; the limit was not crossed. Grafana
+            # sends this with the rule's own labels and summary, so unnamed
+            # it reads "FIRING: Coolant temperature high" on a phone. Say
+            # what it is, and at warning: the crew needs to know a check is
+            # blind, not to be paged as if the engine were cooking.
+            summary = f"Alert check failing: {labels.get('rulename') or summary}"
+            if severity == "critical":
+                severity = "warning"
         rule_uid = labels.get("__alert_rule_uid__") or None
         if rule_uid is None:
             match = _GENERATOR_UID.search(_text(raw.get("generatorURL")))
@@ -119,7 +134,7 @@ def parse_notification(payload: Any, now: datetime) -> list[Alert]:
                 labels=labels,
                 annotations=annotations,
                 rule_uid=rule_uid,
-                summary=annotations.get("summary") or name,
+                summary=summary,
             )
         )
     return alerts

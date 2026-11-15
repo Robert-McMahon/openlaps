@@ -139,6 +139,17 @@ def test_the_vehicle_id_comes_from_the_profile_not_the_generator(tmp_path: Path)
     assert "example-club-racer" not in text
 
 
+def test_every_sample_lookup_is_bounded_in_time() -> None:
+    """A channel with no rows must cost one short index probe, not a walk
+    through every chunk: unbounded, it ran past Grafana's query timeout and
+    each timeout was announced as an alert (1,300 a day at the race)."""
+    _, text = gen_alert_rules.render(EXAMPLE_PROFILE)
+    for uid, rule in _rules(yaml.safe_load(text)).items():
+        sql = _sql(rule)
+        lookups = sql.count("FROM v_samples_named")
+        assert sql.count("time > now() - interval '") == lookups, uid
+
+
 @pytest.mark.parametrize(
     ("alarm", "message"),
     [

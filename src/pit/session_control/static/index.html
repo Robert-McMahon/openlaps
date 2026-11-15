@@ -205,7 +205,9 @@
     <section id="end-section" class="card hidden">
       <h2>End session</h2>
       <label>Actually ended at <span class="hint">(optional; leave empty
-        for now)</span>
+        for now. A race ends at the finish line; pick the pit entry
+        instead to keep the lap back to the pits in the session.)</span>
+        <span class="pick" data-for="end-at" data-kinds="lap_completed pit_entry"></span>
         <input type="datetime-local" id="end-at" step="1">
       </label>
       <button id="end-button" class="danger">End session</button>

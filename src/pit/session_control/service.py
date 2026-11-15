@@ -281,7 +281,17 @@ class SessionController:
                 # pit-entry line) when that is earlier than `at`, the moment
                 # the new stint began (pit exit).
                 out_at = _epoch_ms(body, "out_at")
-                if (
+                # `new_stint` says the in-car driver got out and back in (a
+                # maintenance stop): a new stint for the same driver, not a
+                # correction and not a slip.
+                new_stint = body.get("new_stint")
+                if new_stint is not None and not isinstance(new_stint, bool):
+                    raise SessionError("new_stint must be true or false")
+                if new_stint:
+                    payload = self.state.change_driver(
+                        driver, now_ms=now_ms, out_ms=out_at, same_driver=True
+                    )
+                elif (
                     at is not None
                     and out_at is None
                     and self.state.status == "active"
@@ -290,7 +300,7 @@ class SessionController:
                     # Re-stating the in-car driver with a time is a
                     # correction of when their stint began — the boundary
                     # just recorded was wrong — not a driver change. Without
-                    # `at` it stays the 409 it always was.
+                    # `at` or `new_stint` it stays the 409 it always was.
                     payload = self.state.amend_stint_start(at)
                 else:
                     payload = self.state.change_driver(driver, now_ms=now_ms, out_ms=out_at)

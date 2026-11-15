@@ -172,34 +172,40 @@ channels:
 
   #Sync pulsed inputs
   car.surge_tank_switch: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_1_VOLTAGE", units: "V", rbe: { deadband: 0.05, min_interval: 100ms, max_interval: 5s } }
+  car.brake_pressure_front_volts: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_2_VOLTAGE", units: "V", rbe: { deadband: 0.05, min_interval: 100ms, max_interval: 5s } }
   car.clutch_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_3_VOLTAGE", units: "V", rbe: { deadband: 0.05, min_interval: 100ms, max_interval: 5s } }
   car.brake_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_4_VOLTAGE", units: "V", rbe: { deadband: 0.05, min_interval: 100ms, max_interval: 5s } }
 
   #Half Bridge Outputs
   car.power_steering_pump_1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_1_HS_CURRENT", units: "A" }
-  car.power_steering_pump_2_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_2_CURRENT", units: "A" }
+  car.power_steering_pump_2_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_2_HS_CURRENT", units: "A" }
 
   # High Current Outputs
   car.starter_relay_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_1_CURRENT", units: "A" }
-  car.wideband1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_2_CURRENT", units: "A" }
+  # HCO8_2 feeds the wideband controller, the injectors and the ECU together.
+  car.ecu_inj_wideband_supply_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_2_CURRENT", units: "A" }
   car.head_light_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_3_CURRENT", units: "A" }
   car.brake_light_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_4_CURRENT", units: "A" }
   car.wiper_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_5_CURRENT", units: "A" }
-  car.inj_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_6_CURRENT", units: "A" }
-  car.crank_cam_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_7_CURRENT", units: "A" }
+  car.water_injection_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_6_CURRENT", units: "A" }
+  # HCO8_7 switches the changeover relay that selects the duty or the standby
+  # main fuel pump.
+  car.fuel_pump_changeover_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_7_CURRENT", units: "A" }
   car.lift_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_8_CURRENT", units: "A" }
   car.heater_fan_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_9_CURRENT", units: "A" }
-  car.oil_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_10_CURRENT", units: "A" }
-  car.thermo_fan_2_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HC25_1_CURRENT", units: "A" }
+  # HCO8_10 scavenges oil from the left side of the cam box, which fills in
+  # long right-hand corners.
+  car.cam_scavenge_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_10_CURRENT", units: "A" }
+  car.gearbox_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO25_1_HS_CURRENT", units: "A" }
   car.thermo_fan_1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO25_2_HS_CURRENT", units: "A" }
-  car.ign_coils_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HC25_3_CURRENT", units: "A" }
+  car.ign_coils_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO25_3_HS_CURRENT", units: "A" }
   car.fuel_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO25_4_HS_CURRENT", units: "A", rbe: { deadband: 0.2, min_interval: 50ms, max_interval: 2s } }
   # Output duty/load: watch derives the on state as load > 0, independently
   # of measured current (PIN_STATE is a fault enum, not an on/off signal).
   car.thermo_fan_1_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO25_2_LOAD", units: "%" }
   car.fuel_pump_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO25_4_LOAD", units: "%", rbe: { deadband: 1, min_interval: 50ms, max_interval: 2s } }
   car.power_steering_pump_1_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_1_LOAD", units: "%" }
-  car.oil_pump_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_10_LOAD", units: "%" }
+  car.cam_scavenge_pump_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_10_LOAD", units: "%" }
   car.lift_pump_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_8_LOAD", units: "%" }
   # The removed AVI/SPI voltage channels (avi1_v..avi4_v, spi3_v, spi4_v) each
   # carried an rbe policy -- {deadband: 0.05, max_interval: 5s} -- to keep the
@@ -210,19 +216,19 @@ channels:
   # ---- PDM/keypad: 15-button CAN keypad, CANopen node 12 (device: haltech2) ----
   car.wiper_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_1", type: int }
   car.head_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_2", type: int }
-  car.oil_pump_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_3", type: int }
+  car.fuel_pump_changeover_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_3", type: int }
   car.boost_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_4", type: int }
   car.keypad_button_5: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_5", type: int }
-  car.park_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_6", type: int }
+  car.dim_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_6", type: int }
   car.pit_speed_limit_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_7", type: int }
   car.thermo_fan_1_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_8", type: int }
   car.hazard_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_9", type: int }
   car.rotational_idle_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_10", type: int }
   car.start_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_11", type: int }
   car.heater_fan_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_12", type: int }
-  car.thermo_fan_2_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_13", type: int }
+  car.gearbox_pump_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_13", type: int }
   car.engine_protection_ack_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_14", type: int }
-  car.lift_pump_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_15", type: int }
+  car.fuel_pump_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_15", type: int }
   car.keypad_nmt_state: { from: "can0:haltech2.KEYPAD_HEARTBEAT.KEYPAD_NMT_STATE", type: int }
 
   # ---- GNSS: UM980 receiver (serial0: UM980, decoder nmea, sentence RMC) ----

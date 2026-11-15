@@ -199,6 +199,63 @@ def test_pit_in_out_marks_lap_invalid():
     assert lap and lap[0].valid is False  # in-lap (touched pit) not valid
 
 
+def _collie_pit_lines():
+    return STD_LINES + [
+        vline(500, "PitEntry", LineType.PIT_ENTRY),
+        vline(600, "PitEntryRefuel", LineType.PIT_ENTRY),
+        vline(700, "PitExitRefuel", LineType.PIT_EXIT),
+        vline(800, "PitExit", LineType.PIT_EXIT),
+    ]
+
+
+def test_a_refuel_bay_inside_the_pit_lane_keeps_the_car_in_the_pits_until_the_outer_exit():
+    # Collie, 2026-11-12: the refuel bay's lines sit inside the pit lane's,
+    # and the car was reported back on track at the refuel exit.
+    eng = TimingEngine(_collie_pit_lines())
+    pts = [pt(-10, 0, 95)]
+    pts += cross_x(0, 100)
+    pts += cross_x(500, 105)
+    pts += cross_x(600, 110)
+    pts += cross_x(700, 150)
+    pts += cross_x(800, 160)
+    events = [e for e in run(eng, pts) if e.type in (EventType.PIT_ENTRY, EventType.PIT_EXIT)]
+    assert [(e.line, e.pit_status) for e in events] == [
+        ("PitEntry", "pit"),
+        ("PitEntryRefuel", "pit"),
+        ("PitExitRefuel", "pit"),
+        ("PitExit", "track"),
+    ]
+    assert eng.state.pit_zones == []
+
+
+def test_a_missed_refuel_exit_does_not_hold_the_car_in_the_pits():
+    eng = TimingEngine(_collie_pit_lines())
+    pts = [pt(-10, 0, 95)]
+    pts += cross_x(0, 100)
+    pts += cross_x(500, 105)
+    pts += cross_x(600, 110)  # refuel entry; its exit is never seen
+    pts += cross_x(800, 160)
+    run(eng, pts)
+    assert eng.state.pit_status == "track"
+    assert eng.state.pit_zones == []
+
+
+def test_a_refuel_exit_with_no_entry_on_record_leaves_the_pit_lane_open():
+    eng = TimingEngine(_collie_pit_lines())
+    pts = [pt(-10, 0, 95)]
+    pts += cross_x(0, 100)
+    pts += cross_x(500, 105)
+    pts += cross_x(700, 150)  # refuel exit; its entry was missed
+    run(eng, pts)
+    assert eng.state.pit_status == "pit"
+
+
+def test_leaving_the_garage_through_the_pit_exit_alone_is_on_track():
+    eng = TimingEngine(_collie_pit_lines())
+    run(eng, [pt(790, 0, 95), *cross_x(800, 100)])
+    assert eng.state.pit_status == "track"
+
+
 def test_state_roundtrip_persists():
     eng = TimingEngine(STD_LINES)
     run(eng, build_stream([(100, 110, 125), (160, 168, 181)]))

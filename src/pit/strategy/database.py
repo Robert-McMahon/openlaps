@@ -82,10 +82,15 @@ WHERE vehicle_id = %s AND channel = %s AND value IS NOT NULL
 """
 # The surge switch's state changes since the session started, from the
 # one-second trace: a row per second is small enough to window over a whole
-# race, where the raw channel is not. One row per change of state.
+# race, where the raw channel is not. One row per change of state, with the
+# time of the reading before it: the channel reports on change and then only
+# every few seconds, so the reading that shows the switch open again can be
+# many seconds after it actually opened. The last reading that still showed
+# it closed is the latest instant it is known to have been closed.
 _SURGE_CHANGES = """
-SELECT time, is_on FROM (
-    SELECT time, avg {op} %s AS is_on, lag(avg {op} %s) OVER (ORDER BY time) AS was_on
+SELECT time, is_on, previous_time FROM (
+    SELECT time, avg {op} %s AS is_on, lag(avg {op} %s) OVER (ORDER BY time) AS was_on,
+           lag(time) OVER (ORDER BY time) AS previous_time
     FROM v_samples_1s_named
     WHERE vehicle_id = %s AND channel = %s AND time >= %s AND time <= %s
 ) changes
@@ -440,21 +445,26 @@ def _operator(when: str) -> str:
 
 
 def surge_episodes(
-    changes: list[tuple[datetime, bool]], last_sample: datetime | None
+    changes: list[tuple[datetime, bool, datetime | None]], last_sample: datetime | None
 ) -> list[tuple[datetime, datetime]]:
-    """Turn the switch's state changes into (closed-at, opened-at) periods.
+    """Turn the switch's state changes into (closed-at, last-seen-closed) periods.
 
-    A period still running ends at the last sample seen, so its length is
-    how long the switch is *known* to have been closed, not how long ago it
-    closed: a car that went silent with the light on has not been timed.
+    Each change carries the time of the reading before it. A period ends at
+    the last reading that still showed the switch closed, not at the reading
+    that showed it open: the channel is sparse, and a 0.1 s blip followed by
+    a 10 s silence is a 0.1 s blip, not a 10 s closure (Collie, 2026-11-13).
+    A period still running ends at the last sample seen. Either way its
+    length is how long the switch is *known* to have been closed: a car that
+    went silent with the light on has not been timed.
     """
     episodes: list[tuple[datetime, datetime]] = []
     opened: datetime | None = None
-    for time, is_on in changes:
+    for time, is_on, previous_time in changes:
         if is_on and opened is None:
             opened = time
         elif not is_on and opened is not None:
-            episodes.append((opened, time))
+            last_closed = previous_time if previous_time is not None else opened
+            episodes.append((opened, max(opened, last_closed)))
             opened = None
     if opened is not None and last_sample is not None and last_sample >= opened:
         episodes.append((opened, last_sample))

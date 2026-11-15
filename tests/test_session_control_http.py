@@ -556,7 +556,7 @@ def test_backdated_transitions_over_http(tmp_path: Path):
             # session_start, and the server refuses an `at` ahead of its own
             # clock. A fast runner reaches them inside that window, so let the
             # clock move past the latest one first.
-            while int(time.time() * 1000) <= session_start + 6:
+            while int(time.time() * 1000) <= session_start + 12:
                 await asyncio.sleep(0.005)
 
             code, body = await asyncio.to_thread(
@@ -613,6 +613,18 @@ def test_backdated_transitions_over_http(tmp_path: Path):
             assert code == 409
             assert "already the active driver" in body["error"]
 
+            # `new_stint` is the in-car driver back in after a stop: a new
+            # stint for the same driver, even with only `at`.
+            code, body = await asyncio.to_thread(
+                _request,
+                f"{base}/session/driver",
+                {"driver": "Driver B", "at": session_start + 9, "new_stint": True},
+            )
+            assert code == 200
+            assert body["driver"] == "Driver B"
+            assert body["stint_number"] == 3
+            assert body["stint_start"] == session_start + 9
+
             code, body = await asyncio.to_thread(
                 _request,
                 f"{base}/session/end",
@@ -624,11 +636,11 @@ def test_backdated_transitions_over_http(tmp_path: Path):
             code, body = await asyncio.to_thread(
                 _request,
                 f"{base}/session/end",
-                {"at": session_start + 6},
+                {"at": session_start + 12},
             )
             assert code == 200
             assert body["status"] == "ended"
-            assert body["timestamp"] == session_start + 6
+            assert body["timestamp"] == session_start + 12
         finally:
             server.shutdown()
             server.server_close()

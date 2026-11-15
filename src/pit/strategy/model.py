@@ -892,13 +892,10 @@ def _driven_seconds(start: datetime, end: datetime, stops: list[StopFact]) -> fl
     """Seconds between ``start`` and ``end`` not spent inside a pit stop."""
     if end <= start:
         return 0.0
-    driven = (end - start).total_seconds()
-    for stop in stops:
-        stop_end = stop.exit_at or end
-        overlap = (min(end, stop_end) - max(start, stop.entry_at)).total_seconds()
-        if overlap > 0:
-            driven -= overlap
-    return max(driven, 0.0)
+    # Merged first: a refuel stop sits inside the pit-lane stop around it
+    # where a track nests its lines, and that time must come off once.
+    in_pits = _overlap_seconds(start, end, _paused([], stops, end))
+    return max((end - start).total_seconds() - in_pits, 0.0)
 
 
 # --- the race end, the window and the stop plan ------------------------------------
@@ -1100,10 +1097,10 @@ def _driver_time(
     """Drive time left on each limit; the clock stops while the car is stopped.
 
     A stint runs from the pit-exit line to the pit-entry line, so the stop
-    before it is already outside it. A pit stop the same driver sits through
-    and a red flag both pause the clock rather than reset it: the continuous
-    limit counts drive time since the last driver change, across consecutive
-    stints by the same driver.
+    before it is already outside it. A pit stop inside a stint and a red flag
+    both pause the clock rather than reset it. A new stint resets it, also
+    when the same driver gets back in: the continuous limit counts drive time
+    in the current stint only. The total limit counts all of a driver's stints.
     """
     if stint is None or plan is None:
         return None, None
@@ -1117,11 +1114,7 @@ def _driver_time(
             0.0,
         )
 
-    continuous_s = 0.0
-    for candidate in reversed(stints):
-        if candidate.driver != stint.driver:
-            break
-        continuous_s += driven(candidate)
+    continuous_s = driven(stint)
     total_s = sum(driven(candidate) for candidate in stints if candidate.driver == stint.driver)
     limits = plan.driver_limits
     remaining = total_remaining = None

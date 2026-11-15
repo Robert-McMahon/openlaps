@@ -1,8 +1,10 @@
 {
   "drivers": [
-    "Driver A",
-    "Driver B",
-    "Driver C"
+    "Simon",
+    "Rob",
+    "Jake",
+    "Dave",
+    "Dan"
   ],
   "session_types": [
     "practice",
@@ -11,6 +13,7 @@
     "test"
   ],
   "tracks": [
+    "Collie-Long-BEERS",
     "Wanneroo"
   ]
 }

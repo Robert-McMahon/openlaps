@@ -59,8 +59,8 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
-        "query": "SELECT DISTINCT COALESCE(session_id::text, 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "definition": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
         "refresh": 1,
         "options": [],
         "includeAll": true,
@@ -236,7 +236,7 @@
       "gridPos": {
         "x": 4,
         "y": 3,
-        "w": 4,
+        "w": 3,
         "h": 5
       },
       "fieldConfig": {
@@ -284,6 +284,77 @@
       "description": "The number that gets radioed is the lower bound: usable fuel at the low end over burn at the high end (mean + 2 sd of the last clean laps). `Laps in burn` is how many laps that mean rests on -- three laps and a full stint must not look alike."
     },
     {
+      "id": 15,
+      "title": "Time to empty (lower bound)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 7,
+        "y": 3,
+        "w": 3,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dthms",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Empty at"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:HH:mm"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, time_to_dry_s_lo AS \"Time to empty\", time_to_dry_s_hi AS \"Upper bound\", time + time_to_dry_s_lo * interval '1 second' AS \"Empty at\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "Laps to dry turned into running time at the reference lap time the strategy service uses. Lower bound: counter-based fuel remaining at its low end over burn at its high end. `Empty at` is the clock time that lower bound falls on. Under a safety car the burn per lap drops and this stretches out."
+    },
+    {
       "id": 9,
       "title": "Pit window",
       "type": "stat",
@@ -292,7 +363,7 @@
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 8,
+        "x": 10,
         "y": 3,
         "w": 4,
         "h": 5
@@ -350,9 +421,9 @@
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 12,
+        "x": 14,
         "y": 3,
-        "w": 4,
+        "w": 3,
         "h": 5
       },
       "fieldConfig": {
@@ -408,7 +479,7 @@
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 16,
+        "x": 17,
         "y": 3,
         "w": 4,
         "h": 5
@@ -459,59 +530,71 @@
     },
     {
       "id": 12,
-      "title": "Refuelling legal release",
-      "type": "stat",
+      "title": "Refuel release in",
+      "type": "grafana-clock-panel",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 20,
+        "x": 21,
         "y": 3,
-        "w": 4,
+        "w": 3,
         "h": 5
       },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Release at"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "dateTimeAsLocalNoDate"
-              }
-            ]
-          }
-        ]
-      },
+      "description": "Counts down in the browser, every second, to the earliest legal release: the PitEntryRefuel crossing plus the race plan's minimum refuelling time (8 min). Read from the refuel line crossings of the last 45 minutes, so it starts when the car crosses the line and does not wait for a lap. Shows RELEASE once the minimum has passed and clears when the car crosses PitExitRefuel.",
       "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "mode": "countdown",
+        "refresh": "sec",
+        "clockType": "24 hour",
+        "fontMono": true,
+        "bgColor": "",
+        "countupSettings": {
+          "source": "query",
+          "queryCalculation": "lastNotNull",
+          "queryField": "Stint started",
+          "beginCountupTime": "",
+          "beginText": "0:00:00",
+          "noValueText": "no stint yet",
+          "invalidValueText": "invalid timestamp",
+          "customFormat": "h:mm:ss"
         },
-        "textMode": "value_and_name",
-        "colorMode": "none"
+        "countdownSettings": {
+          "source": "query",
+          "endCountdownTime": "",
+          "queryCalculation": "lastNotNull",
+          "queryField": "Release at",
+          "endText": "RELEASE",
+          "noValueText": "not refuelling",
+          "invalidValueText": "not refuelling",
+          "customFormat": "m:ss"
+        },
+        "descriptionSettings": {
+          "source": "none",
+          "descriptionText": "",
+          "queryField": "",
+          "noValueText": "",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        },
+        "dateSettings": {
+          "showDate": false,
+          "dateFormat": "YYYY-MM-DD",
+          "locale": "",
+          "fontSize": "20px",
+          "fontWeight": "normal"
+        },
+        "timeSettings": {
+          "fontSize": "44px",
+          "fontWeight": "bold"
+        },
+        "timezone": "",
+        "timezoneSettings": {
+          "showTimezone": false,
+          "zoneFormat": "offsetAbbv",
+          "fontSize": "12px",
+          "fontWeight": "normal"
+        }
       },
       "targets": [
         {
@@ -523,10 +606,9 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT time, refuel_elapsed_s AS \"Elapsed\", refuel_remaining_s AS \"To legal minimum\", refuel_release_at AS \"Release at\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+          "rawSql": "SELECT now() AS time,\n       (SELECT CASE WHEN e.event ->> 'type' = 'pit_entry'\n                    THEN e.time + make_interval(secs => COALESCE((SELECT rp.refuel_min_s FROM v_session_active a JOIN v_race_plan rp ON rp.session_id = a.session_id WHERE a.vehicle_id = '$vehicle' LIMIT 1), 480))\n               END\n        FROM (SELECT s.time, s.value_text::jsonb AS event\n              FROM v_samples_named s\n              WHERE s.channel = 'lap.event' AND s.vehicle_id = '$vehicle'\n                AND s.value_text IS NOT NULL AND s.time > now() - interval '45 minutes') e\n        WHERE e.event ->> 'type' IN ('pit_entry', 'pit_exit') AND lower(e.event ->> 'line') LIKE '%refuel%'\n        ORDER BY e.time DESC LIMIT 1) AS \"Release at\""
         }
-      ],
-      "description": "Live only while a refuel stop is open: elapsed since the PitEntryRefuel crossing, remaining to the plan's regulated minimum, and the wall time the car may be released. Releasing early is a penalty, not a gain."
+      ]
     },
     {
       "id": 1,
@@ -578,7 +660,7 @@
     },
     {
       "id": 2,
-      "title": "Fuel level cross-check and counter divergence",
+      "title": "Fuel remaining (counter), with bounds",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -619,10 +701,10 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT started AS time, level_start_l AS \"Fuel level start cross-check\", level_end_l AS \"Fuel level end cross-check\", level_used_l - COALESCE((SELECT sum(fuel_used_l) FROM v_lap_fuel lf WHERE lf.vehicle_id = sf.vehicle_id AND lf.session_id = sf.session_id AND lf.stint_number = sf.stint_number AND lf.measurement_status = 'clean'), 0.0) AS \"Level vs counter divergence\" FROM v_stint_fuel_level sf WHERE vehicle_id = '$vehicle' AND $__timeFilter(started) AND ('$session' = 'all' OR session_id::text = '$session') ORDER BY started"
+          "rawSql": "SELECT time, fuel_remaining_l AS \"Fuel remaining\", fuel_remaining_lo_l AS \"Lower bound\", fuel_remaining_hi_l AS \"Upper bound\" FROM v_strategy_history WHERE vehicle_id = '$vehicle' AND $__timeFilter(time) AND ('$session' = 'all' OR session_id::text = '$session') ORDER BY time"
         }
       ],
-      "description": "The slow-smoothed level sender is a cross-check. It re-bases only after a refuel; fuel temperature correction is not included."
+      "description": "Fuel remaining from the Haltech fuel-used counter, counted down from the last anchor (a full tank or an operator fuel mark). The tank level sender is not drawn here."
     },
     {
       "id": 3,
@@ -940,7 +1022,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Every projection here is computed by the strategy service and read from `v_strategy_latest` / `v_strategy_history`; no panel does the arithmetic. Counter-reset laps are omitted from the burn, not treated as zero; in-laps, out-laps and lap-time outliers are excluded too. `car.fuel_level` is the **cross-check** except at a post-refuel re-base, where it is the model's anchor -- the `Re-base` label says which. Radio the lower bound. The refuelling legal minimum comes from the race plan, not from this dashboard."
+        "content": "Every projection here is computed by the strategy service and read from `v_strategy_latest` / `v_strategy_history`; no panel does the arithmetic. Fuel remaining is the **Haltech fuel-used counter** counted down from the last anchor (full tank, operator fuel mark or a held surge-tank closure) -- the `Re-base` label says which. The tank level sender is not drawn on this dashboard. Counter-reset laps are omitted from the burn, not treated as zero; in-laps, out-laps and lap-time outliers are excluded too. Radio the lower bound. The refuelling legal minimum comes from the race plan, not from this dashboard."
       },
       "targets": []
     }

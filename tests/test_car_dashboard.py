@@ -23,7 +23,8 @@ LIVE_CHANNELS = {
     "car.battery_v",
     "car.fuel_pressure",
     "car.fuel_level",
-    "car.fuel_total_used",
+    "car.gearbox_oil_temp",
+    "car.air_temp",
 }
 CONTEXT_CHANNELS = {
     "lap.number",
@@ -35,11 +36,7 @@ CONTEXT_CHANNELS = {
     "sys.agent.publish_drops",
     "sys.agent.rbe_suppressed",
 }
-HANDLING_CHANNELS = {
-    "car.accel_x",
-    "car.accel_y",
-}
-TRACE_CHANNELS = LIVE_CHANNELS | {"car.knock_level1", "car.fuel_level"}
+TRACE_CHANNELS = LIVE_CHANNELS | {"car.knock_level1", "car.fuel_level", "car.fuel_total_used"}
 
 
 def _dashboard() -> dict[str, Any]:
@@ -50,14 +47,13 @@ def _data_panels(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
     return [panel for panel in dashboard["panels"] if panel["type"] != "row"]
 
 
-def test_car_dashboard_has_four_rows_and_operator_link() -> None:
+def test_car_dashboard_has_three_rows_and_operator_link() -> None:
     dashboard = _dashboard()
 
     assert dashboard["uid"] == "car"
     assert [panel["title"] for panel in dashboard["panels"] if panel["type"] == "row"] == [
         "Live",
         "Context",
-        "Handling",
         "Traces",
     ]
     assert any(
@@ -73,7 +69,7 @@ def test_live_and_context_panels_cover_the_required_mqtt_channels() -> None:
     topics = {target["topic"] for panel in mqtt_panels for target in panel["targets"]}
     expected_topics = {
         f"openlaps/$vehicle/{channel}"
-        for channel in LIVE_CHANNELS | CONTEXT_CHANNELS | HANDLING_CHANNELS
+        for channel in LIVE_CHANNELS | CONTEXT_CHANNELS
     }
     assert topics == expected_topics
 
@@ -149,9 +145,10 @@ def test_temperature_panels_declare_units_and_dashboard_has_no_credentials() -> 
             assert unit == "celsius"
             assert _has_kelvin_to_celsius_conversion(panel)
         else:
-            # Trace panels plot the stored samples as-is, which are Kelvin.
-            assert unit == "kelvin"
+            # Trace panels convert the stored Kelvin samples in the query.
+            assert unit == "celsius"
             assert not _has_kelvin_to_celsius_conversion(panel)
+            assert all("- 273.15" in target["rawSql"] for target in panel["targets"])
 
     serialized = json.dumps(dashboard).lower()
     assert not any(term in serialized for term in ("password", "api_key", "bearer "))

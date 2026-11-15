@@ -79,8 +79,14 @@ class SessionState:
         driver: str,
         now_ms: int | None = None,
         out_ms: int | None = None,
+        same_driver: bool = False,
     ) -> dict[str, object]:
         """Close the current stint and open the next one for ``driver``.
+
+        ``same_driver`` allows the driver already in the car: they got out
+        for a stop (maintenance, say) and got back in, which is a new stint
+        and a fresh continuous-drive clock. Without it, naming the in-car
+        driver is refused as the slip it usually is.
 
         ``now_ms`` is when the new driver's stint starts. ``out_ms`` is when
         the outgoing driver's ended, if that was earlier: strictly a stint
@@ -93,7 +99,7 @@ class SessionState:
         driver = (driver or "").strip()
         if not driver:
             raise SessionError("driver is required")
-        if driver == self.driver:
+        if driver == self.driver and not same_driver:
             raise SessionError(f"{driver!r} is already the active driver")
         now = _now_ms() if now_ms is None else now_ms
         out = now if out_ms is None else out_ms

@@ -85,6 +85,15 @@ function serverNow() {
   return Date.now() + clockOffsetMs;
 }
 
+// When the session clock stops: an ended session has no end time of its
+// own in the payload, but its last stint closes at the same instant.
+function sessionEnd() {
+  if (session.status !== "ended") return serverNow();
+  const stints = session.stints || [];
+  const last = stints[stints.length - 1];
+  return last !== undefined && last.end_ms != null ? last.end_ms : serverNow();
+}
+
 function renderSession() {
   const badge = $("status-badge");
   const detail = $("status-detail");
@@ -109,7 +118,7 @@ function renderSession() {
       ["Track", session.track_name || "—"],
       ["Car", session.car || "—"],
       ["Stint", "#" + session.stint_number + " — " + session.driver],
-      ["Session time", fmtDuration(serverNow() - session.session_start)],
+      ["Session time", fmtDuration(sessionEnd() - session.session_start)],
     ];
     if (active) {
       rows.push(["Stint time", fmtDuration(serverNow() - session.stint_start)]);
@@ -168,7 +177,27 @@ function updateDriverSelect() {
   }
   const next = rosterData.drivers.find((driver) => driver !== current);
   if (next !== undefined) select.value = next;
+  $("driver-same-mode").value = "new_stint";
+  updateDriverSame();
 }
+
+// Picking the driver already in the car is either a new stint for them
+// (out for a stop, then back in) or a correction of when their stint
+// began. The operator says which; a correction has no "out" time.
+function sameDriverMode() {
+  return $("driver-select").value === markedDriver ? $("driver-same-mode").value : null;
+}
+
+function updateDriverSame() {
+  const mode = sameDriverMode();
+  show($("driver-same"), mode !== null);
+  show($("driver-out-at").closest("label"), mode !== "correct");
+  $("driver-submit").textContent =
+    mode === "new_stint" ? "Start new stint" : mode === "correct" ? "Correct stint start" : "Change driver";
+}
+
+$("driver-select").addEventListener("change", updateDriverSame);
+$("driver-same-mode").addEventListener("change", updateDriverSame);
 
 function renderStints(active) {
   const rows = $("stint-rows");
@@ -380,11 +409,19 @@ $("driver-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const body = { driver: $("driver-select").value };
   const at = parseAt($("driver-at"));
-  const outAt = parseAt($("driver-out-at"));
+  const mode = sameDriverMode();
+  const outAt = mode === "correct" ? null : parseAt($("driver-out-at"));
+  if (mode === "correct" && at === null) {
+    setNotice("error", "Enter the time the current stint began.");
+    return;
+  }
+  if (mode === "new_stint") body.new_stint = true;
   if (at !== null) body.at = at;
   if (outAt !== null) body.out_at = outAt;
   const earliest = outAt !== null ? outAt : at;
-  if (await perform("Driver change", "/session/driver", body, backdateHint(earliest))) {
+  const what =
+    mode === "new_stint" ? "New stint" : mode === "correct" ? "Stint start correction" : "Driver change";
+  if (await perform(what, "/session/driver", body, backdateHint(earliest))) {
     clearAt($("driver-at"));
     clearAt($("driver-out-at"));
   }

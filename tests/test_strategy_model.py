@@ -27,6 +27,7 @@ from pit.strategy.model import (
     StintFact,
     StopFact,
     StrategyPolicy,
+    _driven_seconds,
     clean_laps,
     counter_requests,
     evaluate,
@@ -658,14 +659,15 @@ def test_a_pit_stop_with_the_same_driver_pauses_the_driver_clock():
     )
     assert evaluate(parked, POLICY, "timer").driver_time_remaining_s == pytest.approx(3600)
 
-    # The same stop recorded by hand as two stints by the same driver: the
-    # continuous clock carries over, and only a different driver resets it.
+    # The same driver out and back in, recorded as two stints: a new stint
+    # resets the continuous clock whoever drives it; the total still counts.
     split = [
         StintFact(1, "Driver A", T0, _at(3600), 0, None, None),
         StintFact(2, "Driver A", _at(4800), None, 0, None, None),
     ]
     state = evaluate(_inputs(4800 + 1800, plan, A_LAPS, split), POLICY, "timer")
-    assert state.driver_time_remaining_s == pytest.approx(7200 - 3600 - 1800)
+    assert state.driver_time_remaining_s == pytest.approx(7200 - 1800)
+    assert state.driver_total_remaining_s == pytest.approx(21600 - 3600 - 1800)
     changed = [split[0], StintFact(2, "Driver B", _at(4800), None, 0, None, None)]
     state = evaluate(_inputs(4800 + 1800, plan, A_LAPS, changed), POLICY, "timer")
     assert state.driver_time_remaining_s == pytest.approx(7200 - 1800)
@@ -675,3 +677,27 @@ def test_laps_under_a_red_flag_are_not_racing_burn():
     red = FlagFact(_at(450), _at(650))  # touches laps 5, 6 and 7
     kept = [lap.lap_number for lap in clean_laps(A_LAPS, [], POLICY, [red])]
     assert kept == [1, 2, 3, 8, 9, 10]
+
+
+def test_a_refuel_stop_nested_in_the_pit_lane_comes_off_the_driven_time_once():
+    # Collie nests its lines, so a fuel stop is two stops: the pit lane and
+    # the refuel bay inside it. Subtracting both counted the bay twice.
+    lane = StopFact(_at(1000), _at(1300), False, "unknown")
+    bay = StopFact(_at(1050), _at(1250), False, "refuel")
+
+    assert _driven_seconds(_at(0), _at(2000), [lane, bay]) == 1700.0
+
+
+def test_a_blip_followed_by_silence_is_not_a_held_surge_closure():
+    # Collie 2026-11-13: the switch read low for 0.12 s, and the sparse
+    # channel's next reading came 10 s later. That is not a 10 s closure.
+    from pit.strategy.database import surge_episodes
+
+    blip = [(_at(900), True, _at(895)), (_at(910), False, _at(900))]
+    assert surge_episodes(blip, _at(2000)) == [(_at(900), _at(900))]
+
+    held = [(_at(900), True, _at(895)), (_at(960), False, _at(955))]
+    assert surge_episodes(held, _at(2000)) == [(_at(900), _at(955))]
+
+    still_on = [(_at(900), True, _at(895))]
+    assert surge_episodes(still_on, _at(930)) == [(_at(900), _at(930))]

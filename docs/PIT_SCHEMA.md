@@ -196,8 +196,8 @@ fuel_marks(mark_id, session_id -> sessions, at, level_l)
 far; `ended` NULL while the flag is out). The race clock runs through one;
 the strategy service stops the driver's clock for it and leaves laps driven
 under it out of the burn. A pit stop (`v_pit_stops`) pauses the driver's
-clock the same way; the continuous limit counts drive time since the last
-change of driver, across consecutive stints by the same driver. `fuel_marks` holds "this many litres were in the
+clock the same way; the continuous limit counts drive time in the current
+stint, so a new stint resets it, also when the same driver gets back in. `fuel_marks` holds "this many litres were in the
 tank at this moment" as the crew knows it, which the counter fuel model
 re-bases on.
 
@@ -492,6 +492,13 @@ Amendments to the shape declared before the package was built: `epoch`,
 `tod` and `car_number` above, `competitor_id` as TEXT (a passing's ID may be
 `Safety` or `Course`), and `field_laps` itself.
 
+`field_carryover(applies_to, part, car_number, team, class, laps,
+race_time_s, as_of)` (migration 016) holds the earlier parts of a race the
+timekeepers run as more than one session, one row per car per part, entered
+by hand from the published result. `applies_to` is the `session_name` of the
+live session the rows count in front of, so they stop counting when a
+different session is on the feed. Nothing writes it automatically.
+
 ### Ingest bookkeeping
 
 `ingest_cursor(consumer, stream, stream_seq, updated)` is the ingest-writer's
@@ -536,6 +543,7 @@ to keep stable, and it is these views:
 | `v_strategy_latest` | The latest `strategy_state` row per vehicle |
 | `v_strategy_history` | Every `strategy_state` row |
 | `v_field_standings` | The latest `field_cars` row per car within the latest `epoch` per source: the standings as the timing screen shows them now |
+| `v_field_combined` | `v_field_standings` plus `field_carryover` for the live session: carried, live and total laps per car, ranked on the total within each class, with laps to the class leader and to our car |
 | `v_field_laps` | Every `field_laps` row |
 | `v_field_passings` | Every `field_passings` row |
 | `v_field_flags` | `source, flag_state, sub_status, started_at, ended_at, duration_s` — one row per flag or sub-status change, `ended_at` NULL while current |
@@ -559,12 +567,19 @@ join.
 
 `v_lap_sectors` emits one row per recorded sector and deliberately emits no
 NULL row for a lap with no sectors. `v_pit_stops` is the one stable view that
-parses raw `lap.event` JSON. It pairs each entry only with the immediately
-following exit for that vehicle, and only when that exit's line type (refuel,
-service, or unknown) matches the entry's — a mismatch means a crossing was
-missed somewhere between them, and closing across it would fabricate a stop.
-It discards orphan exits, keeps an entry with no exit (or a mismatched one) as
-`is_open`, and evaluates an open duration against the current clock.
+parses raw `lap.event` JSON. It pairs each entry with the next pit event of
+its own line type (refuel, service, or unknown) for that vehicle, and only
+when that event is an exit — an entry answered by another entry of its kind
+means a crossing was missed between them, and closing across it would
+fabricate a stop. Pairing within a line type lets stops nest: at Collie a
+fuel stop crosses PitEntry, PitEntryRefuel, PitExitRefuel, PitExit and is two
+rows, the pit-lane stop and the refuel stop inside it, so anything totalling
+time in the pits must merge overlaps. It discards orphan exits, keeps an
+entry with no exit of its kind as `is_open`, and evaluates an open duration
+against the current clock. A stop ends no later than the session it began in:
+once that session has ended, a stop with no exit before then closes at the
+session's end with a NULL `exit_line` (the car finished parked in the pits),
+and a later exit, which belongs to the next session, does not stretch it.
 The JSON/window work makes it more expensive than the other views; materialise
 it later if a race-length query proves too slow.
 

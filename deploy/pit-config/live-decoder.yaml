@@ -78,6 +78,13 @@ channels:
     max_hz: 1
   - match: "car.oil_temp"
     max_hz: 1
+  # TEMPERATURE2's gearbox oil and TEMPERATURE1's inlet air, for the car
+  # dashboard's live gauges. Same reasoning and the same Kelvin caveat as
+  # the two above. Adds a nominal 2 msg/s to the aggregate; not re-measured.
+  - match: "car.gearbox_oil_temp"
+    max_hz: 1
+  - match: "car.air_temp"
+    max_hz: 1
 
   # ---- fuel ----
   # FUEL_LEVEL at ~4.2 Hz. The tank drains over laps, not seconds, and the
@@ -91,6 +98,11 @@ channels:
   # (~26/min at idle); the live stat shows it to 0.01 L, so 1 Hz loses
   # nothing a reader could see. Another nominal 1 msg/s; not re-measured.
   - match: "car.fuel_total_used"
+    max_hz: 1
+  # Surge tank float switch (PDM16 SPI 1): 5 V with fuel in the surge tank,
+  # 0 V once it runs low. Drives the car dashboard's LOW FUEL panel. The car
+  # sends it on change and at least every 5 s.
+  - match: "car.surge_tank_switch"
     max_hz: 1
 
   # ---- drivetrain and electrics ----

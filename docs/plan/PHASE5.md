@@ -373,6 +373,11 @@ therefore leave a gap, which is the stop. `POST /session/driver` takes
 new one began); with neither, or only `at`, the stints meet as before. A
 lap crossed in the gap stays with the outgoing driver.
 
+**The same driver can get back in** (added 2026-11-14). `new_stint: true`
+on `POST /session/driver` opens a new stint for the driver already in the
+car, as after a maintenance stop. A new stint resets the continuous-drive
+clock whoever drives it; the total-drive limit still counts every stint.
+
 **Times are picked from line crossings.** `GET /session/events` lists the
 car's completed laps and pit entries and exits, newest first, and the UI
 offers them above every time field: choosing "lap 150 pit entry" fills

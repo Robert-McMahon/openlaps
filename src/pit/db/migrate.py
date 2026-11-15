@@ -17,7 +17,7 @@ import os
 from collections.abc import Iterable
 from pathlib import Path
 
-from psycopg import Connection
+from psycopg import Connection, sql
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
@@ -86,6 +86,36 @@ def _configure_grafana_role(conn: Connection) -> None:
     with conn.transaction():
         conn.execute("SELECT set_config('openlaps.grafana_db_user', %s, false)", (user,))
         conn.execute("SELECT set_config('openlaps.grafana_db_password', %s, false)", (password,))
+
+
+def configure_deployment(conn: Connection) -> str | None:
+    """Tell the dashboard role which vehicle this pit runs; return the id set.
+
+    The generated alert rules (tools/gen_alert_rules.py) cannot carry the
+    vehicle id: Grafana evaluates them in its backend, where there is no
+    dashboard variable, and it does not expand environment variables inside
+    a rule's SQL. They read `current_setting('openlaps.vehicle_id')`
+    instead, a setting stored on the role Grafana connects as. This writes
+    OPENLAPS_VEHICLE_ID there, on every run and not only when a migration is
+    pending, so that a changed `.env` takes effect at the next bring-up.
+
+    A role setting is read when a connection opens: Grafana picks a change
+    up as its pooled connections are replaced, or at once when restarted.
+    With the variable unset nothing is written, and a rule that has never
+    been given an id fails its query rather than watch nothing.
+    """
+    vehicle = os.environ.get("OPENLAPS_VEHICLE_ID", "").strip()
+    if not vehicle:
+        log.warning("OPENLAPS_VEHICLE_ID is not set; alert rules keep the vehicle they had")
+        return None
+    user = os.environ.get("GRAFANA_DB_USER", "grafana_ro")
+    with conn.transaction():
+        conn.execute(
+            sql.SQL("ALTER ROLE {} SET openlaps.vehicle_id = {}").format(
+                sql.Identifier(user), sql.Literal(vehicle)
+            )
+        )
+    return vehicle
 
 
 def _apply_each(conn: Connection, todo: Iterable[Path]) -> list[str]:

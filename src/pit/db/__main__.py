@@ -14,7 +14,7 @@ import sys
 import psycopg
 
 from pit.db.dsn import dsn_from_env, redacted
-from pit.db.migrate import apply_migrations, pending
+from pit.db.migrate import apply_migrations, configure_deployment, pending
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,6 +50,9 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             applied = apply_migrations(conn)
             log.info("applied %d migration(s): %s", len(applied), ", ".join(applied) or "none")
+            vehicle = configure_deployment(conn)
+            if vehicle is not None:
+                log.info("alert rules watch vehicle %s", vehicle)
     except (psycopg.Error, ValueError) as exc:
         print(f"openlaps-migrate: {exc}", file=sys.stderr)
         return 1

@@ -30,12 +30,13 @@
           "uid": "timescale"
         },
         "refresh": 1,
-        "sort": 1,
+        "sort": 0,
         "includeAll": false,
         "multi": false,
-        "query": "SELECT DISTINCT vehicle_id AS __text, vehicle_id AS __value FROM v_samples_named WHERE $__timeFilter(time) ORDER BY 1",
+        "query": "SELECT vehicle_id AS __text, vehicle_id AS __value FROM (SELECT DISTINCT vehicle_id FROM v_samples_named WHERE $__timeFilter(time) UNION SELECT current_setting('openlaps.vehicle_id', true)) v WHERE vehicle_id IS NOT NULL ORDER BY (vehicle_id = current_setting('openlaps.vehicle_id', true)) DESC NULLS LAST, 1",
         "current": {},
-        "options": []
+        "options": [],
+        "description": "Opens on the vehicle this pit is deployed for (OPENLAPS_VEHICLE_ID); any other vehicle with data in the time range can be picked."
       }
     ]
   },

@@ -15,7 +15,7 @@ import yaml
 from psycopg.conninfo import make_conninfo
 
 from agent.agent import agent_derived_channels
-from pit.db.migrate import apply_migrations
+from pit.db.migrate import apply_migrations, configure_deployment
 from pit.strategy.publisher import OUTPUT_CHANNELS as STRATEGY_CHANNELS
 from pit.timing_extrapolator.config import load_config as load_timing_config
 
@@ -334,6 +334,73 @@ def test_mqtt_topics_follow_the_per_channel_contract() -> None:
                 assert match.group(1) in known_channels, (
                     f"{path.name} panel {panel.get('id')} names unknown channel {match.group(1)!r}"
                 )
+
+
+def _vehicle_variables() -> Iterator[tuple[str, dict[str, Any]]]:
+    for path, dashboard in _dashboards():
+        for variable in dashboard.get("templating", {}).get("list", []):
+            if variable["name"] == "vehicle":
+                yield path.name, variable
+
+
+def test_every_dashboard_opens_on_the_deployed_vehicle(timescale_dsn, monkeypatch) -> None:
+    """The vehicle picker lists the pit's own vehicle first and saves no choice.
+
+    A saved `example-club-racer` opened every dashboard on the profile's
+    vehicle while the car published as `christine` (BEERS 36 Hour). The
+    picker now reads the setting `openlaps-migrate` stores on Grafana's
+    role, the one the alert rules read, and Grafana opens on the first
+    option when none is saved.
+    """
+    variables = list(_vehicle_variables())
+    assert len(variables) == 9
+    queries = {variable["query"] for _, variable in variables}
+    assert len(queries) == 1, "every dashboard offers vehicles the same way"
+    for name, variable in variables:
+        assert variable["current"] == {}, name
+        # Grafana's own sorting would put the list back in alphabetical order.
+        assert variable["sort"] == 0, name
+        assert variable.get("definition", variable["query"]) == variable["query"], name
+
+    stamp = datetime.now(UTC)
+    query = _render_sql(
+        queries.pop(), start=stamp - timedelta(minutes=20), end=stamp + timedelta(seconds=1)
+    )
+    reader_dsn = make_conninfo(timescale_dsn, user="grafana_ro", password="openlaps-grafana-test")
+
+    def offered() -> list[str]:
+        with psycopg.connect(reader_dsn) as reader:
+            return [row[0] for row in reader.execute(cast(LiteralString, query)).fetchall()]
+
+    with psycopg.connect(timescale_dsn) as conn:
+        apply_migrations(conn)
+        for vehicle in ("aardvark", "bench-car"):
+            channel_key = conn.execute(
+                "INSERT INTO channels (vehicle_id, name, units, value_type) "
+                "VALUES (%s, 'car.rpm', 'RPM', 1) RETURNING channel_key",
+                (vehicle,),
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO samples (time, channel_key, value) VALUES (%s, %s, 1000.0)",
+                (stamp - timedelta(minutes=1), channel_key),
+            )
+        conn.commit()
+
+        # No deployment id stored: the picker still works, alphabetically.
+        monkeypatch.delenv("OPENLAPS_VEHICLE_ID", raising=False)
+        assert offered() == ["aardvark", "bench-car"]
+
+        # The deployed vehicle leads, whatever its name sorts as.
+        monkeypatch.setenv("OPENLAPS_VEHICLE_ID", "bench-car")
+        configure_deployment(conn)
+        conn.commit()
+        assert offered() == ["bench-car", "aardvark"]
+
+        # And it is offered before it has sent anything in the time range.
+        monkeypatch.setenv("OPENLAPS_VEHICLE_ID", "christine")
+        configure_deployment(conn)
+        conn.commit()
+        assert offered() == ["christine", "aardvark", "bench-car"]
 
 
 def test_vehicle_clock_stats_show_only_fresh_persisted_values(timescale_dsn) -> None:

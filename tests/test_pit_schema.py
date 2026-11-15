@@ -12,7 +12,7 @@ from psycopg import sql
 from psycopg.conninfo import make_conninfo
 
 from pit.db.dsn import dsn_from_env, redacted
-from pit.db.migrate import apply_migrations, discover, pending
+from pit.db.migrate import apply_migrations, configure_deployment, discover, pending
 
 VEHICLE = "example-club-racer"
 # openlaps.v1.ValueType numbers.
@@ -476,6 +476,32 @@ def test_grafana_role_reads_every_view_but_not_base_tables(migrated, timescale_d
             # table's denial would surface as InFailedSqlTransaction and the
             # assertion would pass for the wrong reason.
             reader.rollback()
+
+
+def test_the_grafana_role_is_told_which_vehicle_the_pit_runs(migrated, timescale_dsn, monkeypatch):
+    """The alert rules read the vehicle id from a setting on Grafana's role."""
+    migrated.commit()
+    grafana_dsn = make_conninfo(
+        timescale_dsn,
+        user="grafana_ro",
+        password="openlaps-grafana-test",
+    )
+    read = "SELECT current_setting('openlaps.vehicle_id')"
+
+    # Never configured: the rule's query fails, it does not match nothing.
+    monkeypatch.delenv("OPENLAPS_VEHICLE_ID", raising=False)
+    assert configure_deployment(migrated) is None
+    migrated.commit()
+    with psycopg.connect(grafana_dsn) as reader, pytest.raises(psycopg.errors.UndefinedObject):
+        reader.execute(read)
+
+    # Set on every run, so a changed .env reaches the next connection.
+    for vehicle in ("christine", "it's-another-car"):
+        monkeypatch.setenv("OPENLAPS_VEHICLE_ID", vehicle)
+        assert configure_deployment(migrated) == vehicle
+        migrated.commit()
+        with psycopg.connect(grafana_dsn) as reader:
+            assert reader.execute(read).fetchone()[0] == vehicle
 
 
 def test_one_channel_key_survives_a_registry_rollover(migrated):

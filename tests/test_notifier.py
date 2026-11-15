@@ -102,6 +102,19 @@ def test_a_rule_without_a_severity_label_is_treated_as_critical_not_ignored():
     assert parse_notification(payload, T0)[0].severity == "critical"
 
 
+def test_a_rule_that_could_not_be_evaluated_is_not_announced_as_its_alarm():
+    """Grafana raises a failed query under the rule's own summary and
+    severity; 1,300 of those a day at the BEERS 36 Hour read as real alarms."""
+    payload = grafana_payload(
+        {"name": "DatasourceError", "summary": "Coolant temperature high", "severity": "critical"}
+    )
+    payload["alerts"][0]["labels"]["rulename"] = "Coolant temperature high"
+    (alert,) = parse_notification(payload, T0)
+    assert alert.summary == "Alert check failing: Coolant temperature high"
+    assert alert.severity == "warning"
+    assert alert.name == "DatasourceError"
+
+
 def test_a_missing_fingerprint_is_derived_from_the_labels():
     payload = grafana_payload({})
     del payload["alerts"][0]["fingerprint"]

@@ -47,6 +47,19 @@ EXPRESSION_UID = "-100"
 # this constant.
 GROUP_INTERVAL = "10s"
 
+# How far back a rule looks for a channel's latest value. Without a bound, a
+# channel with no rows makes the planner walk every chunk of the hypertable
+# newest to oldest: over two minutes on the pit database, against Grafana's
+# 30 s query timeout, which it reports as an alert of its own. Every channel
+# a rule reads reports at least every few seconds while the car is alive
+# (the catalog's rbe heartbeats, the agent's 1 Hz health loop), so a value
+# older than this is a car that is off, and the rule rests.
+VALUE_LOOKBACK = "10 minutes"
+# lap.event is different: the last one may be hours old (a car parked in the
+# pits for a repair must stay "in the pits"), and the staleness rule needs to
+# see a feed that has been quiet for a long time as stale rather than absent.
+EVENT_LOOKBACK = "24 hours"
+
 # Units the generator knows how to convert between, as families. Each entry
 # maps a unit to (scale, offset) into the family's base unit. Anything
 # outside these families converts only to itself.
@@ -237,7 +250,7 @@ def _latest(vehicle: str, channel: str) -> str:
     return (
         "(SELECT value FROM v_samples_named WHERE vehicle_id = '"
         f"{vehicle}' AND channel = '{channel}' AND value IS NOT NULL "
-        "ORDER BY time DESC LIMIT 1)"
+        f"AND time > now() - interval '{VALUE_LOOKBACK}' ORDER BY time DESC LIMIT 1)"
     )
 
 
@@ -254,7 +267,8 @@ def _gate_sql(vehicle: str, gate: str) -> str | None:
             f"EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id = '{vehicle}') AND "
             "COALESCE((SELECT value_text::jsonb ->> 'pit_status' FROM v_samples_named "
             f"WHERE vehicle_id = '{vehicle}' AND channel = 'lap.event' AND value_text "
-            "IS NOT NULL ORDER BY time DESC LIMIT 1), 'track') = 'track'"
+            f"IS NOT NULL AND time > now() - interval '{EVENT_LOOKBACK}' "
+            "ORDER BY time DESC LIMIT 1), 'track') = 'track'"
         )
     if gate == "engine_running":
         return f"COALESCE({_latest(vehicle, 'car.rpm')}, 0) >= 500"
@@ -283,7 +297,8 @@ def _stale_sql(vehicle: str, alarm: Alarm) -> str:
     assert alarm.channel is not None
     age = (
         "COALESCE(extract(epoch FROM (now() - (SELECT max(time) FROM v_samples_named "
-        f"WHERE vehicle_id = '{vehicle}' AND channel = '{alarm.channel}'))), 1000000.0)"
+        f"WHERE vehicle_id = '{vehicle}' AND channel = '{alarm.channel}' "
+        f"AND time > now() - interval '{EVENT_LOOKBACK}'))), 1000000.0)"
     )
     gate = _gate_sql(vehicle, alarm.gate)
     value = f"CASE WHEN {gate} THEN {age} ELSE 0.0 END" if gate else age

@@ -1,0 +1,17 @@
+# Logs once a second whether the car's Starlink has internet
+# (tools/starlink_watch.py -> /home/luckfox/starlink-watch.csv).
+# Install: copy the script to /usr/local/bin/starlink_watch.py and this file to
+# /etc/systemd/system/, then `systemctl enable --now starlink-watch`.
+[Unit]
+Description=OpenLaps car Starlink reachability logger
+After=network.target
+
+[Service]
+User=luckfox
+ExecStart=/usr/bin/python3 /usr/local/bin/starlink_watch.py /home/luckfox/starlink-watch.csv
+Nice=10
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

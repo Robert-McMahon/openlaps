@@ -59,6 +59,7 @@ NON_ENDURANCE = {
     "handling.json": "handling",
     "video.json": "video",
     "system.json": "system-status",
+    "throttle.json": "throttle",
 }
 
 
@@ -79,10 +80,14 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation() -> None:
     non_row_panels = [panel for panel in panels if panel["type"] != "row"]
     alert_strips = [panel for panel in non_row_panels if panel["type"] == "alertlist"]
     assert len(alert_strips) == 1
-    assert len(non_row_panels) - len(alert_strips) <= 13
+    # Thirteen until the BEERS 36 Hour (2026-11-14), which added a tile per
+    # sector, best lap, the race standings row and the refuel countdown.
+    assert len(non_row_panels) - len(alert_strips) <= 18
     assert {
         "openlaps/$vehicle/timing.lap_elapsed_pit",
-        "openlaps/$vehicle/timing.sector_elapsed_pit",
+        "openlaps/$vehicle/timing.sector_1_pit",
+        "openlaps/$vehicle/timing.sector_2_pit",
+        "openlaps/$vehicle/timing.sector_3_pit",
         "openlaps/$vehicle/timing.delta_best",
         "openlaps/$vehicle/timing.predicted_lap",
     } <= topics
@@ -112,7 +117,9 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation() -> None:
     # publishers' pre-formatted `display` field, not raw seconds.
     timing_topics = {
         "openlaps/$vehicle/timing.lap_elapsed_pit",
-        "openlaps/$vehicle/timing.sector_elapsed_pit",
+        "openlaps/$vehicle/timing.sector_1_pit",
+        "openlaps/$vehicle/timing.sector_2_pit",
+        "openlaps/$vehicle/timing.sector_3_pit",
         "openlaps/$vehicle/lap.last_time",
         "openlaps/$vehicle/timing.delta_best",
     }
@@ -121,15 +128,24 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation() -> None:
             include = panel["transformations"][0]["options"]["include"]["names"]
             assert include == ["display"], f"panel {panel['id']} shows {include}"
 
-    # Browser-local count-up clocks (lap, sector, stint): they tick in the
-    # browser from a queried crossing timestamp, with no live stream or
-    # repainting value behind them.
-    clocks = [panel for panel in panels if panel["type"] == "grafana-clock-panel"]
-    assert len(clocks) == 3
-    for clock in clocks:
-        assert clock["options"]["mode"] == "countup"
-        assert clock["options"]["countupSettings"]["source"] == "query"
-        assert clock["options"]["countupSettings"]["queryField"]
+    # The stint clock is a browser-local count-up: it ticks in the browser
+    # from a queried timestamp, with no live stream or repainting value
+    # behind it. The lap and sector browser clocks were removed 2026-11-14;
+    # the pit-extrapolated Lap and Sector panels are the ones the wall reads.
+    # The refuel release is the same idea counting down: to the earliest
+    # legal release, from the refuel line crossing.
+    clocks = {
+        panel["title"]: panel["options"]
+        for panel in panels
+        if panel["type"] == "grafana-clock-panel"
+    }
+    assert set(clocks) == {"Stint clock", "Refuel release in"}
+    assert clocks["Stint clock"]["mode"] == "countup"
+    assert clocks["Refuel release in"]["mode"] == "countdown"
+    for options in clocks.values():
+        settings = options[f"{options['mode']}Settings"]
+        assert settings["source"] == "query"
+        assert settings["queryField"]
 
 
 def test_fuel_dashboard_is_a_consumer_of_the_strategy_views() -> None:
@@ -156,14 +172,14 @@ def test_fuel_dashboard_is_a_consumer_of_the_strategy_views() -> None:
         "window_close_lap",
         "target_lap_s",
         "driver_time_remaining_s",
-        "refuel_release_at",
-        "refuel_remaining_s",
         "stop_plan",
         "rebase_confidence",
     ):
         assert column in sql, column
-    # No panel computes a projection any more, and the legal minimum comes
-    # from the race plan rather than a number typed into a panel.
+    # No panel computes a projection any more. The refuel release counts
+    # down in the browser from the refuel line crossing plus the race plan's
+    # minimum (v_race_plan), so it starts at the line and not a lap later.
+    assert "v_race_plan" in sql and "refuel_min_s" in sql
     assert "level_end_l / fuel_used_l" not in sql
     assert "480.0" not in sql and "interval '8 minutes'" not in sql
     assert "reset" in text

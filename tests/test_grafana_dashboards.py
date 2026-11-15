@@ -554,6 +554,31 @@ def test_every_dashboard_query_executes_and_returns_configured_fields(timescale_
             "'warning', 1.0, %s)",
             (VEHICLE, stamp, json.dumps({"message": "the numbers now say 1 stop"})),
         )
+        # Field standings for the pit wall (migration 016): our car number on
+        # the session's race plan, two cars of one class on the live feed, and
+        # the earlier timing session's laps carried in front of it.
+        conn.execute(
+            "INSERT INTO race_plans (session_id, revision, race_end_laps, end_authority, "
+            "tank_l, usable_fuel_l, refuel_min_s, service_typical_s, car_number) "
+            "VALUES ('s-1', 1, 100, 'laps', 60, 55, 480, 120, '43')"
+        )
+        conn.execute(
+            "INSERT INTO field_session (time, source, session_name) "
+            "VALUES (%s, 'feed', 'Race (S2)')",
+            (stamp,),
+        )
+        for car, team, laps in (("43", "Us", 120), ("7", "Them", 122)):
+            conn.execute(
+                "INSERT INTO field_cars (time, source, epoch, car_number, class, laps, "
+                "last_lap_s, best_lap_s, in_pit, driver) "
+                "VALUES (%s, 'feed', %s, %s, 'A', %s, 95.4, 93.1, false, %s)",
+                (stamp, stamp, car, laps, team),
+            )
+            conn.execute(
+                "INSERT INTO field_carryover (applies_to, part, car_number, team, class, laps) "
+                "VALUES ('Race (S2)', 'S1', %s, %s, 'A', 300)",
+                (car, team),
+            )
         conn.commit()
         conn.autocommit = True
         for aggregate in ("samples_1s", "samples_1m"):
@@ -581,7 +606,10 @@ def test_every_dashboard_query_executes_and_returns_configured_fields(timescale_
             result = reader.execute(cast(LiteralString, sql))
             columns = {column.name for column in result.description or []}
             aliases = set(SQL_ALIAS.findall(target["rawSql"]))
-            assert columns == {"time", *aliases}, (
+            # A table that is not a time series (the race standings) need not
+            # carry a time column; everything else must.
+            timed = target.get("format") != "table" or "time" in columns
+            assert columns == ({"time"} if timed else set()) | aliases, (
                 f"{path.name} panel {panel.get('id')} target {target.get('refId')} "
                 f"returned {columns}, expected time plus {aliases}"
             )

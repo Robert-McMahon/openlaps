@@ -492,6 +492,13 @@ Amendments to the shape declared before the package was built: `epoch`,
 `tod` and `car_number` above, `competitor_id` as TEXT (a passing's ID may be
 `Safety` or `Course`), and `field_laps` itself.
 
+`field_carryover(applies_to, part, car_number, team, class, laps,
+race_time_s, as_of)` (migration 016) holds the earlier parts of a race the
+timekeepers run as more than one session, one row per car per part, entered
+by hand from the published result. `applies_to` is the `session_name` of the
+live session the rows count in front of, so they stop counting when a
+different session is on the feed. Nothing writes it automatically.
+
 ### Ingest bookkeeping
 
 `ingest_cursor(consumer, stream, stream_seq, updated)` is the ingest-writer's
@@ -536,6 +543,7 @@ to keep stable, and it is these views:
 | `v_strategy_latest` | The latest `strategy_state` row per vehicle |
 | `v_strategy_history` | Every `strategy_state` row |
 | `v_field_standings` | The latest `field_cars` row per car within the latest `epoch` per source: the standings as the timing screen shows them now |
+| `v_field_combined` | `v_field_standings` plus `field_carryover` for the live session: carried, live and total laps per car, ranked on the total within each class, with laps to the class leader and to our car |
 | `v_field_laps` | Every `field_laps` row |
 | `v_field_passings` | Every `field_passings` row |
 | `v_field_flags` | `source, flag_state, sub_status, started_at, ended_at, duration_s` — one row per flag or sub-status change, `ended_at` NULL while current |

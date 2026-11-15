@@ -113,30 +113,35 @@ def test_unit_spelling_aliases_reconcile_volts_with_v() -> None:
     assert gen_alert_rules.convert(212.0, "°F", "K") == pytest.approx(373.15)
 
 
-def test_the_vehicle_id_comes_from_the_profile_not_the_generator(tmp_path: Path) -> None:
-    profile = _profile_with_alarms(
-        tmp_path,
-        {
-            "rpm-high": {
-                "channel": "car.rpm",
-                "units": "RPM",
-                "above": 8000,
-                "for": "5s",
-                "resting": 0,
-                "summary": "RPM high",
-            }
-        },
-    )
-    vehicle = profile / "vehicle.yaml"
-    vehicle.write_text(
-        vehicle.read_text(encoding="utf-8").replace("id: example-club-racer", "id: other-car"),
-        encoding="utf-8",
-    )
-    name, text = gen_alert_rules.render(profile)
-    assert name == "test.yaml"
-    rule = _rules(yaml.safe_load(text))["rpm-high"]
-    assert "vehicle_id = 'other-car'" in _sql(rule)
-    assert "example-club-racer" not in text
+def test_no_rule_names_a_vehicle_they_all_read_the_deployments() -> None:
+    """The rules watch whatever OPENLAPS_VEHICLE_ID the pit runs under.
+
+    At the BEERS 36 Hour the car published as `christine` and every rule
+    watched the profile's `example-club-racer`: no alarm could fire. The id
+    now comes from a setting `openlaps-migrate` stores on Grafana's role.
+    """
+    _, text = gen_alert_rules.render(EXAMPLE_PROFILE)
+    rules = _rules(yaml.safe_load(text))
+    reading = 0
+    for uid, rule in rules.items():
+        sql = _sql(rule)
+        assert "example-club-racer" not in sql, uid
+        named = sql.count("vehicle_id = ")
+        assert named == sql.count("vehicle_id = current_setting('openlaps.vehicle_id')"), uid
+        reading += named > 0
+    # Every rule but the heartbeat, which reads nothing.
+    assert reading == len(rules) - 1
+
+
+def test_every_sample_lookup_is_bounded_in_time() -> None:
+    """A channel with no rows must cost one short index probe, not a walk
+    through every chunk: unbounded, it ran past Grafana's query timeout and
+    each timeout was announced as an alert (1,300 a day at the race)."""
+    _, text = gen_alert_rules.render(EXAMPLE_PROFILE)
+    for uid, rule in _rules(yaml.safe_load(text)).items():
+        sql = _sql(rule)
+        lookups = sql.count("FROM v_samples_named")
+        assert sql.count("time > now() - interval '") == lookups, uid
 
 
 @pytest.mark.parametrize(

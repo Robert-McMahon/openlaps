@@ -47,6 +47,30 @@ EXPRESSION_UID = "-100"
 # this constant.
 GROUP_INTERVAL = "10s"
 
+# The vehicle a rule watches is the deployment's, not the profile's: the pit
+# and the car run under OPENLAPS_VEHICLE_ID, which may differ from the
+# profile's id (at the BEERS 36 Hour the rules watched `example-club-racer`
+# while the car published as `christine`, and no alarm could fire). Grafana
+# does not expand environment variables inside a rule's SQL, so the rules
+# read the id from a setting `openlaps-migrate` stores on the role Grafana
+# connects as (pit.db.migrate.configure_deployment). Not the two-argument
+# form: with the setting missing the query must fail, which the notifier
+# announces, rather than quietly match no vehicle.
+VEHICLE_SQL = "current_setting('openlaps.vehicle_id')"
+
+# How far back a rule looks for a channel's latest value. Without a bound, a
+# channel with no rows makes the planner walk every chunk of the hypertable
+# newest to oldest: over two minutes on the pit database, against Grafana's
+# 30 s query timeout, which it reports as an alert of its own. Every channel
+# a rule reads reports at least every few seconds while the car is alive
+# (the catalog's rbe heartbeats, the agent's 1 Hz health loop), so a value
+# older than this is a car that is off, and the rule rests.
+VALUE_LOOKBACK = "10 minutes"
+# lap.event is different: the last one may be hours old (a car parked in the
+# pits for a repair must stay "in the pits"), and the staleness rule needs to
+# see a feed that has been quiet for a long time as stale rather than absent.
+EVENT_LOOKBACK = "24 hours"
+
 # Units the generator knows how to convert between, as families. Each entry
 # maps a unit to (scale, offset) into the family's base unit. Anything
 # outside these families converts only to itself.
@@ -235,9 +259,9 @@ def _fmt(value: float) -> str:
 
 def _latest(vehicle: str, channel: str) -> str:
     return (
-        "(SELECT value FROM v_samples_named WHERE vehicle_id = '"
-        f"{vehicle}' AND channel = '{channel}' AND value IS NOT NULL "
-        "ORDER BY time DESC LIMIT 1)"
+        "(SELECT value FROM v_samples_named WHERE vehicle_id = "
+        f"{vehicle} AND channel = '{channel}' AND value IS NOT NULL "
+        f"AND time > now() - interval '{VALUE_LOOKBACK}' ORDER BY time DESC LIMIT 1)"
     )
 
 
@@ -251,10 +275,11 @@ def _gate_sql(vehicle: str, gate: str) -> str | None:
         # that last lap.event must not say "pit": a refuelling stop powers
         # the ECU down and looks exactly like a CAN failure.
         return (
-            f"EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id = '{vehicle}') AND "
+            f"EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id = {vehicle}) AND "
             "COALESCE((SELECT value_text::jsonb ->> 'pit_status' FROM v_samples_named "
-            f"WHERE vehicle_id = '{vehicle}' AND channel = 'lap.event' AND value_text "
-            "IS NOT NULL ORDER BY time DESC LIMIT 1), 'track') = 'track'"
+            f"WHERE vehicle_id = {vehicle} AND channel = 'lap.event' AND value_text "
+            f"IS NOT NULL AND time > now() - interval '{EVENT_LOOKBACK}' "
+            "ORDER BY time DESC LIMIT 1), 'track') = 'track'"
         )
     if gate == "engine_running":
         return f"COALESCE({_latest(vehicle, 'car.rpm')}, 0) >= 500"
@@ -283,7 +308,8 @@ def _stale_sql(vehicle: str, alarm: Alarm) -> str:
     assert alarm.channel is not None
     age = (
         "COALESCE(extract(epoch FROM (now() - (SELECT max(time) FROM v_samples_named "
-        f"WHERE vehicle_id = '{vehicle}' AND channel = '{alarm.channel}'))), 1000000.0)"
+        f"WHERE vehicle_id = {vehicle} AND channel = '{alarm.channel}' "
+        f"AND time > now() - interval '{EVENT_LOOKBACK}'))), 1000000.0)"
     )
     gate = _gate_sql(vehicle, alarm.gate)
     value = f"CASE WHEN {gate} THEN {age} ELSE 0.0 END" if gate else age
@@ -307,7 +333,7 @@ def _watch_sql(vehicle: str, alarm: Alarm) -> str:
         monitor += f" AND monitor NOT LIKE '{_like_prefix(excluded)}%'"
     return (
         'SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id = '
-        f"'{vehicle}' AND closed_at IS NULL{monitor} AND severity IN "
+        f"{vehicle} AND closed_at IS NULL{monitor} AND severity IN "
         f'({counted}))::double precision AS "value"'
     )
 
@@ -481,9 +507,8 @@ def render(profile_dir: Path) -> tuple[str, str]:
         spec = AlarmsFile.model_validate(yaml.safe_load(alarms_path.read_text(encoding="utf-8")))
     except ValidationError as exc:
         raise AlarmError(f"{alarms_path}: {exc}") from exc
-    vehicle = profile.vehicle.vehicle.id
     channels = profile.catalog.channels
-    rules = [_rule(uid, alarm, vehicle, channels) for uid, alarm in spec.alarms.items()]
+    rules = [_rule(uid, alarm, VEHICLE_SQL, channels) for uid, alarm in spec.alarms.items()]
     document: dict[str, Any] = {
         "apiVersion": 1,
         "groups": [

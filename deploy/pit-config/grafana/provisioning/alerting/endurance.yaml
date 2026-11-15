@@ -39,14 +39,17 @@ groups:
         instant: true
         rawQuery: true
         rawSql: '/* oil-pressure-low: below 200 kPa */ SELECT now() AS "time", CASE WHEN EXISTS
-          (SELECT 1 FROM v_session_active WHERE vehicle_id = ''example-club-racer'') AND COALESCE((SELECT
-          value_text::jsonb ->> ''pit_status'' FROM v_samples_named WHERE vehicle_id = ''example-club-racer''
-          AND channel = ''lap.event'' AND value_text IS NOT NULL ORDER BY time DESC LIMIT
-          1), ''track'') = ''track'' AND COALESCE((SELECT value FROM v_samples_named WHERE
-          vehicle_id = ''example-club-racer'' AND channel = ''car.rpm'' AND value IS NOT NULL
-          ORDER BY time DESC LIMIT 1), 0) >= 2000 THEN COALESCE((SELECT value FROM v_samples_named
-          WHERE vehicle_id = ''example-club-racer'' AND channel = ''car.oil_pressure'' AND
-          value IS NOT NULL ORDER BY time DESC LIMIT 1), 10000.0) ELSE 10000.0 END AS "value"'
+          (SELECT 1 FROM v_session_active WHERE vehicle_id = current_setting(''openlaps.vehicle_id''))
+          AND COALESCE((SELECT value_text::jsonb ->> ''pit_status'' FROM v_samples_named WHERE
+          vehicle_id = current_setting(''openlaps.vehicle_id'') AND channel = ''lap.event''
+          AND value_text IS NOT NULL AND time > now() - interval ''24 hours'' ORDER BY time
+          DESC LIMIT 1), ''track'') = ''track'' AND COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = current_setting(''openlaps.vehicle_id'') AND channel = ''car.rpm''
+          AND value IS NOT NULL AND time > now() - interval ''10 minutes'' ORDER BY time DESC
+          LIMIT 1), 0) >= 2000 THEN COALESCE((SELECT value FROM v_samples_named WHERE vehicle_id
+          = current_setting(''openlaps.vehicle_id'') AND channel = ''car.oil_pressure'' AND
+          value IS NOT NULL AND time > now() - interval ''10 minutes'' ORDER BY time DESC
+          LIMIT 1), 10000.0) ELSE 10000.0 END AS "value"'
         refId: A
     - refId: B
       relativeTimeRange:
@@ -122,12 +125,13 @@ groups:
         rawQuery: true
         rawSql: '/* coolant-temperature-high: above 110 °C = 383.15 K (catalog units) */ SELECT
           now() AS "time", CASE WHEN EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id
-          = ''example-club-racer'') AND COALESCE((SELECT value_text::jsonb ->> ''pit_status''
-          FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel = ''lap.event''
-          AND value_text IS NOT NULL ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN
-          COALESCE((SELECT value FROM v_samples_named WHERE vehicle_id = ''example-club-racer''
-          AND channel = ''car.coolant_temp'' AND value IS NOT NULL ORDER BY time DESC LIMIT
-          1), 273.15) ELSE 273.15 END AS "value"'
+          = current_setting(''openlaps.vehicle_id'')) AND COALESCE((SELECT value_text::jsonb
+          ->> ''pit_status'' FROM v_samples_named WHERE vehicle_id = current_setting(''openlaps.vehicle_id'')
+          AND channel = ''lap.event'' AND value_text IS NOT NULL AND time > now() - interval
+          ''24 hours'' ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT
+          value FROM v_samples_named WHERE vehicle_id = current_setting(''openlaps.vehicle_id'')
+          AND channel = ''car.coolant_temp'' AND value IS NOT NULL AND time > now() - interval
+          ''10 minutes'' ORDER BY time DESC LIMIT 1), 273.15) ELSE 273.15 END AS "value"'
         refId: A
     - refId: B
       relativeTimeRange:
@@ -203,12 +207,13 @@ groups:
         rawQuery: true
         rawSql: '/* oil-temperature-high: above 125 °C = 398.15 K (catalog units) */ SELECT
           now() AS "time", CASE WHEN EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id
-          = ''example-club-racer'') AND COALESCE((SELECT value_text::jsonb ->> ''pit_status''
-          FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel = ''lap.event''
-          AND value_text IS NOT NULL ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN
-          COALESCE((SELECT value FROM v_samples_named WHERE vehicle_id = ''example-club-racer''
-          AND channel = ''car.oil_temp'' AND value IS NOT NULL ORDER BY time DESC LIMIT 1),
-          273.15) ELSE 273.15 END AS "value"'
+          = current_setting(''openlaps.vehicle_id'')) AND COALESCE((SELECT value_text::jsonb
+          ->> ''pit_status'' FROM v_samples_named WHERE vehicle_id = current_setting(''openlaps.vehicle_id'')
+          AND channel = ''lap.event'' AND value_text IS NOT NULL AND time > now() - interval
+          ''24 hours'' ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT
+          value FROM v_samples_named WHERE vehicle_id = current_setting(''openlaps.vehicle_id'')
+          AND channel = ''car.oil_temp'' AND value IS NOT NULL AND time > now() - interval
+          ''10 minutes'' ORDER BY time DESC LIMIT 1), 273.15) ELSE 273.15 END AS "value"'
         refId: A
     - refId: B
       relativeTimeRange:
@@ -283,13 +288,14 @@ groups:
         instant: true
         rawQuery: true
         rawSql: '/* battery-voltage-low: below 11.5 Volts */ SELECT now() AS "time", CASE
-          WHEN EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id = ''example-club-racer'')
+          WHEN EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id = current_setting(''openlaps.vehicle_id''))
           AND COALESCE((SELECT value_text::jsonb ->> ''pit_status'' FROM v_samples_named WHERE
-          vehicle_id = ''example-club-racer'' AND channel = ''lap.event'' AND value_text IS
-          NOT NULL ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT
-          value FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel
-          = ''car.battery_v'' AND value IS NOT NULL ORDER BY time DESC LIMIT 1), 14.0) ELSE
-          14.0 END AS "value"'
+          vehicle_id = current_setting(''openlaps.vehicle_id'') AND channel = ''lap.event''
+          AND value_text IS NOT NULL AND time > now() - interval ''24 hours'' ORDER BY time
+          DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = current_setting(''openlaps.vehicle_id'') AND channel = ''car.battery_v''
+          AND value IS NOT NULL AND time > now() - interval ''10 minutes'' ORDER BY time DESC
+          LIMIT 1), 14.0) ELSE 14.0 END AS "value"'
         refId: A
     - refId: B
       relativeTimeRange:
@@ -364,12 +370,14 @@ groups:
         instant: true
         rawQuery: true
         rawSql: '/* knock-high: above 80 dB */ SELECT now() AS "time", CASE WHEN EXISTS (SELECT
-          1 FROM v_session_active WHERE vehicle_id = ''example-club-racer'') AND COALESCE((SELECT
-          value_text::jsonb ->> ''pit_status'' FROM v_samples_named WHERE vehicle_id = ''example-club-racer''
-          AND channel = ''lap.event'' AND value_text IS NOT NULL ORDER BY time DESC LIMIT
-          1), ''track'') = ''track'' THEN COALESCE((SELECT value FROM v_samples_named WHERE
-          vehicle_id = ''example-club-racer'' AND channel = ''car.knock_level1'' AND value
-          IS NOT NULL ORDER BY time DESC LIMIT 1), 0.0) ELSE 0.0 END AS "value"'
+          1 FROM v_session_active WHERE vehicle_id = current_setting(''openlaps.vehicle_id''))
+          AND COALESCE((SELECT value_text::jsonb ->> ''pit_status'' FROM v_samples_named WHERE
+          vehicle_id = current_setting(''openlaps.vehicle_id'') AND channel = ''lap.event''
+          AND value_text IS NOT NULL AND time > now() - interval ''24 hours'' ORDER BY time
+          DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = current_setting(''openlaps.vehicle_id'') AND channel = ''car.knock_level1''
+          AND value IS NOT NULL AND time > now() - interval ''10 minutes'' ORDER BY time DESC
+          LIMIT 1), 0.0) ELSE 0.0 END AS "value"'
         refId: A
     - refId: B
       relativeTimeRange:
@@ -444,13 +452,14 @@ groups:
         instant: true
         rawQuery: true
         rawSql: '/* engine-protection-active: above 0 none */ SELECT now() AS "time", CASE
-          WHEN EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id = ''example-club-racer'')
+          WHEN EXISTS (SELECT 1 FROM v_session_active WHERE vehicle_id = current_setting(''openlaps.vehicle_id''))
           AND COALESCE((SELECT value_text::jsonb ->> ''pit_status'' FROM v_samples_named WHERE
-          vehicle_id = ''example-club-racer'' AND channel = ''lap.event'' AND value_text IS
-          NOT NULL ORDER BY time DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT
-          value FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel
-          = ''car.engine_protection_severity'' AND value IS NOT NULL ORDER BY time DESC LIMIT
-          1), 0.0) ELSE 0.0 END AS "value"'
+          vehicle_id = current_setting(''openlaps.vehicle_id'') AND channel = ''lap.event''
+          AND value_text IS NOT NULL AND time > now() - interval ''24 hours'' ORDER BY time
+          DESC LIMIT 1), ''track'') = ''track'' THEN COALESCE((SELECT value FROM v_samples_named
+          WHERE vehicle_id = current_setting(''openlaps.vehicle_id'') AND channel = ''car.engine_protection_severity''
+          AND value IS NOT NULL AND time > now() - interval ''10 minutes'' ORDER BY time DESC
+          LIMIT 1), 0.0) ELSE 0.0 END AS "value"'
         refId: A
     - refId: B
       relativeTimeRange:
@@ -521,9 +530,9 @@ groups:
         instant: true
         rawQuery: true
         rawSql: '/* publish-lag-high: above 500 ms */ SELECT now() AS "time", COALESCE((SELECT
-          value FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel
-          = ''sys.agent.publish_lag_ms'' AND value IS NOT NULL ORDER BY time DESC LIMIT 1),
-          0.0) AS "value"'
+          value FROM v_samples_named WHERE vehicle_id = current_setting(''openlaps.vehicle_id'')
+          AND channel = ''sys.agent.publish_lag_ms'' AND value IS NOT NULL AND time > now()
+          - interval ''10 minutes'' ORDER BY time DESC LIMIT 1), 0.0) AS "value"'
         refId: A
     - refId: B
       relativeTimeRange:
@@ -598,9 +607,9 @@ groups:
         instant: true
         rawQuery: true
         rawSql: '/* can-bus-stalled: above 3 s */ SELECT now() AS "time", COALESCE((SELECT
-          value FROM v_samples_named WHERE vehicle_id = ''example-club-racer'' AND channel
-          = ''sys.agent.stall_s.can0'' AND value IS NOT NULL ORDER BY time DESC LIMIT 1),
-          0.0) AS "value"'
+          value FROM v_samples_named WHERE vehicle_id = current_setting(''openlaps.vehicle_id'')
+          AND channel = ''sys.agent.stall_s.can0'' AND value IS NOT NULL AND time > now()
+          - interval ''10 minutes'' ORDER BY time DESC LIMIT 1), 0.0) AS "value"'
         refId: A
     - refId: B
       relativeTimeRange:
@@ -744,12 +753,13 @@ groups:
         instant: true
         rawQuery: true
         rawSql: SELECT now() AS "time", CASE WHEN EXISTS (SELECT 1 FROM v_session_active WHERE
-          vehicle_id = 'example-club-racer') AND COALESCE((SELECT value_text::jsonb ->> 'pit_status'
-          FROM v_samples_named WHERE vehicle_id = 'example-club-racer' AND channel = 'lap.event'
-          AND value_text IS NOT NULL ORDER BY time DESC LIMIT 1), 'track') = 'track' THEN
-          COALESCE(extract(epoch FROM (now() - (SELECT max(time) FROM v_samples_named WHERE
-          vehicle_id = 'example-club-racer' AND channel = 'car.rpm'))), 1000000.0) ELSE 0.0
-          END AS "value"
+          vehicle_id = current_setting('openlaps.vehicle_id')) AND COALESCE((SELECT value_text::jsonb
+          ->> 'pit_status' FROM v_samples_named WHERE vehicle_id = current_setting('openlaps.vehicle_id')
+          AND channel = 'lap.event' AND value_text IS NOT NULL AND time > now() - interval
+          '24 hours' ORDER BY time DESC LIMIT 1), 'track') = 'track' THEN COALESCE(extract(epoch
+          FROM (now() - (SELECT max(time) FROM v_samples_named WHERE vehicle_id = current_setting('openlaps.vehicle_id')
+          AND channel = 'car.rpm' AND time > now() - interval '24 hours'))), 1000000.0) ELSE
+          0.0 END AS "value"
         refId: A
     - refId: B
       relativeTimeRange:
@@ -820,8 +830,8 @@ groups:
         instant: true
         rawQuery: true
         rawSql: SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id
-          = 'example-club-racer' AND closed_at IS NULL AND monitor LIKE 'strategy.%' AND severity
-          IN ('warning'))::double precision AS "value"
+          = current_setting('openlaps.vehicle_id') AND closed_at IS NULL AND monitor LIKE
+          'strategy.%' AND severity IN ('warning'))::double precision AS "value"
         refId: A
     - refId: B
       relativeTimeRange:
@@ -892,8 +902,8 @@ groups:
         instant: true
         rawQuery: true
         rawSql: SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id
-          = 'example-club-racer' AND closed_at IS NULL AND monitor LIKE 'strategy.%' AND severity
-          IN ('critical'))::double precision AS "value"
+          = current_setting('openlaps.vehicle_id') AND closed_at IS NULL AND monitor LIKE
+          'strategy.%' AND severity IN ('critical'))::double precision AS "value"
         refId: A
     - refId: B
       relativeTimeRange:
@@ -963,8 +973,8 @@ groups:
         instant: true
         rawQuery: true
         rawSql: SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id
-          = 'example-club-racer' AND closed_at IS NULL AND monitor LIKE 'field.%' AND severity
-          IN ('warning'))::double precision AS "value"
+          = current_setting('openlaps.vehicle_id') AND closed_at IS NULL AND monitor LIKE
+          'field.%' AND severity IN ('warning'))::double precision AS "value"
         refId: A
     - refId: B
       relativeTimeRange:
@@ -1034,8 +1044,8 @@ groups:
         instant: true
         rawQuery: true
         rawSql: SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id
-          = 'example-club-racer' AND closed_at IS NULL AND monitor LIKE 'field.%' AND severity
-          IN ('critical'))::double precision AS "value"
+          = current_setting('openlaps.vehicle_id') AND closed_at IS NULL AND monitor LIKE
+          'field.%' AND severity IN ('critical'))::double precision AS "value"
         refId: A
     - refId: B
       relativeTimeRange:
@@ -1107,8 +1117,9 @@ groups:
         instant: true
         rawQuery: true
         rawSql: SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id
-          = 'example-club-racer' AND closed_at IS NULL AND monitor NOT LIKE 'strategy.%' AND
-          monitor NOT LIKE 'field.%' AND severity IN ('critical'))::double precision AS "value"
+          = current_setting('openlaps.vehicle_id') AND closed_at IS NULL AND monitor NOT LIKE
+          'strategy.%' AND monitor NOT LIKE 'field.%' AND severity IN ('critical'))::double
+          precision AS "value"
         refId: A
     - refId: B
       relativeTimeRange:
@@ -1178,8 +1189,9 @@ groups:
         instant: true
         rawQuery: true
         rawSql: SELECT now() AS "time", (SELECT count(*) FROM v_watch_findings WHERE vehicle_id
-          = 'example-club-racer' AND closed_at IS NULL AND monitor NOT LIKE 'strategy.%' AND
-          monitor NOT LIKE 'field.%' AND severity IN ('warning'))::double precision AS "value"
+          = current_setting('openlaps.vehicle_id') AND closed_at IS NULL AND monitor NOT LIKE
+          'strategy.%' AND monitor NOT LIKE 'field.%' AND severity IN ('warning'))::double
+          precision AS "value"
         refId: A
     - refId: B
       relativeTimeRange:

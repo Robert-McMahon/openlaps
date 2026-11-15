@@ -383,6 +383,9 @@ car's completed laps and pit entries and exits, newest first, and the UI
 offers them above every time field: choosing "lap 150 pit entry" fills
 the field with that crossing's exact time. The timestamp stays the stored
 truth and stays editable — no GPS, a practice day, a test.
+The end of the session is offered the same way (added 2026-11-15): the
+finish-line crossings first, since a race ends there, then the pit
+entries, for when the lap back to the pits should stay in the session.
 
 **The live buttons that go with it:** `POST /session/red` and
 `/session/green` open and close a red-flag period, `POST /session/fuel

@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from collectors.serial.fix_time import time_of_day_s
 from core.samples import SampleValue
 
 KNOTS_TO_KMH = 1.852
@@ -36,10 +37,23 @@ class NmeaDecoder:
         self._prefix = f"{source_name}:{device}.RMC."
         self._gga_prefix = f"{source_name}:{device}.GGA."
         self._gst_prefix = f"{source_name}:{device}.GST."
+        self._time_of_day_s: float | None = None
+
+    def decode_timed(
+        self, sentence: bytes | str
+    ) -> tuple[list[tuple[str, SampleValue]], float | None]:
+        """Decode one sentence and report its epoch, seconds since UTC midnight.
+
+        The epoch is ``None`` when the sentence yielded no values or carries
+        no usable time (``collectors.serial.fix_time``).
+        """
+        values = self.decode(sentence)
+        return values, (self._time_of_day_s if values else None)
 
     def decode(self, sentence: bytes | str) -> list[tuple[str, SampleValue]]:
         """Decode one complete sentence, returning no values for bad input."""
         self.stats.sentences += 1
+        self._time_of_day_s = None
         try:
             text = (
                 sentence.decode("ascii", errors="strict")
@@ -49,6 +63,8 @@ class NmeaDecoder:
             body = _validated_body(text)
             fields = body.split(",")
             talker_type = fields[0][-3:] if fields else ""
+            if talker_type in ("RMC", "GGA", "GST") and len(fields) > 1:
+                self._time_of_day_s = time_of_day_s(fields[1])
             if talker_type == "GGA":
                 return self._decode_gga(fields)
             if talker_type == "GST":

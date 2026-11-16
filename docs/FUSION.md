@@ -41,9 +41,16 @@ generates synthetic drives with truth for testing and tuning.
 - **Weighting.** Each fix is weighted by the receiver's own GST 1-sigma
   estimate when one is less than 1 s old, otherwise by its RMC mode
   (RTK fixed 3 cm, float 0.4 m, DGNSS 0.8 m, autonomous 2.5 m).
-- **Latency.** A fix describes where the car was `latency_ms` before the
-  agent read it. The filter compares it with its state extrapolated back
-  to that epoch. Unmodelled, every 10 ms costs 0.4 m at 40 m/s.
+- **Latency.** A fix describes where the car was `latency_ms` before its
+  timestamp. The filter compares it with its state extrapolated back to
+  that epoch. Unmodelled, every 10 ms costs 0.4 m at 40 m/s. The serial
+  collector stamps each sentence at the epoch it names plus the
+  receiver's fixed latency, not at arrival (`receiver_time`, on by
+  default; `collectors/serial/fix_time.py`), so `latency_ms` is that
+  fixed latency and read jitter does not reach the filter. With arrival
+  stamps the car's 50 Hz fixes jittered 8 ms rms and 60 % failed the
+  outlier gate at speed; on the same data with epoch stamps, 4 %. A fix
+  more than 0.5 s behind the inertial state (a backlog) is skipped.
 - **Outliers.** A fix failing a 99.9 % chi-square gate is dropped. If
   fixes keep disagreeing for more than a second (a real solution jump such
   as float to fixed), the filter re-anchors to them. Height (GGA) is gated
@@ -179,8 +186,10 @@ unmodelled timing jitter. Treat these as a ceiling to tune towards.
 
 ## Known limits and next steps
 
-- **Latency is a constant.** RMC carries its UTC epoch and the agent clock
-  is PPS-disciplined, so latency could be measured live per fix.
+- **Latency is a constant.** Read jitter is removed at the collector, but
+  the receiver's fixed latency is still a configured number. It is weakly
+  observable from the data (along-track residual against speed); with a
+  PPS-disciplined clock it could be measured outright.
 - **Real-time only.** A forward-backward (RTS) smoother over stored data
   would improve post-session analysis, especially through outages.
 - **The FDI's own attitude** (`car.roll`/`pitch`/`yaw`) is not used. It

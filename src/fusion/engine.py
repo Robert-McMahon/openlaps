@@ -69,6 +69,10 @@ CHI2_1DOF = 10.8
 ALT_REANCHOR_S = 1.0
 ALT_REANCHOR_VEL_SIGMA = 1.0  # m/s
 ALT_REANCHOR_BIAS_SIGMA = 0.1  # m/s^2
+# A measurement this far behind the inertial state (a backlog on the GNSS
+# port) cannot be compared with it by extrapolating back: skip it and let
+# the outage logic decide.
+MAX_MEASUREMENT_LAG_S = 0.5
 # With no height taken for this long (GGA stopped), stop trusting the
 # vertical channel: hold it as before the first height arrived.
 ALT_STALE_S = 2.0
@@ -132,6 +136,7 @@ class EngineStats:
     imu_bad_samples: int = 0
     alts_rejected: int = 0
     alt_reanchors: int = 0
+    stale_measurements: int = 0
 
 
 class FusionEngine:
@@ -249,6 +254,9 @@ class FusionEngine:
         self.stats.fixes += 1
         ins = self._ins
         lag = self._lag(t)
+        if lag > MAX_MEASUREMENT_LAG_S:
+            self.stats.stale_measurements += 1
+            return
         sig_h, _, sig_v = self._sigmas(t, mode)
 
         # Coming back from an outage the state has drifted by however much
@@ -302,6 +310,9 @@ class FusionEngine:
             return
         _, sig_z, _ = self._sigmas(t, self._last_mode)
         lag = self._lag(t)
+        if lag > MAX_MEASUREMENT_LAG_S:
+            self.stats.stale_measurements += 1
+            return
         down = self._frame.h0 - alt
         h = ins.position_jacobian(self._arm)[2:3]
         r = np.array([sig_z**2])

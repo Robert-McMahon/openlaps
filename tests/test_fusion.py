@@ -319,3 +319,23 @@ def test_vertical_channel_is_held_when_heights_stop_arriving():
     assert out.alt is None  # no height reference any more, so none reported
     assert abs(out.vel_up_mps) < 3.0
     assert out.speed_mps < 80.0
+
+
+def test_fixes_far_behind_the_inertial_state_are_skipped():
+    """A backlog on the GNSS port delivers fixes seconds old, stamped as such."""
+
+    def backlog(events: list[SimEvent], frame: LocalFrame) -> list[SimEvent]:
+        out = []
+        for e in events:
+            if e.kind in ("fix", "alt") and 40.0 <= e.t < 43.0:
+                continue  # held up...
+            out.append(e)
+            if e.kind == "imu" and 43.0 <= e.t < 43.01:
+                # ...and delivered in one burst, carrying their true stamps.
+                out.extend(x for x in events if x.kind in ("fix", "alt") and 40.0 <= x.t < 43.0)
+        return out
+
+    run = _run(events_hook=backlog)
+    assert run.engine.stats.stale_measurements > 100
+    assert run.pos_err[run.window(40.0, 46.0)].max() < 1.5
+    assert run.pos_err[run.window(46.0, 75.0)].max() < 0.2

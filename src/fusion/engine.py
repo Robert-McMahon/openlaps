@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from fusion.geodesy import LocalFrame
-from fusion.ins import BG, ErrorStateIns, ImuNoise, V, dcm_to_euler, quat_from_euler
+from fusion.ins import BA, BG, ErrorStateIns, ImuNoise, V, dcm_to_euler, quat_from_euler
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,14 @@ FROZEN_CHECK_SPEED = 3.0  # m/s
 
 CHI2_2DOF = 13.8  # 99.9 %
 CHI2_1DOF = 10.8
+
+# Height re-anchor (see ``FusionEngine.gnss_alt``).
+ALT_REANCHOR_S = 1.0
+ALT_REANCHOR_VEL_SIGMA = 1.0  # m/s
+ALT_REANCHOR_BIAS_SIGMA = 0.1  # m/s^2
+# With no height taken for this long (GGA stopped), stop trusting the
+# vertical channel: hold it as before the first height arrived.
+ALT_STALE_S = 2.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +130,8 @@ class EngineStats:
     outages_lost: int = 0
     imu_failovers: int = 0
     imu_bad_samples: int = 0
+    alts_rejected: int = 0
+    alt_reanchors: int = 0
 
 
 class FusionEngine:
@@ -140,6 +150,8 @@ class FusionEngine:
         self._gst: tuple[float, float, float, float] | None = None  # t, lat, lon, alt std
         self._have_alt_ref = False
         self._rejected_since: float | None = None
+        self._alt_rejected_since: float | None = None
+        self._last_alt_t: float | None = None  # last height the filter took
         self._last_nhc_t = -math.inf
         # Static levelling: running mean of specific force while still.
         self._level_sum = np.zeros(3)
@@ -285,13 +297,37 @@ class FusionEngine:
             antenna_down = ins.antenna_position(self._arm, self._lag(t))[2]
             self._frame = LocalFrame(self._frame.lat0, self._frame.lon0, alt + antenna_down)
             self._have_alt_ref = True
+            self._alt_rejected_since = None
+            self._last_alt_t = t
             return
         _, sig_z, _ = self._sigmas(t, self._last_mode)
         lag = self._lag(t)
         down = self._frame.h0 - alt
-        predicted = ins.antenna_position(self._arm, lag)[2]
         h = ins.position_jacobian(self._arm)[2:3]
-        ins.update(np.array([down - predicted]), h, np.array([sig_z**2]), gate=CHI2_1DOF)
+        r = np.array([sig_z**2])
+        residual = down - ins.antenna_position(self._arm, lag)[2]
+        accepted, _ = ins.update(np.array([residual]), h, r, gate=CHI2_1DOF)
+        if accepted:
+            self._alt_rejected_since = None
+            self._last_alt_t = t
+            return
+        self.stats.alts_rejected += 1
+        if self._alt_rejected_since is None:
+            self._alt_rejected_since = t
+        elif t - self._alt_rejected_since > ALT_REANCHOR_S:
+            # Height is the only thing holding the inertial vertical channel,
+            # which is unstable on its own: left gated out it never comes
+            # back, because the drift outruns the covariance. A second of
+            # consistent disagreement is the receiver having moved its height
+            # (float -> fixed), so follow it, and open vertical velocity and
+            # the accelerometer bias so the next heights can pull them back.
+            ins.cov[2, 2] += residual**2 + sig_z**2
+            ins.cov[V.start + 2, V.start + 2] += ALT_REANCHOR_VEL_SIGMA**2
+            ins.cov[BA.start + 2, BA.start + 2] += ALT_REANCHOR_BIAS_SIGMA**2
+            ins.update(np.array([down - ins.antenna_position(self._arm, lag)[2]]), h, r)
+            self.stats.alt_reanchors += 1
+            self._alt_rejected_since = None
+            self._last_alt_t = t
 
     # ---- outputs ------------------------------------------------------------
 
@@ -567,8 +603,10 @@ class FusionEngine:
             hw[:, BG] = np.eye(3)
             ins.update(ins.omega_b.copy(), hw, np.full(3, math.radians(0.05) ** 2))
             return
+        if self._have_alt_ref and t - (self._last_alt_t or t) > ALT_STALE_S:
+            self._have_alt_ref = False  # heights stopped; re-anchor on the next
         if not self._have_alt_ref:
-            # No height source yet: hold vertical velocity loosely at zero so
+            # No height source: hold vertical velocity loosely at zero so
             # the inertial vertical channel (unstable on its own) can't run off.
             hz = np.zeros((1, 15))
             hz[0, V.start + 2] = 1.0

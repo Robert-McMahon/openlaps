@@ -46,7 +46,11 @@ generates synthetic drives with truth for testing and tuning.
   to that epoch. Unmodelled, every 10 ms costs 0.4 m at 40 m/s.
 - **Outliers.** A fix failing a 99.9 % chi-square gate is dropped. If
   fixes keep disagreeing for more than a second (a real solution jump such
-  as float to fixed), the filter re-anchors to them.
+  as float to fixed), the filter re-anchors to them. Height (GGA) is gated
+  and re-anchored the same way: it is the only thing holding the inertial
+  vertical channel, which runs away within minutes if heights stay
+  rejected. If heights stop arriving for 2 s the vertical velocity is held
+  loosely at zero and `fused.alt` stops until they return.
 - **Outages.** Through a dropout the filter dead-reckons on the IMU alone
   (status `dead_reckoning`). Past `max_outage_s` (default 10) it stops
   reporting position and re-aligns when GNSS returns. There is

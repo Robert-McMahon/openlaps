@@ -53,10 +53,11 @@ channels:
     max_hz: 20
   - match: "car.throttle_pos"
     max_hz: 20
-  # MISC5 at ~4.3 Hz: the cap never binds, and is here to bound the channel
-  # if the ECU's broadcast table is ever retimed.
+  # The PDM's 100 Hz switch state, sent by the car on change with a 200 ms
+  # heartbeat. Rated with the throttle so an edge reaches the panel within
+  # 50 ms instead of waiting out a slower cap.
   - match: "car.brake_pedal_switch"
-    max_hz: 5
+    max_hz: 20
 
   # ---- engine health: pressures fast, temperatures slow ----
   # ENGINE1/ENGINE2 at ~43 Hz. Oil pressure and manifold pressure move with

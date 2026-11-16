@@ -32,7 +32,7 @@ class RbeFilter:
 
         previous = self._state.get(channel_id)
         if previous is None:
-            if policy.deadband is not None:
+            if policy.deadband:
                 _deadband_value(sample.value)
             self._record(channel_id, sample)
             return True
@@ -45,7 +45,13 @@ class RbeFilter:
             self.suppressed_count += 1
             return False
 
-        if policy.deadband is not None:
+        if policy.deadband == 0:
+            # Report on change: an equality test, so it also serves booleans
+            # and strings, which have no distance to put a deadband on.
+            if sample.value == previous.value:
+                self.suppressed_count += 1
+                return False
+        elif policy.deadband is not None:
             deadband_value = _deadband_value(sample.value)
             previous_value = _deadband_value(previous.value)
             if abs(deadband_value - previous_value) <= policy.deadband:

@@ -124,6 +124,7 @@ channels:
     type: double|int|bool|string # optional, defaults to "double"
     rbe:                         # optional report-by-exception policy (link/store path only)
       deadband: <number>         #   suppress samples that haven't moved by at least this much
+                                 #   (0 = report on change; the only deadband a bool or string takes)
       min_interval: <duration>   #   never publish more often than this even if noisy
       max_interval: <duration>   #   always publish at least this often (heartbeat, bounds fill-forward)
     encode:                       # optional wire-encoding override, see "Wire encoding" below
@@ -480,7 +481,7 @@ above.
 | `TRIGGER_SYSTEM_ERROR_COUNT` | `car.trigger_error_count` |
 | `AMBIENT_AIR_TEMPERATURE` | `car.ambient_air_temp` |
 | `FUEL_LEVEL` | `car.fuel_level` |
-| `BRAKE_PEDAL_SWITCH` | `car.brake_pedal_switch` |
+| `BRAKE_PEDAL_SWITCH` | `car.brake_pedal_switch_ecu` (`car.brake_pedal_switch` is the PDM's 100 Hz input state) |
 | `CLUTCH_SWITCH` | `car.clutch_switch` |
 | `OIL_PRESSURE_LIGHT` | `car.oil_pressure_light` |
 | `TRACTION_CONTROL_ENABLED` | `car.tc_enabled` |

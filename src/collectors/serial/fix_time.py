@@ -36,6 +36,8 @@ from dataclasses import dataclass
 NS_PER_S = 1_000_000_000
 DAY_S = 86_400
 DEFAULT_WINDOW_S = 10.0
+# Sentences of one epoch leave the receiver back to back.
+SAME_EPOCH_SPAN_NS = 100_000_000
 
 
 def time_of_day_s(field: str) -> float | None:
@@ -53,6 +55,7 @@ def time_of_day_s(field: str) -> float | None:
 class FixTimeStats:
     restamped: int = 0
     resets: int = 0
+    stuck: int = 0
     # Arrival minus stamp for the latest sentence: how late it was read,
     # beyond the fastest recent one.
     last_delay_ms: float = 0.0
@@ -72,6 +75,8 @@ class ReceiverClock:
         self._last_tod_s: float | None = None
         self._last_epoch_ns: int | None = None
         self._last_stamp_ns: int | None = None
+        self._epoch_arrival_ns = 0
+        self._epoch_kinds: set[str] = set()
 
     def reset(self) -> None:
         """Forget the mapping (the receiver was reconnected or reconfigured)."""
@@ -79,8 +84,13 @@ class ReceiverClock:
         self._day_ns = 0
         self._last_tod_s = self._last_epoch_ns = self._last_stamp_ns = None
 
-    def stamp(self, tod_s: float, arrival_mono_ns: int) -> int:
-        """Monotonic stamp for a sentence of epoch ``tod_s`` read at ``arrival``."""
+    def stamp(self, tod_s: float, arrival_mono_ns: int, kind: str = "") -> int:
+        """Monotonic stamp for a sentence of epoch ``tod_s`` read at ``arrival``.
+
+        ``kind`` is the sentence type (``RMC``...): a receiver sends each
+        type once per epoch, so a second one with the same time means the
+        time field is not counting.
+        """
         last_tod = self._last_tod_s
         if last_tod is not None and tod_s < last_tod:
             if last_tod - tod_s > DAY_S / 2:
@@ -93,9 +103,22 @@ class ReceiverClock:
         self._last_tod_s = tod_s
         epoch_ns = self._day_ns + round(tod_s * NS_PER_S)
         if epoch_ns == self._last_epoch_ns and self._last_stamp_ns is not None:
-            # A later sentence of the same epoch (GGA after RMC): it was
+            if (
+                kind in self._epoch_kinds
+                or arrival_mono_ns - self._epoch_arrival_ns > SAME_EPOCH_SPAN_NS
+            ):
+                # The same time again, from the same sentence type or much
+                # later: the field is not counting (a replay or simulator
+                # with a placeholder, a receiver without a clock). Arrival
+                # is all there is.
+                self._epoch_kinds.add(kind)
+                self.stats.stuck += 1
+                return arrival_mono_ns
+            # Another sentence of the same epoch (GGA after RMC): it was
             # queued behind the first, which is not a faster arrival.
+            self._epoch_kinds.add(kind)
             return min(self._last_stamp_ns, arrival_mono_ns)
+        self._epoch_kinds = {kind}
 
         offset = arrival_mono_ns - epoch_ns
         offsets = self._offsets
@@ -113,6 +136,7 @@ class ReceiverClock:
             # last stamp is no later than its own arrival, so nor is this.
             stamp = self._last_stamp_ns
         self._last_epoch_ns = epoch_ns
+        self._epoch_arrival_ns = arrival_mono_ns
         self._last_stamp_ns = stamp
         delay_ms = (arrival_mono_ns - stamp) / 1e6
         self.stats.restamped += 1

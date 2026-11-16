@@ -57,9 +57,18 @@ def test_a_late_start_is_corrected_without_reordering():
 def test_sentences_of_one_epoch_share_a_stamp():
     clock = ReceiverClock()
     clock.stamp(T0_S, BOOT_NS + LATENCY_NS)
-    rmc = clock.stamp(T0_S + 0.02, BOOT_NS + EPOCH_NS + LATENCY_NS + 3 * MS)
-    gga = clock.stamp(T0_S + 0.02, BOOT_NS + EPOCH_NS + LATENCY_NS + 9 * MS)
+    rmc = clock.stamp(T0_S + 0.02, BOOT_NS + EPOCH_NS + LATENCY_NS + 3 * MS, "RMC")
+    gga = clock.stamp(T0_S + 0.02, BOOT_NS + EPOCH_NS + LATENCY_NS + 9 * MS, "GGA")
     assert rmc == gga == BOOT_NS + EPOCH_NS + LATENCY_NS
+
+
+def test_a_time_field_that_does_not_count_falls_back_to_arrival():
+    """Replay and bench tools synthesise RMC with a placeholder time."""
+    for spacing_ms in (20, 150):
+        clock = ReceiverClock()
+        arrivals = [BOOT_NS + k * spacing_ms * MS for k in range(1, 20)]
+        assert [clock.stamp(0.0, arrival, "RMC") for arrival in arrivals] == arrivals
+        assert clock.stats.stuck == 18
 
 
 def test_midnight_does_not_break_the_mapping():

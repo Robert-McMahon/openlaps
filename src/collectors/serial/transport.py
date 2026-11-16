@@ -102,7 +102,9 @@ class SerialCollector:
             t_mono_ns = time.monotonic_ns()
         values, time_of_day_s = self.decoder.decode_timed(line)
         if time_of_day_s is not None and self.receiver_clock is not None:
-            t_mono_ns = self.receiver_clock.stamp(time_of_day_s, t_mono_ns)
+            t_mono_ns = self.receiver_clock.stamp(
+                time_of_day_s, t_mono_ns, self.decoder.sentence_type
+            )
         t_wall_ms = self._wall_clock(t_mono_ns)
         for source_ref, value in values:
             self._emit(Sample(source_ref, t_mono_ns, t_wall_ms, value))

@@ -38,6 +38,7 @@ class NmeaDecoder:
         self._gga_prefix = f"{source_name}:{device}.GGA."
         self._gst_prefix = f"{source_name}:{device}.GST."
         self._time_of_day_s: float | None = None
+        self.sentence_type = ""
 
     def decode_timed(
         self, sentence: bytes | str
@@ -63,6 +64,7 @@ class NmeaDecoder:
             body = _validated_body(text)
             fields = body.split(",")
             talker_type = fields[0][-3:] if fields else ""
+            self.sentence_type = talker_type
             if talker_type in ("RMC", "GGA", "GST") and len(fields) > 1:
                 self._time_of_day_s = time_of_day_s(fields[1])
             if talker_type == "GGA":

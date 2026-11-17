@@ -122,7 +122,7 @@ apps:
       lat_std: position.lat_std  # optional, GST (all three or none)
       lon_std: position.lon_std
       alt_std: position.alt_std
-      latency_ms: 30
+      latency_ms: 25
       lever_arm_m: [0.0, 0.0, 0.0]  # antenna from IMU: forward, right, down
     output_rate_hz: 50
     align_speed_kmh: 18
@@ -155,7 +155,9 @@ sentence_rates_hz: { GGA: 10, GST: 10 }
 2. **Lever arm.** Measure antenna minus IMU in vehicle axes to a
    centimetre or two. An error here shows up as position and heading
    error that changes with yaw rate.
-3. **Latency.** Start at 30 ms. Correct latency shows as `fused.pos_std`
+3. **Latency.** Start at 25 ms with `receiver_time` on (a UM980 at
+   115200 baud delivers RMC 24 ms after its epoch), 30 ms with arrival
+   stamps. Correct latency shows as `fused.pos_std`
    staying low and no rejected fixes under hard braking. A wrong value
    shows as fused position leading or lagging RTK fixes along the track.
 4. **Mounting misalignment.** On a long straight at steady speed,

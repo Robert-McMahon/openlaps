@@ -47,6 +47,7 @@ Sample = (source_ref: str-interned, t_mono_ns: int, t_wall_ms: float, value)
    the sample is handed to it *here, before RBE* (see below).
 4. **RBE / rate filter** — per-channel policy from the catalog:
    - `deadband: x` — suppress if `|value − last_sent| ≤ x`
+     (`deadband: 0` is report-on-change, and works on booleans and strings)
    - `min_interval: t` — rate cap; suppress if `t` hasn't elapsed since last sent
    - `max_interval: t` — heartbeat; force-send if `t` elapsed even if unchanged
    Evaluation order: `max_interval` forces a send; else `min_interval`

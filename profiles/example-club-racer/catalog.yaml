@@ -22,7 +22,8 @@
 #   - ~100 Hz input voltages: deadband 0.05 V, at most 10 Hz, 5 s heartbeat
 #     (switch edges still arrive within 100 ms; levels fill forward);
 #   - booleans and counters broadcast at 15-38 Hz: at most 5 Hz, 5 s heartbeat
-#     (no deadband -- the filter refuses one on a bool);
+#     (no deadband -- the filter refuses a non-zero one on a bool; `deadband: 0`
+#     is report-on-change and is what the brake switch uses to keep its edges);
 #   - slow-moving pressures, angles and duties at 20-38 Hz: a deadband at the
 #     sensor's noise floor (2 kPa, 0.5 deg, 0.5 %), at most 20 Hz, 2 s heartbeat.
 # Deadbands sit well under every alarm/watch threshold on the same channel.
@@ -90,7 +91,10 @@ channels:
 
   # ---- ECU: driver-input switches (device: haltech) ----
   car.accel_pedal_pos: { from: "can0:haltech.MISC11.ACCELERATOR_PEDAL_POSITION", units: "%" }
-  car.brake_pedal_switch: { from: "can0:haltech.MISC5.BRAKE_PEDAL_SWITCH", type: bool }
+  # The ECU's own copy of the brake switch. MISC5 goes out at about 3.6 Hz, so
+  # it trails the pedal by up to a quarter of a second; car.brake_pedal_switch
+  # (PDM section below) is the one to read braking points from.
+  car.brake_pedal_switch_ecu: { from: "can0:haltech.MISC5.BRAKE_PEDAL_SWITCH", type: bool, rbe: { deadband: 0, max_interval: 5s } }
   car.clutch_switch: { from: "can0:haltech.MISC5.CLUTCH_SWITCH", type: bool }
   car.tc_active: { from: "can0:haltech.MISC5.TRACTION_CONTROL_ACTIVE", type: bool }
   car.tc_enabled: { from: "can0:haltech.MISC5.TRACTION_CONTROL_ENABLED", type: bool }
@@ -175,6 +179,10 @@ channels:
   car.brake_pressure_front_volts: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_2_VOLTAGE", units: "V", rbe: { deadband: 0.05, min_interval: 100ms, max_interval: 5s } }
   car.clutch_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_3_VOLTAGE", units: "V", rbe: { deadband: 0.05, min_interval: 100ms, max_interval: 5s } }
   car.brake_switch_input: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_4_VOLTAGE", units: "V", rbe: { deadband: 0.05, min_interval: 100ms, max_interval: 5s } }
+  # The brake pedal switch is wired to PD16A SPI4, and the PDM broadcasts the
+  # debounced state of that pin at 100 Hz. Sent on change with a 200 ms
+  # heartbeat: every edge lands within 10 ms of the pedal, for about 5 rows/s.
+  car.brake_pedal_switch: { from: "can0:haltech2.PD16A_SPI_VOLTAGES.PD16A_SPI_4_STATE", type: bool, rbe: { deadband: 0, max_interval: 200ms } }
 
   #Half Bridge Outputs
   car.power_steering_pump_1_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_1_HS_CURRENT", units: "A" }

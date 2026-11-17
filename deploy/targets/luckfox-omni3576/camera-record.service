@@ -1,0 +1,21 @@
+# Records the car camera to /srv/openlaps/video (camera-record.sh).
+# A user unit like camera-watch: runs as luckfox, who is in the docker group
+# and has lingering on, so it needs no root and starts at boot.
+# It runs the deployed script and is linked, not copied, so both follow
+# tools/deploy_vehicle.sh, which restarts it when the script changes.
+# Install once on the car, as luckfox:
+#   sudo install -d -o luckfox -g luckfox /srv/openlaps/video
+#   systemctl --user enable --now /opt/openlaps/deploy/targets/luckfox-omni3576/camera-record.service
+# Log: journalctl --user -u camera-record
+# Stop recording: systemctl --user disable --now camera-record
+[Unit]
+Description=OpenLaps record the car camera to the NVMe
+
+[Service]
+ExecStart=/opt/openlaps/deploy/targets/luckfox-omni3576/camera-record.sh
+ExecStopPost=-/usr/bin/docker rm -f openlaps-vehicle-record
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

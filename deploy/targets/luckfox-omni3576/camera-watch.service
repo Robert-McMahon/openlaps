@@ -1,16 +1,16 @@
 # Restarts go2rtc when the camera re-enumerates on USB (camera-watch.sh).
 # A user unit: runs as luckfox, who is in the docker group and has lingering
 # on, so it needs no root and starts at boot.
-# Install on the car, as luckfox:
-#   install -D -m 755 camera-watch.sh ~/.local/bin/camera-watch.sh
-#   install -D -m 644 camera-watch.service ~/.config/systemd/user/camera-watch.service
-#   systemctl --user daemon-reload && systemctl --user enable --now camera-watch
+# It runs the deployed script and is linked, not copied, so both follow
+# tools/deploy_vehicle.sh, which restarts it when the script changes.
+# Install once on the car, as luckfox:
+#   systemctl --user enable --now /opt/openlaps/deploy/targets/luckfox-omni3576/camera-watch.service
 # Log: journalctl --user -u camera-watch
 [Unit]
 Description=OpenLaps restart go2rtc when the camera re-enumerates
 
 [Service]
-ExecStart=%h/.local/bin/camera-watch.sh
+ExecStart=/opt/openlaps/deploy/targets/luckfox-omni3576/camera-watch.sh
 Restart=always
 RestartSec=10
 

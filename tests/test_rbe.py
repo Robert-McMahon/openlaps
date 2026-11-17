@@ -85,3 +85,21 @@ def test_suppressed_count_accumulates_across_channels_and_rules():
     assert rbe.accept(8, _sample(20.0, 0), rate_cap)
     assert not rbe.accept(8, _sample(30.0, 1_000_000), rate_cap)
     assert rbe.suppressed_count == 2
+
+
+@pytest.mark.parametrize(
+    ("first", "changed"),
+    [(False, True), ("green", "red"), (3, 4), (1.5, 1.6)],
+)
+def test_zero_deadband_reports_every_change_and_nothing_else(
+    first: SampleValue, changed: SampleValue
+):
+    rbe = RbeFilter()
+    policy = RbeConfig(deadband=0, max_interval="200ms")
+
+    assert rbe.accept(7, _sample(first, 0), policy)
+    assert not rbe.accept(7, _sample(first, 10_000_000), policy)
+    assert rbe.accept(7, _sample(changed, 20_000_000), policy)
+    assert rbe.accept(7, _sample(first, 30_000_000), policy)
+    assert not rbe.accept(7, _sample(first, 229_999_999), policy)
+    assert rbe.accept(7, _sample(first, 230_000_000), policy)

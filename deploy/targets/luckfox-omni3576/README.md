@@ -427,6 +427,23 @@ mode, and then `dmesg` shows `usb 1-1.4: device descriptor read/64, error
 -110` repeating with no `/dev/v4l/by-id/` at all. That is the camera, not the
 board — put it back in webcam mode and the rule starts the container.
 
+Two user units (as `luckfox`, lingering on) look after the camera. Both run
+their script straight from `/opt/openlaps`, so a deploy updates them:
+
+```bash
+sudo install -d -o luckfox -g luckfox /srv/openlaps/video
+systemctl --user enable --now /opt/openlaps/deploy/targets/luckfox-omni3576/camera-watch.service
+systemctl --user enable --now /opt/openlaps/deploy/targets/luckfox-omni3576/camera-record.service
+```
+
+`camera-watch` restarts go2rtc when the camera re-enumerates on USB and the
+container is left holding a dead `/dev/video0`. `camera-record` records the
+`car_h264` stream, without re-encoding, to `/srv/openlaps/video` on the NVMe
+as five-minute `car_<UTC start>.mkv` files — about 9 GB per 24 h — and
+deletes the oldest once the disk has less than 100 GB free. It records
+whenever go2rtc is up, so the encoder now runs for as long as the car is on.
+A camera replug costs about 45 s of video; a stalled stream about 30 s.
+
 ### 6. Verify
 
 ```bash

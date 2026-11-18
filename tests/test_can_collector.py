@@ -452,3 +452,18 @@ def test_vcan_roundtrip_emits_samples(tmp_path: Path):
     assert samples
     assert samples[0].source_ref == "can0:ecu.STATUS.LEVEL"
     assert samples[0].value == 0x2A00
+
+
+def test_the_receive_buffer_is_grown_and_kernel_drops_are_readable_on_a_real_socket():
+    import socket
+
+    from collectors.can import _grow_recv_buffer, _socket_drops
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        before = sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+        granted = _grow_recv_buffer(sock, "can0")
+        assert granted >= before
+        assert _socket_drops(sock) == 0
+
+    assert _grow_recv_buffer(object(), "can0") == 0
+    assert _socket_drops(object()) == 0

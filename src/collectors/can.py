@@ -10,6 +10,8 @@ cheaply downstream by the mapper.
 from __future__ import annotations
 
 import logging
+import socket
+import struct
 import threading
 import time
 from collections.abc import Callable, Iterable, Sequence
@@ -30,6 +32,17 @@ DEFAULT_RECV_TIMEOUT_S = 0.2
 DEFAULT_BACKOFF_START_S = 0.5
 DEFAULT_BACKOFF_MAX_S = 30.0
 _MAX_TRACKED_UNKNOWN_IDS = 256
+# A CAN frame costs the socket about 1 kB of receive buffer, so the kernel's
+# default (about 200 kB) holds a tenth of a second of a busy 1 Mbit/s bus.
+# The reader shares the interpreter with every other thread in the agent and
+# is routinely kept waiting longer than that; whatever does not fit is dropped
+# by the kernel without a trace in any interface counter. Ask for seconds.
+# The kernel silently caps the request at net.core.rmem_max.
+RECV_BUFFER_BYTES = 16 * 1024 * 1024
+_SOCKET_POLL_FRAMES = 512
+_SO_MEMINFO = 55
+_SK_MEMINFO_VARS = 9
+_SK_MEMINFO_DROPS = 8
 
 BusFactory = Callable[[BusConfig], can.BusABC]
 
@@ -86,6 +99,9 @@ class CanTransportStats:
     open_failures: int = 0
     bus_errors: int = 0
     reconnects: int = 0
+    # Frames the kernel discarded because this reader's socket buffer was full.
+    socket_drops: int = 0
+    recv_buffer_bytes: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,6 +339,10 @@ class CanCollector:
     def _read_until_error(self, bus: can.BusABC, stop: threading.Event) -> bool:
         """Pump frames until ``stop`` or a bus error; True if any frame arrived."""
         received = False
+        sock = getattr(bus, "socket", None)
+        self.stats.recv_buffer_bytes = _grow_recv_buffer(sock, self.config.name)
+        drops_before = self.stats.socket_drops
+        since_poll = 0
         while not stop.is_set():
             try:
                 message = bus.recv(timeout=self._recv_timeout_s)
@@ -330,8 +350,12 @@ class CanCollector:
                 self.stats.bus_errors += 1
                 logger.warning("bus %s: read failed: %s", self.config.name, exc)
                 return received
+            if message is None or since_poll >= _SOCKET_POLL_FRAMES:
+                since_poll = 0
+                self.stats.socket_drops = drops_before + _socket_drops(sock)
             if message is None:
                 continue
+            since_poll += 1
             received = True
             self.handle_message(message)
         return received
@@ -339,6 +363,43 @@ class CanCollector:
 
 def _default_bus_factory(config: BusConfig) -> can.BusABC:
     return can.Bus(channel=config.interface, interface="socketcan")
+
+
+def _grow_recv_buffer(sock: object, bus_name: str) -> int:
+    """Ask for `RECV_BUFFER_BYTES` on the bus socket; returns what was granted."""
+    if not isinstance(sock, socket.socket):
+        return 0
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, RECV_BUFFER_BYTES)
+        granted = sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
+    except OSError as exc:
+        logger.warning("bus %s: cannot size the receive buffer: %s", bus_name, exc)
+        return 0
+    # The kernel reports twice what it accepted, to cover its own bookkeeping.
+    if granted < RECV_BUFFER_BYTES:
+        logger.warning(
+            "bus %s: receive buffer is %d kB, not the %d kB asked for; "
+            "raise net.core.rmem_max or frames are dropped when the agent is busy",
+            bus_name,
+            granted // 1024,
+            RECV_BUFFER_BYTES // 1024,
+        )
+    else:
+        logger.info("bus %s: receive buffer %d kB", bus_name, granted // 1024)
+    return granted
+
+
+def _socket_drops(sock: object) -> int:
+    """Frames the kernel has discarded on this socket for want of buffer."""
+    if not isinstance(sock, socket.socket):
+        return 0
+    try:
+        raw = sock.getsockopt(socket.SOL_SOCKET, _SO_MEMINFO, 4 * _SK_MEMINFO_VARS)
+    except OSError:
+        return 0
+    if len(raw) < 4 * _SK_MEMINFO_VARS:
+        return 0
+    return struct.unpack(f"{_SK_MEMINFO_VARS}I", raw[: 4 * _SK_MEMINFO_VARS])[_SK_MEMINFO_DROPS]
 
 
 def _shutdown(bus: can.BusABC, bus_name: str) -> None:

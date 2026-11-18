@@ -32,6 +32,7 @@ from agent.publisher import (
 )
 from agent.queues import DEFAULT_MAXLEN, SampleQueue
 from agent.session import SessionStore
+from agent.thread_cpu import ThreadCpu
 from agent.timing_app import LapTimingApp, build_lap_timing_app
 from collectors.can import CanCollector
 from collectors.can_stall import StallDetector, read_rx_packets
@@ -175,9 +176,19 @@ def agent_derived_channels(
     ]
     channels += [DerivedChannel(f"sys.agent.drops.{name}", pb.INT64) for name in collector_names]
     channels += [DerivedChannel(f"sys.agent.stall_s.{name}", pb.DOUBLE, "s") for name in bus_names]
+    channels += [DerivedChannel(f"sys.agent.socket_drops.{name}", pb.INT64) for name in bus_names]
+    channels += [
+        DerivedChannel(f"sys.agent.cpu.{role}", pb.DOUBLE, "%")
+        for role in ThreadCpu(thread_roles(collector_names)).roles
+    ]
     if fusion:
         channels += FUSION_DERIVED_CHANNELS
     return tuple(channels)
+
+
+def thread_roles(collector_names: list[str]) -> list[str]:
+    """The roles `sys.agent.cpu.*` reports: one per collector, plus the agent's own."""
+    return [*collector_names, "pipeline", "publisher", "health", "main"]
 
 
 class VehicleAgent:
@@ -274,6 +285,7 @@ class VehicleAgent:
         # One stall judge per bus: frames the kernel counted against frames
         # the collector decoded (collectors.can_stall). Fed by the health loop.
         self._stall_detectors: dict[str, StallDetector] = {}
+        self._thread_cpu = ThreadCpu(thread_roles(collector_names))
         for bus in self.profile.vehicle.buses:
             queue = SampleQueue(bus.name, settings.queue_maxlen)
             collector = CanCollector(
@@ -465,6 +477,9 @@ class VehicleAgent:
                     time.monotonic(),
                 )
                 emit(f"sys.agent.stall_s.{collector.name}", stall_s)
+                emit(f"sys.agent.socket_drops.{collector.name}", collector.stats.socket_drops)
+        for role, percent in self._thread_cpu.observe().items():
+            emit(f"sys.agent.cpu.{role}", round(percent, 1))
 
     def _status_payload(self, state: str) -> str:
         collectors = {

@@ -49,6 +49,16 @@ Sample = (source_ref: str-interned, t_mono_ns: int, t_wall_ms: float, value)
    example car that is a third of the frames and two thirds of the samples.
    A collector built without that set (the bench and replay tools) still
    emits everything its DBCs know.
+   **Compiled CAN ingest.** When the `openlaps_canfast` extension
+   (`rust/canfast`) is installed, steps 1, 2, 4 and 5 for a CAN bus happen
+   on a thread of its own outside the interpreter: it owns the bus socket,
+   stamps and decodes frames, applies the RBE policies and serializes the
+   bus's `SampleBatch` payloads. Python builds its plan from the DBCs and
+   the catalog at start (`collectors/can_fast.py`), and the pipeline thread
+   drains finished batches once a tick, together with the pre-RBE samples
+   the timing and fusion apps subscribe to (step 3). `tests/test_can_fast.py`
+   holds the two paths to byte-identical output. `OPENLAPS_CAN_INGEST`
+   selects `auto` (default), `python` or `compiled`.
 3. **Timing tap** — if the channel is one the timing engine subscribes to,
    the sample is handed to it *here, before RBE* (see below).
 4. **RBE / rate filter** — per-channel policy from the catalog:

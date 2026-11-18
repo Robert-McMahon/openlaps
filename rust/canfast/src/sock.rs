@@ -19,6 +19,7 @@ const SO_MEMINFO: libc::c_int = 55;
 const SK_MEMINFO_VARS: usize = 9;
 const SK_MEMINFO_DROPS: usize = 8;
 const POLL_MS: libc::c_int = 200;
+const DROPS_INTERVAL_NS: i64 = 250_000_000;
 const BACKOFF_START: Duration = Duration::from_millis(500);
 const BACKOFF_MAX: Duration = Duration::from_secs(30);
 /// A realtime-minus-monotonic reading is trusted only if the two clocks were
@@ -207,12 +208,19 @@ fn read_until_error(fd: &Fd, shared: &Shared, drops_before: u64) -> bool {
     let mut headers: Vec<libc::mmsghdr> = (0..BATCH).map(|_| unsafe { mem::zeroed() }).collect();
     let mut clock = StampClock { offset_ns: None, steps: transport.clock_steps.load(Ordering::Relaxed) };
     let mut received = false;
+    let mut drops_read_ns = 0i64;
     let mut poll_fd = libc::pollfd { fd: fd.0, events: libc::POLLIN, revents: 0 };
 
     while !shared.stop.load(Ordering::Relaxed) {
         poll_fd.revents = 0;
         let ready = unsafe { libc::poll(&mut poll_fd, 1, POLL_MS) };
-        transport.socket_drops.store(drops_before + socket_drops(fd.0), Ordering::Relaxed);
+        // On a busy bus the loop wakes for almost every frame; the drop
+        // counter only needs reading a few times a second.
+        let now = monotonic_ns();
+        if now - drops_read_ns >= DROPS_INTERVAL_NS {
+            drops_read_ns = now;
+            transport.socket_drops.store(drops_before + socket_drops(fd.0), Ordering::Relaxed);
+        }
         if ready < 0 {
             if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
                 continue;

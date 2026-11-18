@@ -296,9 +296,16 @@ OPENLAPS_TICK_MS=20
 EOF
 sudo install -m 0644 deploy/systemd/openlaps-can.service deploy/systemd/openlaps-agent.service \
   deploy/systemd/openlaps-can-watchdog.service /etc/systemd/system/
+sudo install -m 0644 deploy/systemd/60-openlaps-can.conf /etc/sysctl.d/
+sudo sysctl --system
 sudo systemctl daemon-reload
 sudo systemctl enable --now openlaps-can openlaps-agent openlaps-can-watchdog
 ```
+
+The sysctl file raises `net.core.rmem_max` so the agent can have the 16 MB
+CAN receive buffer it asks for. Without it the agent starts with a warning
+and the kernel drops frames whenever the reader is held up for more than a
+tenth of a second (`sys.agent.socket_drops.can0` counts them).
 
 `openlaps-can` runs `tools/can_up.py` as root before the agent, with the
 `link: {fd: true, dbitrate: 2000000}` from `hardware.yaml` — see CAN below

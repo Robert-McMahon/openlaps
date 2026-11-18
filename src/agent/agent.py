@@ -280,6 +280,11 @@ class VehicleAgent:
                 lap_timing.position,
                 lap_timing.track,
                 str(self.profile.path / "tracks"),
+                state_path=(
+                    state_dir / "timing-state.json"
+                    if state_dir
+                    else self.profile.path / ".timing-state.json"
+                ),
             )
             self.timing_app.apply_session(self.session_store.current())
 

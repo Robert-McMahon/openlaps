@@ -72,7 +72,10 @@ class TimingEvent:
     lap_number: int
     sector: int = 0  # sector number this event pertains to
     split_time: float = 0.0  # completed sector split (s)
-    lap_time: float = 0.0  # completed lap time (s), for LAP_COMPLETED
+    # Completed lap time (s), for LAP_COMPLETED. None when the lap's start
+    # was never seen (timing began mid-lap): the crossing is real, its time
+    # is not, so it must not be reported as one.
+    lap_time: float | None = 0.0
     valid: bool = True
     direction: str = ""
     pit_status: str = "track"
@@ -93,6 +96,9 @@ class TimingState:
     # pit lane's, so the car is in the pits until the *outer* exit.
     pit_zones: list[str] = field(default_factory=list)
     lap_valid: bool = True  # current lap eligible for best
+    # The current lap began before timing did, so its start time is not a
+    # start/finish crossing and the lap's duration is unknown.
+    lap_partial: bool = False
     best_lap_time: float = 0.0  # 0 == none yet
     last_lap_time: float = 0.0
     # per-line: last accepted crossing time and learned direction sign (+1/-1)
@@ -270,6 +276,7 @@ class TimingEngine:
         self.state.expected_idx = 1 % self.n_points
         self.state.sectors_done = 0
         self.state.lap_valid = self.state.pit_status == "track"
+        self.state.lap_partial = False
 
     def _handle_lap_point(self, idx, line, hit, gps) -> list[TimingEvent]:
         ctime, direction, _ = hit
@@ -285,6 +292,7 @@ class TimingEngine:
                 # splits from here are genuine, but the partial "lap" that ends
                 # at the next start/finish crossing must not count as a lap.
                 st.lap_valid = False
+                st.lap_partial = True
             return []
 
         in_order = idx == st.expected_idx
@@ -299,6 +307,7 @@ class TimingEngine:
                 return []
             split = ctime - st.segment_start_time
             lap_valid = st.lap_valid and in_order and (st.pit_status == "track")
+            reported_time: float | None = None if st.lap_partial else lap_time
             events = [
                 TimingEvent(
                     type=EventType.SECTOR_COMPLETED,
@@ -314,7 +323,8 @@ class TimingEngine:
                     pit_status=st.pit_status,
                 )
             ]
-            st.last_lap_time = lap_time
+            if reported_time is not None:
+                st.last_lap_time = reported_time
             if lap_valid and (st.best_lap_time == 0.0 or lap_time < st.best_lap_time):
                 st.best_lap_time = lap_time
             events.append(
@@ -325,7 +335,7 @@ class TimingEngine:
                     lat=gps.lat,
                     lon=gps.lon,
                     lap_number=st.lap_number,
-                    lap_time=lap_time,
+                    lap_time=reported_time,
                     valid=lap_valid,
                     direction=direction,
                     pit_status=st.pit_status,

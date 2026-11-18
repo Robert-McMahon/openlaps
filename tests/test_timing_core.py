@@ -299,6 +299,10 @@ def test_partial_first_lap_invalid_but_sectors_count():
     assert s2.valid and s2.split_time == pytest.approx(20.0)
     # but the partial lap must not be a valid lap (didn't start at SF)
     assert laps and laps[0].valid is False
+    # its start was a sector line, so it has no lap time at all (the 40 s
+    # from Sector1 to SF is not a lap), and it is not "last lap" either
+    assert laps[0].lap_time is None
+    assert eng.state.last_lap_time == 0.0
     assert eng.state.best_lap_time == 0.0  # not adopted as best
     # and the following full lap continues normally
     s1_lap2 = next(e for e in sectors if e.lap_number == 2 and e.sector == 1)
@@ -311,3 +315,23 @@ def test_classify_line():
     assert classify_line("PitEntry") == LineType.PIT_ENTRY
     assert classify_line("PitExit") == LineType.PIT_EXIT
     assert classify_line("Weird") == LineType.UNKNOWN
+
+
+def test_resumed_state_times_the_lap_from_the_last_crossing_before_the_restart():
+    """An agent restart mid-lap (say in the pits) resumes from saved state:
+    the next start/finish closes a lap timed from the crossing before the
+    restart, however long the car was stopped."""
+    eng = TimingEngine(STD_LINES)
+    run(eng, [pt(-10, 0, 95), *cross_x(0, 100), *cross_x(1000, 110)])
+    saved = TimingState.from_dict(eng.state.to_dict())
+
+    resumed = TimingEngine(STD_LINES, state=saved)
+    events = run(
+        resumed,
+        [pt(1990, 0, 2095), *cross_x(2000, 2100), *connector(2101, 2138), *cross_x(0, 2140)],
+    )
+
+    lap = next(e for e in events if e.type == EventType.LAP_COMPLETED)
+    assert lap.lap_number == 1
+    assert lap.lap_time == pytest.approx(2040.0)
+    assert resumed.state.lap_number == 2

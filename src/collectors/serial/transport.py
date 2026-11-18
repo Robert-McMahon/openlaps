@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import select
 import threading
 import time
 from collections.abc import Callable
@@ -24,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BACKOFF_START_S = 0.5
 DEFAULT_BACKOFF_MAX_S = 30.0
+_READ_MAX = 65536
 MAX_SENTENCE_BYTES = 1024
 RAW_LOG_RETRY_S = 60.0
 
@@ -267,8 +270,7 @@ class SerialCollector:
         the terminator's arrival to well under a millisecond unless the
         thread was held off, and then by no more than it was held off.
         """
-        waiting = port.in_waiting  # type: ignore[attr-defined]
-        chunk = port.read(max(1, min(waiting, 65536)))  # type: ignore[attr-defined]
+        chunk = _read_available(port)
         t_mono_ns = time.monotonic_ns()
         if not chunk:
             return t_mono_ns
@@ -347,3 +349,30 @@ def _close(port: SerialPort, source_name: str) -> None:
         port.close()
     except (serial.SerialException, OSError) as exc:
         logger.warning("serial %s: close failed: %s", source_name, exc)
+
+
+def _read_available(port: SerialPort) -> bytes:
+    """Whatever the port holds, waiting up to its timeout for the first byte.
+
+    A real pyserial port is read straight from its descriptor: one ``select``
+    and one ``read`` per wake-up. Going through pyserial costs an
+    ``in_waiting`` ioctl, a one-byte blocking read to wait for data and then
+    a second ioctl and read for the rest, each giving up the interpreter.
+    Anything else (the test doubles) keeps that portable path.
+    """
+    descriptor = getattr(port, "fd", None)
+    if not isinstance(descriptor, int):
+        waiting = port.in_waiting  # type: ignore[attr-defined]
+        return port.read(max(1, min(waiting, _READ_MAX)))  # type: ignore[attr-defined]
+    timeout = getattr(port, "timeout", None)
+    ready, _, _ = select.select([descriptor], [], [], timeout)
+    if not ready:
+        return b""
+    try:
+        chunk = os.read(descriptor, _READ_MAX)
+    except BlockingIOError:
+        return b""
+    if not chunk:
+        # Readable with nothing to read is how a vanished device shows up.
+        raise serial.SerialException("device reports readiness to read but returned no data")
+    return chunk

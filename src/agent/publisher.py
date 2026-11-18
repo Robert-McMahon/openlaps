@@ -23,7 +23,7 @@ import logging
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 import nats
@@ -124,15 +124,31 @@ class JetStreamPublisher:
 
     def submit(self, batch: TickBatch) -> None:
         """Queue one tick batch; sheds oldest-first past the byte budget."""
-        item = _QueuedBatch(
-            subject=f"tele.{self._vehicle_id}.{batch.source_class}",
-            payload=batch.payload,
-            msg_id=batch.msg_id,
-            submit_mono_ns=time.monotonic_ns(),
-        )
+        self.submit_many((batch,))
+
+    def submit_many(self, batches: Iterable[TickBatch]) -> None:
+        """Queue a tick's batches together and wake the publish loop once.
+
+        Waking the loop is a write to its self-pipe and a pass through the
+        event loop. Done per batch that was several hundred a second on a
+        loaded car, for batches the loop would have sent together anyway.
+        """
+        now = time.monotonic_ns()
+        items = [
+            _QueuedBatch(
+                subject=f"tele.{self._vehicle_id}.{batch.source_class}",
+                payload=batch.payload,
+                msg_id=batch.msg_id,
+                submit_mono_ns=now,
+            )
+            for batch in batches
+        ]
+        if not items:
+            return
         with self._lock:
-            self._buffer.append(item)
-            self._buffer_bytes += len(item.payload)
+            for item in items:
+                self._buffer.append(item)
+                self._buffer_bytes += len(item.payload)
             while self._buffer_bytes > self._buffer_budget and len(self._buffer) > 1:
                 shed = self._buffer.popleft()
                 self._buffer_bytes -= len(shed.payload)

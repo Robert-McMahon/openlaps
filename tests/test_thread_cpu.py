@@ -37,3 +37,21 @@ def test_a_busy_thread_shows_under_its_role_and_an_unknown_one_under_other():
     assert used["can0"] > 5
     assert used[OTHER] > 5
     assert used["pipeline"] == 0
+
+
+def test_stat_descriptors_are_reused_and_dropped_when_a_thread_ends():
+    stop = threading.Event()
+    worker = threading.Thread(target=stop.wait, name="can-can0", daemon=True)
+    cpu = ThreadCpu(["can0"])
+    worker.start()
+    try:
+        cpu.observe()
+        held = dict(cpu._stat_fds)
+        cpu.observe()
+        assert worker.native_id in cpu._stat_fds
+        assert cpu._stat_fds == held  # same descriptors, not reopened
+    finally:
+        stop.set()
+        worker.join()
+    cpu.observe()
+    assert worker.native_id not in cpu._stat_fds

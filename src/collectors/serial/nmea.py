@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import reduce
+from operator import xor
 
 from core.samples import SampleValue
 
@@ -147,9 +149,11 @@ def _validated_body(sentence: str) -> str:
     if separator:
         if len(supplied_checksum) != 2:
             raise ValueError("invalid NMEA checksum field")
-        checksum = 0
-        for character in body:
-            checksum ^= ord(character)
+        # One C-level fold over the bytes: at 50 Hz a per-character loop was
+        # several hundred thousand interpreter steps a minute. A character
+        # outside Latin-1 cannot be in a valid sentence; encoding it raises
+        # the ValueError callers already treat as malformed.
+        checksum = reduce(xor, body.encode("latin-1"), 0)
         if supplied_checksum.upper() != f"{checksum:02X}":
             raise ValueError("NMEA checksum mismatch")
     return body

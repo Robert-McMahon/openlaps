@@ -225,3 +225,18 @@ def test_a_tick_window_split_across_two_flushes_gets_two_distinct_ids(catalog):
 
     assert first[0].epoch_unix_ms == second[0].epoch_unix_ms
     assert first[0].msg_id != second[0].msg_id
+
+
+def test_a_sentence_with_a_character_outside_latin_1_is_malformed_not_a_crash():
+    from collectors.serial.nmea import _validated_body
+
+    body = "GNRMC,1,2"
+    checksum = 0
+    for character in body:
+        checksum ^= ord(character)
+
+    assert _validated_body(f"${body}*{checksum:02X}") == body
+    with pytest.raises(ValueError):
+        _validated_body("$GNRMC,\u20ac*00")
+    with pytest.raises(ValueError, match="mismatch"):
+        _validated_body(f"${body}*{checksum ^ 1:02X}")

@@ -22,7 +22,7 @@ from pathlib import Path
 from agent import selfprofile
 from agent.clock import SystemClock
 from agent.fusion_app import FUSION_DERIVED_CHANNELS, FusionApp
-from agent.pipeline import DERIVED_SOURCE_CLASS, Pipeline
+from agent.pipeline import DERIVED_SOURCE_CLASS, Pipeline, TickBatch
 from agent.publisher import (
     DEFAULT_BUFFER_BYTES,
     DEFAULT_REGISTRY_INTERVAL_S,
@@ -471,6 +471,7 @@ class VehicleAgent:
         session = self._session_inbox.take()
         if session is not None and self.timing_app is not None:
             self.timing_app.apply_session(session)
+        ready: list[TickBatch] = []
         for supervised in self._supervised:
             queue = supervised.queue
             collector = supervised.collector
@@ -486,22 +487,20 @@ class VehicleAgent:
                             tap.value,
                         ),
                     )
-                for batch in batches:
-                    self.publisher.submit(
-                        self.pipeline.adopt(
-                            queue.source_class,
-                            batch.payload,
-                            batch.epoch_unix_ms,
-                            batch.epoch_mono_ns,
-                        )
+                ready.extend(
+                    self.pipeline.adopt(
+                        queue.source_class, batch.payload, batch.epoch_unix_ms, batch.epoch_mono_ns
                     )
+                    for batch in batches
+                )
                 continue
             for sample in queue.drain():
                 self.pipeline.ingest(queue.source_class, sample)
         for sample in self._agent_queue.drain():
             self.pipeline.ingest(DERIVED_SOURCE_CLASS, sample)
-        for batch in self.pipeline.flush(self.clock):
-            self.publisher.submit(batch)
+        ready.extend(self.pipeline.flush(self.clock))
+        # One hand-over per tick: the publisher wakes once for all of them.
+        self.publisher.submit_many(ready)
 
     # -- health loop ---------------------------------------------------------------
 

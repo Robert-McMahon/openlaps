@@ -27,13 +27,9 @@ def role_of(thread_name: str) -> str:
     return thread_name
 
 
-def _task_cpu_ticks(tid: int) -> int | None:
-    try:
-        stat = (_TASKS / str(tid) / "stat").read_text()
-    except OSError:
-        return None
+def _parse_ticks(stat: bytes) -> int:
     # The command name is parenthesised and may itself contain spaces.
-    fields = stat.rpartition(")")[2].split()
+    fields = stat.rpartition(b")")[2].split()
     return int(fields[11]) + int(fields[12])  # utime + stime
 
 
@@ -51,7 +47,30 @@ class ThreadCpu:
         self.roles = [*roles, OTHER]
         self._ticks_per_s = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
         self._last_ticks: dict[int, int] = {}
+        self._stat_fds: dict[int, int] = {}
+        self._names: dict[int, str] = {}
         self._last_mono = time.monotonic()
+
+    def _ticks(self, tid: int) -> int | None:
+        """CPU ticks of one task, through a descriptor kept open between calls."""
+        descriptor = self._stat_fds.get(tid)
+        try:
+            if descriptor is None:
+                descriptor = os.open(f"/proc/self/task/{tid}/stat", os.O_RDONLY)
+                self._stat_fds[tid] = descriptor
+            return _parse_ticks(os.pread(descriptor, 512, 0))
+        except (OSError, ValueError, IndexError):
+            self._forget(tid)
+            return None
+
+    def _forget(self, tid: int) -> None:
+        self._names.pop(tid, None)
+        descriptor = self._stat_fds.pop(tid, None)
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
     def observe(self) -> dict[str, float]:
         """CPU percent per role since the previous call (zeros on the first)."""
@@ -64,13 +83,13 @@ class ThreadCpu:
             if thread.native_id is not None
         }
         try:
-            tids = [int(entry.name) for entry in _TASKS.iterdir()]
+            tids = [int(name) for name in os.listdir(_TASKS)]
         except OSError:
             tids = list(named)
         ticks: dict[int, int] = {}
         used = dict.fromkeys(self.roles, 0.0)
         for tid in tids:
-            total = _task_cpu_ticks(tid)
+            total = self._ticks(tid)
             if total is None:
                 continue
             ticks[tid] = total
@@ -80,9 +99,14 @@ class ThreadCpu:
             role = named.get(tid)
             if role is None:
                 # Not a Python thread: the compiled CAN reader names its own.
-                role = role_of(_task_name(tid))
+                # A task's name does not change, so it is read once.
+                role = self._names.get(tid)
+                if role is None:
+                    role = self._names[tid] = role_of(_task_name(tid))
             if role not in used:
                 role = OTHER
             used[role] += 100.0 * (total - before) / self._ticks_per_s / elapsed
+        for gone in set(self._stat_fds) - set(ticks):
+            self._forget(gone)
         self._last_ticks = ticks
         return used

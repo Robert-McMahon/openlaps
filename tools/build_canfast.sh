@@ -17,7 +17,8 @@ arch="${1:-$(uname -m)}"
 out="$PWD/dist"
 
 run() {
-    if command -v cargo >/dev/null 2>&1; then "$@"; else mise exec rust@stable -- "$@"; fi
+    # A mise shim for cargo exists even when no version is active, so ask it.
+    if cargo --version >/dev/null 2>&1; then "$@"; else mise exec rust@stable -- "$@"; fi
 }
 
 if [[ "$arch" == "$(uname -m)" ]]; then

@@ -467,3 +467,37 @@ def test_the_receive_buffer_is_grown_and_kernel_drops_are_readable_on_a_real_soc
 
     assert _grow_recv_buffer(object(), "can0") == 0
     assert _socket_drops(object()) == 0
+
+
+def test_given_the_wanted_refs_the_collector_emits_exactly_the_mapped_samples(
+    engine_replay, tmp_path: Path
+):
+    """The agent hands the collector the catalog's source refs so that nothing
+    is decoded, built and queued only to be thrown away by the mapper."""
+    profile = load_profile(EXAMPLE_PROFILE)
+    runtime = build_runtime_catalog(profile, state_path=tmp_path / "registry-state.json")
+    everything_collector, everything = engine_replay
+
+    collector, wanted_only = _replay(ENGINE_LOG, wanted=runtime.source_map.keys())
+
+    # Anchors differ between two replays, so compare what was sampled and in
+    # which order rather than the monotonic stamps.
+    expected = [(s.source_ref, s.value) for s in everything if s.source_ref in runtime.source_map]
+    assert [(s.source_ref, s.value) for s in wanted_only] == expected
+    assert 0 < len(wanted_only) < len(everything)
+    stats = collector.decode_stats
+    assert stats.unwanted_frames > 0
+    assert stats.unknown_frames == everything_collector.decode_stats.unknown_frames
+    assert stats.frames == everything_collector.decode_stats.frames
+
+
+def test_capture_lag_reports_the_worst_since_it_was_last_taken(tmp_path: Path):
+    collector = _collector(lambda _sample: None)
+    now = time.time()
+    collector.handle_message(_frame(0x360, bytes(8), timestamp=now))
+    # A frame stamped 250 ms before the anchor frame is 250 ms late.
+    collector.handle_message(_frame(0x360, bytes(8), timestamp=now - 0.25))
+    collector.handle_message(_frame(0x360, bytes(8), timestamp=now))
+
+    assert collector.take_capture_lag_max_ms() == pytest.approx(250, abs=20)
+    assert collector.take_capture_lag_max_ms() < 20

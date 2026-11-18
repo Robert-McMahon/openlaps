@@ -14,7 +14,7 @@ import socket
 import struct
 import threading
 import time
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -89,6 +89,8 @@ class CanDecodeStats:
     decoded_frames: int = 0
     unknown_frames: int = 0
     malformed_frames: int = 0
+    # Frames a DBC defines but whose signals nothing asked for; never decoded.
+    unwanted_frames: int = 0
     samples: int = 0
 
 
@@ -102,6 +104,11 @@ class CanTransportStats:
     # Frames the kernel discarded because this reader's socket buffer was full.
     socket_drops: int = 0
     recv_buffer_bytes: int = 0
+    # How far behind the bus the reader is: the age of a frame when it is
+    # decoded, relative to the first frame of the connection. It climbs while
+    # the socket buffer is filling, well before anything is dropped.
+    capture_lag_ms: float = 0.0
+    capture_lag_max_ms: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,10 +129,26 @@ class CanDecoder:
     namespaced ``<bus>:<device>.<MESSAGE>.<SIGNAL>``.
     """
 
-    def __init__(self, bus_name: str, dbcs: Sequence[tuple[str, str | Path]]) -> None:
-        """Build the frame index for ``bus_name`` from ``(device, dbc path)`` pairs."""
+    def __init__(
+        self,
+        bus_name: str,
+        dbcs: Sequence[tuple[str, str | Path]],
+        *,
+        wanted: Collection[str] | None = None,
+    ) -> None:
+        """Build the frame index for ``bus_name`` from ``(device, dbc path)`` pairs.
+
+        ``wanted`` is the set of source refs somebody consumes. Given it, a
+        frame none of whose signals are wanted is counted and skipped before
+        any decoding, and unwanted signals of the rest are not emitted. On the
+        example car that is a third of the frames and two thirds of the
+        samples, all of which would otherwise be built, queued and discarded
+        by the mapper while the reader holds the interpreter.
+        """
         self.bus_name = bus_name
         self.stats = CanDecodeStats()
+        self._filtered = wanted is not None
+        self._unwanted: set[tuple[int, bool]] = set()
         self._by_frame: dict[tuple[int, bool], list[_DeviceMessage]] = {}
         self._reported_unknown: set[tuple[int, bool]] = set()
         self._reported_malformed: set[tuple[int, str]] = set()
@@ -136,9 +159,15 @@ class CanDecoder:
                     signal.name: f"{bus_name}:{device}.{message.name}.{signal.name}"
                     for signal in message.signals
                 }
+                if wanted is not None:
+                    source_refs = {name: ref for name, ref in source_refs.items() if ref in wanted}
+                    if not source_refs:
+                        self._unwanted.add(key)
+                        continue
                 self._by_frame.setdefault(key, []).append(
                     _DeviceMessage(device=device, message=message, source_refs=source_refs)
                 )
+        self._unwanted -= set(self._by_frame)
 
     def decode(self, message: can.Message) -> list[tuple[str, SampleValue]]:
         """Decode one frame into ``(source_ref, value)`` pairs.
@@ -154,6 +183,9 @@ class CanDecoder:
         key = (message.arbitration_id, bool(message.is_extended_id))
         candidates = self._by_frame.get(key)
         if candidates is None:
+            if key in self._unwanted:
+                stats.unwanted_frames += 1
+                return []
             stats.unknown_frames += 1
             self._report_unknown(key)
             return []
@@ -175,6 +207,8 @@ class CanDecoder:
             source_refs = candidate.source_refs
             for name, value in decoded.items():
                 source_ref = source_refs.get(name)
+                if source_ref is None and self._filtered:
+                    continue
                 if source_ref is None:  # pragma: no cover - container/extended frames
                     source_ref = (
                         f"{self.bus_name}:{candidate.device}.{candidate.message.name}.{name}"
@@ -225,6 +259,7 @@ class CanCollector:
         *,
         wall_clock: WallClock | None = None,
         bus_factory: BusFactory | None = None,
+        wanted: Collection[str] | None = None,
         recv_timeout_s: float = DEFAULT_RECV_TIMEOUT_S,
         backoff_start_s: float = DEFAULT_BACKOFF_START_S,
         backoff_max_s: float = DEFAULT_BACKOFF_MAX_S,
@@ -233,7 +268,7 @@ class CanCollector:
         root = Path(profile_dir)
         self.config = config
         self.decoder = CanDecoder(
-            config.name, [(dbc.device, root / dbc.file) for dbc in config.dbcs]
+            config.name, [(dbc.device, root / dbc.file) for dbc in config.dbcs], wanted=wanted
         )
         self.stats = CanTransportStats()
         self._emit = emit
@@ -260,10 +295,21 @@ class CanCollector:
         """Decode and emit one frame; returns the number of samples emitted."""
         t_mono_ns = self._frame_clock.to_mono_ns(message.timestamp)
         t_wall_ms = self._wall_clock(t_mono_ns)
+        lag_ms = (time.monotonic_ns() - t_mono_ns) / 1e6
+        stats = self.stats
+        stats.capture_lag_ms = lag_ms
+        if lag_ms > stats.capture_lag_max_ms:
+            stats.capture_lag_max_ms = lag_ms
         decoded = self.decoder.decode(message)
         for source_ref, value in decoded:
             self._emit(Sample(source_ref, t_mono_ns, t_wall_ms, value))
         return len(decoded)
+
+    def take_capture_lag_max_ms(self) -> float:
+        """The worst capture lag since the last call, then start a new window."""
+        worst = self.stats.capture_lag_max_ms
+        self.stats.capture_lag_max_ms = self.stats.capture_lag_ms
+        return worst
 
     def replay(self, messages: Iterable[can.Message]) -> int:
         """Feed pre-captured frames through the collector; returns sample count."""

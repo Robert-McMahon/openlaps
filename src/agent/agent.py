@@ -179,6 +179,9 @@ def agent_derived_channels(
     channels += [DerivedChannel(f"sys.agent.stall_s.{name}", pb.DOUBLE, "s") for name in bus_names]
     channels += [DerivedChannel(f"sys.agent.socket_drops.{name}", pb.INT64) for name in bus_names]
     channels += [
+        DerivedChannel(f"sys.agent.capture_lag_ms.{name}", pb.DOUBLE, "ms") for name in bus_names
+    ]
+    channels += [
         DerivedChannel(f"sys.agent.cpu.{role}", pb.DOUBLE, "%")
         for role in ThreadCpu(thread_roles(collector_names)).roles
     ]
@@ -295,6 +298,7 @@ class VehicleAgent:
                 queue.put,
                 wall_clock=self.clock,
                 bus_factory=bus_factory,
+                wanted=self.catalog.source_map.keys(),
             )
             self._supervised.append(_Supervised(collector, queue))
             self._stall_detectors[bus.name] = StallDetector()
@@ -480,6 +484,10 @@ class VehicleAgent:
                 )
                 emit(f"sys.agent.stall_s.{collector.name}", stall_s)
                 emit(f"sys.agent.socket_drops.{collector.name}", collector.stats.socket_drops)
+                emit(
+                    f"sys.agent.capture_lag_ms.{collector.name}",
+                    round(collector.take_capture_lag_max_ms(), 1),
+                )
         for role, percent in self._thread_cpu.observe().items():
             emit(f"sys.agent.cpu.{role}", round(percent, 1))
 

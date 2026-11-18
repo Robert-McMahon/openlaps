@@ -43,6 +43,12 @@ Sample = (source_ref: str-interned, t_mono_ns: int, t_wall_ms: float, value)
    dict built at startup. Unmapped refs increment a counter and are dropped;
    each distinct unmapped ref is logged once at INFO (a car broadcasts
    plenty a profile deliberately ignores — this is normal, not an error).
+   The agent hands each CAN collector the catalog's source refs, so a frame
+   with no mapped signal is counted (`unwanted_frames`) and skipped before
+   decoding, and unmapped signals of the rest never reach the mapper: on the
+   example car that is a third of the frames and two thirds of the samples.
+   A collector built without that set (the bench and replay tools) still
+   emits everything its DBCs know.
 3. **Timing tap** — if the channel is one the timing engine subscribes to,
    the sample is handed to it *here, before RBE* (see below).
 4. **RBE / rate filter** — per-channel policy from the catalog:

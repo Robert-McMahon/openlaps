@@ -15,6 +15,7 @@ from collectors.clock import Emit, MonotonicWallClock, WallClock
 from collectors.rawlog import RawLogWriter
 from collectors.serial.driver import DriverConfigurationError, SerialDriver, SerialPort
 from collectors.serial.drivers import build_driver, is_supported
+from collectors.serial.fix_time import ReceiverClock
 from collectors.serial.gnss_time import ChronyNmeaFeed
 from collectors.serial.nmea import NmeaDecoder
 from core.config import SerialConfig
@@ -81,6 +82,7 @@ class SerialCollector:
         self._raw_writer: RawLogWriter | None = None
         self._raw_retry_mono = 0.0
         self._time_feed = time_feed
+        self.receiver_clock = ReceiverClock() if config.receiver_time else None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -89,10 +91,20 @@ class SerialCollector:
         return self.config.name
 
     def handle_line(self, line: bytes, *, t_mono_ns: int | None = None) -> int:
-        """Decode and emit one complete line stamped at terminator arrival."""
+        """Decode and emit one complete line read at ``t_mono_ns``.
+
+        With ``receiver_time`` (the default) a sentence that names its epoch
+        is stamped at that epoch plus the receiver's fixed latency, rather
+        than whenever this thread got to read it
+        (``collectors.serial.fix_time``). Anything else keeps its arrival.
+        """
         if t_mono_ns is None:
             t_mono_ns = time.monotonic_ns()
-        values = self.decoder.decode(line)
+        values, time_of_day_s = self.decoder.decode_timed(line)
+        if time_of_day_s is not None and self.receiver_clock is not None:
+            t_mono_ns = self.receiver_clock.stamp(
+                time_of_day_s, t_mono_ns, self.decoder.sentence_type
+            )
         t_wall_ms = self._wall_clock(t_mono_ns)
         for source_ref, value in values:
             self._emit(Sample(source_ref, t_mono_ns, t_wall_ms, value))
@@ -153,6 +165,8 @@ class SerialCollector:
                         logger.error("serial %s: receiver configuration failed: %s", self.name, exc)
                         configuration_ok = False
                 if configuration_ok:
+                    if self.receiver_clock is not None:
+                        self.receiver_clock.reset()
                     with self._active_lock:
                         self._active_driver = driver
                     connected = self._read_until_error(port, stop)

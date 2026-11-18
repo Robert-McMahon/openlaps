@@ -280,3 +280,62 @@ def test_parked_quantised_imu_is_not_mistaken_for_frozen():
         engine.imu(k * 0.01, f, w)
     assert engine.imu_healthy(10.0)
     assert engine.stats.imu_failovers == 0 and engine.stats.imu_bad_samples == 0
+
+
+def test_height_step_from_the_receiver_is_followed_not_gated_out_forever():
+    """A float -> fixed reconverge moves the receiver's height by decimetres.
+
+    Gated out with nothing to bring it back, the vertical channel free-runs:
+    at Collie (2026-11-13) altitude left by thousands of kilometres and the
+    3D speed read 12,000 km/h for 100 minutes.
+    """
+
+    def shifted(events: list[SimEvent], frame: LocalFrame) -> list[SimEvent]:
+        return [
+            SimEvent(e.t, e.kind, (e.data[0] + 0.7,))
+            if e.kind == "alt" and 40.0 <= e.t < 48.0
+            else e
+            for e in events
+        ]
+
+    run = _run(events_hook=shifted)
+    stats = run.engine.stats
+    assert stats.alts_rejected >= 1
+    assert stats.alt_reanchors >= 1
+    # Follows the receiver while it is offset, and comes back with it.
+    assert run.alt_err[run.window(43.0, 48.0)].max() < 1.0
+    assert run.alt_err[run.window(52.0, 75.0)].max() < 0.2
+    out = run.engine.output()
+    assert out is not None and abs(out.vel_up_mps) < 3.0
+
+
+def test_vertical_channel_is_held_when_heights_stop_arriving():
+    def no_heights_after(events: list[SimEvent], frame: LocalFrame) -> list[SimEvent]:
+        return [e for e in events if not (e.kind == "alt" and e.t >= 30.0)]
+
+    run = _run(events_hook=no_heights_after)
+    out = run.engine.output()
+    assert out is not None
+    assert out.alt is None  # no height reference any more, so none reported
+    assert abs(out.vel_up_mps) < 3.0
+    assert out.speed_mps < 80.0
+
+
+def test_fixes_far_behind_the_inertial_state_are_skipped():
+    """A backlog on the GNSS port delivers fixes seconds old, stamped as such."""
+
+    def backlog(events: list[SimEvent], frame: LocalFrame) -> list[SimEvent]:
+        out = []
+        for e in events:
+            if e.kind in ("fix", "alt") and 40.0 <= e.t < 43.0:
+                continue  # held up...
+            out.append(e)
+            if e.kind == "imu" and 43.0 <= e.t < 43.01:
+                # ...and delivered in one burst, carrying their true stamps.
+                out.extend(x for x in events if x.kind in ("fix", "alt") and 40.0 <= x.t < 43.0)
+        return out
+
+    run = _run(events_hook=backlog)
+    assert run.engine.stats.stale_measurements > 100
+    assert run.pos_err[run.window(40.0, 46.0)].max() < 1.5
+    assert run.pos_err[run.window(46.0, 75.0)].max() < 0.2

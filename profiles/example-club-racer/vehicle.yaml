@@ -38,6 +38,10 @@ serial:
     # the deployment also sets OPENLAPS_RAW_CAPTURE_DIR; CAN capture is the
     # separate openlaps-canlog@<bus> service, not a profile setting.
     raw_log: false
+    # Stamp each sentence at the UTC epoch it names (plus the receiver's
+    # fixed latency) instead of when the agent read it: takes serial and
+    # scheduling jitter out of GNSS timestamps. Default true.
+    receiver_time: true
     driver:
       name: um980
       config:

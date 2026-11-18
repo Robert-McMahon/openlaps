@@ -138,6 +138,8 @@ def test_axes_must_be_a_proper_rotation(profile, catalog):
 
 
 def _run_app(catalog, config, sensors=SENSORS, duration=40.0, imu_rotation=None):
+    # The simulated receiver is as late as the profile says the real one is.
+    sensors = replace(sensors, gnss_latency_s=config.apps.fusion.gnss.latency_ms / 1000.0)
     events, truth, frame = simulate(lap_profile(), duration, sensors)
     app = FusionApp(catalog, config, config.apps.fusion)
     emitted: list[Sample] = []

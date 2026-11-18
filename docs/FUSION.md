@@ -41,12 +41,23 @@ generates synthetic drives with truth for testing and tuning.
 - **Weighting.** Each fix is weighted by the receiver's own GST 1-sigma
   estimate when one is less than 1 s old, otherwise by its RMC mode
   (RTK fixed 3 cm, float 0.4 m, DGNSS 0.8 m, autonomous 2.5 m).
-- **Latency.** A fix describes where the car was `latency_ms` before the
-  agent read it. The filter compares it with its state extrapolated back
-  to that epoch. Unmodelled, every 10 ms costs 0.4 m at 40 m/s.
+- **Latency.** A fix describes where the car was `latency_ms` before its
+  timestamp. The filter compares it with its state extrapolated back to
+  that epoch. Unmodelled, every 10 ms costs 0.4 m at 40 m/s. The serial
+  collector stamps each sentence at the epoch it names plus the
+  receiver's fixed latency, not at arrival (`receiver_time`, on by
+  default; `collectors/serial/fix_time.py`), so `latency_ms` is that
+  fixed latency and read jitter does not reach the filter. With arrival
+  stamps the car's 50 Hz fixes jittered 8 ms rms and 60 % failed the
+  outlier gate at speed; on the same data with epoch stamps, 4 %. A fix
+  more than 0.5 s behind the inertial state (a backlog) is skipped.
 - **Outliers.** A fix failing a 99.9 % chi-square gate is dropped. If
   fixes keep disagreeing for more than a second (a real solution jump such
-  as float to fixed), the filter re-anchors to them.
+  as float to fixed), the filter re-anchors to them. Height (GGA) is gated
+  and re-anchored the same way: it is the only thing holding the inertial
+  vertical channel, which runs away within minutes if heights stay
+  rejected. If heights stop arriving for 2 s the vertical velocity is held
+  loosely at zero and `fused.alt` stops until they return.
 - **Outages.** Through a dropout the filter dead-reckons on the IMU alone
   (status `dead_reckoning`). Past `max_outage_s` (default 10) it stops
   reporting position and re-aligns when GNSS returns. There is
@@ -111,7 +122,7 @@ apps:
       lat_std: position.lat_std  # optional, GST (all three or none)
       lon_std: position.lon_std
       alt_std: position.alt_std
-      latency_ms: 30
+      latency_ms: 25
       lever_arm_m: [0.0, 0.0, 0.0]  # antenna from IMU: forward, right, down
     output_rate_hz: 50
     align_speed_kmh: 18
@@ -144,7 +155,9 @@ sentence_rates_hz: { GGA: 10, GST: 10 }
 2. **Lever arm.** Measure antenna minus IMU in vehicle axes to a
    centimetre or two. An error here shows up as position and heading
    error that changes with yaw rate.
-3. **Latency.** Start at 30 ms. Correct latency shows as `fused.pos_std`
+3. **Latency.** Start at 25 ms with `receiver_time` on (a UM980 at
+   115200 baud delivers RMC 24 ms after its epoch), 30 ms with arrival
+   stamps. Correct latency shows as `fused.pos_std`
    staying low and no rejected fixes under hard braking. A wrong value
    shows as fused position leading or lagging RTK fixes along the track.
 4. **Mounting misalignment.** On a long straight at steady speed,
@@ -175,8 +188,10 @@ unmodelled timing jitter. Treat these as a ceiling to tune towards.
 
 ## Known limits and next steps
 
-- **Latency is a constant.** RMC carries its UTC epoch and the agent clock
-  is PPS-disciplined, so latency could be measured live per fix.
+- **Latency is a constant.** Read jitter is removed at the collector, but
+  the receiver's fixed latency is still a configured number. It is weakly
+  observable from the data (along-track residual against speed); with a
+  PPS-disciplined clock it could be measured outright.
 - **Real-time only.** A forward-backward (RTS) smoother over stored data
   would improve post-session analysis, especially through outages.
 - **The FDI's own attitude** (`car.roll`/`pitch`/`yaw`) is not used. It

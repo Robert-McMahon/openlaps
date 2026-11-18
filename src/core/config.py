@@ -188,6 +188,10 @@ class SerialConfig(StrictModel):
     ``raw_log`` asks the agent to tee every received line, before decode, to
     crash-safe capture files (``docs/RAW_CAPTURE.md``). The profile says
     *whether* to capture; *where* is deploy wiring (``OPENLAPS_RAW_CAPTURE_DIR``).
+
+    ``receiver_time`` stamps each sentence at the epoch it names instead of
+    at arrival, taking the serial and scheduling jitter out of GNSS
+    timestamps (``collectors.serial.fix_time``).
     """
 
     name: _NON_EMPTY
@@ -196,6 +200,7 @@ class SerialConfig(StrictModel):
     decoder: _NON_EMPTY
     driver: DriverConfig | None = None
     raw_log: bool = False
+    receiver_time: bool = True
 
 
 _TEMPERATURE_ALIAS_RE = re.compile(r"[a-z0-9_]+")

@@ -34,7 +34,9 @@ from agent.queues import DEFAULT_MAXLEN, SampleQueue
 from agent.session import SessionStore
 from agent.thread_cpu import ThreadCpu
 from agent.timing_app import LapTimingApp, build_lap_timing_app
+from collectors import can_fast
 from collectors.can import CanCollector
+from collectors.can_fast import FastCanCollector
 from collectors.can_stall import StallDetector, read_rx_packets
 from collectors.host import HostCollector
 from collectors.serial.gnss_time import ChronyNmeaFeed
@@ -45,7 +47,7 @@ from core.catalog import (
     RuntimeCatalog,
     build_runtime_catalog,
 )
-from core.config import ProfileConfig, load_profile
+from core.config import BusConfig, ConfigError, ProfileConfig, load_profile
 from core.pb import telemetry_pb2 as pb
 from core.samples import Sample
 
@@ -65,6 +67,10 @@ class AgentSettings:
     nats_creds: str | None = None
     vehicle_id: str | None = None
     tick_ms: int = 20
+    # Which CAN ingest path to run: "auto" uses the compiled one when the
+    # openlaps_canfast extension is installed and the bus's DBCs fit its
+    # plan, "python" never does, "compiled" refuses to start without it.
+    can_ingest: str = "auto"
     queue_maxlen: int = DEFAULT_MAXLEN
     publish_window: int = DEFAULT_WINDOW
     publish_buffer_bytes: int = DEFAULT_BUFFER_BYTES
@@ -116,6 +122,7 @@ class AgentSettings:
         take("OPENLAPS_NATS_CREDS", "nats_creds", str)
         take("OPENLAPS_VEHICLE_ID", "vehicle_id", str)
         take("OPENLAPS_TICK_MS", "tick_ms", int)
+        take("OPENLAPS_CAN_INGEST", "can_ingest", _can_ingest_choice)
         take("OPENLAPS_QUEUE_SIZE", "queue_maxlen", int)
         take("OPENLAPS_PUBLISH_WINDOW", "publish_window", int)
         take("OPENLAPS_PUBLISH_BUFFER_BYTES", "publish_buffer_bytes", int)
@@ -132,7 +139,7 @@ class AgentSettings:
 class _Supervised:
     """One collector under health-loop supervision."""
 
-    collector: CanCollector | SerialCollector | HostCollector
+    collector: CanCollector | FastCanCollector | SerialCollector | HostCollector
     queue: SampleQueue
     restarts: int = 0
     backoff_s: float = _RESTART_BACKOFF_START_S
@@ -188,6 +195,13 @@ def agent_derived_channels(
     if fusion:
         channels += FUSION_DERIVED_CHANNELS
     return tuple(channels)
+
+
+def _can_ingest_choice(value: str) -> str:
+    choice = value.strip().lower()
+    if choice not in {"auto", "python", "compiled"}:
+        raise ValueError("expected auto, python or compiled")
+    return choice
 
 
 def thread_roles(collector_names: list[str]) -> list[str]:
@@ -290,16 +304,21 @@ class VehicleAgent:
         # the collector decoded (collectors.can_stall). Fed by the health loop.
         self._stall_detectors: dict[str, StallDetector] = {}
         self._thread_cpu = ThreadCpu(thread_roles(collector_names))
+        self._source_refs = {
+            channel.id: channel.source_ref for channel in self.catalog.registry.channels
+        }
         for bus in self.profile.vehicle.buses:
             queue = SampleQueue(bus.name, settings.queue_maxlen)
-            collector = CanCollector(
-                bus,
-                self.profile.path,
-                queue.put,
-                wall_clock=self.clock,
-                bus_factory=bus_factory,
-                wanted=self.catalog.source_map.keys(),
-            )
+            collector = self._fast_can_collector(bus) if bus_factory is None else None
+            if collector is None:
+                collector = CanCollector(
+                    bus,
+                    self.profile.path,
+                    queue.put,
+                    wall_clock=self.clock,
+                    bus_factory=bus_factory,
+                    wanted=self.catalog.source_map.keys(),
+                )
             self._supervised.append(_Supervised(collector, queue))
             self._stall_detectors[bus.name] = StallDetector()
         for source in self.profile.vehicle.serial:
@@ -344,6 +363,31 @@ class VehicleAgent:
         self._health_thread: threading.Thread | None = None
         self._started_mono = 0.0
         self._stopped = False
+
+    def _fast_can_collector(self, bus: BusConfig) -> FastCanCollector | None:
+        """The compiled ingest path for ``bus``, or None to use the Python one."""
+        if self.settings.can_ingest == "python":
+            return None
+        if not can_fast.available():
+            if self.settings.can_ingest == "compiled":
+                raise ConfigError("OPENLAPS_CAN_INGEST=compiled but openlaps_canfast is absent")
+            logger.info("bus %s: openlaps_canfast is not installed; Python ingest", bus.name)
+            return None
+        taps: set[int] = set()
+        for app in (self.fusion_app, self.timing_app):
+            if app is not None:
+                taps |= app.subscribed_channel_ids
+        try:
+            return FastCanCollector(
+                bus, self.profile.path, self.catalog, tick_ms=self.settings.tick_ms, taps=taps
+            )
+        except can_fast.UnsupportedPlan as exc:
+            if self.settings.can_ingest == "compiled":
+                raise ConfigError(f"bus {bus.name}: compiled ingest cannot be used: {exc}") from exc
+            logger.warning(
+                "bus %s: compiled ingest cannot be used (%s); Python ingest", bus.name, exc
+            )
+            return None
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -422,6 +466,29 @@ class VehicleAgent:
             self.timing_app.apply_session(session)
         for supervised in self._supervised:
             queue = supervised.queue
+            collector = supervised.collector
+            if isinstance(collector, FastCanCollector):
+                taps, batches = collector.drain()
+                for tap in taps:
+                    self.pipeline.tap(
+                        tap.channel_id,
+                        Sample(
+                            self._source_refs[tap.channel_id],
+                            tap.t_mono_ns,
+                            self.clock(tap.t_mono_ns),
+                            tap.value,
+                        ),
+                    )
+                for batch in batches:
+                    self.publisher.submit(
+                        self.pipeline.adopt(
+                            queue.source_class,
+                            batch.payload,
+                            batch.epoch_unix_ms,
+                            batch.epoch_mono_ns,
+                        )
+                    )
+                continue
             for sample in queue.drain():
                 self.pipeline.ingest(queue.source_class, sample)
         for sample in self._agent_queue.drain():
@@ -468,15 +535,22 @@ class VehicleAgent:
 
         emit("sys.agent.status", self._status_payload(status))
         emit("sys.agent.unmapped_refs", self.pipeline.unmapped_refs)
-        emit("sys.agent.rbe_suppressed", self.pipeline.rbe_suppressed)
-        emit("sys.agent.encode_failures", self.pipeline.encode_failures)
+        fast = [s.collector for s in self._supervised if isinstance(s.collector, FastCanCollector)]
+        emit(
+            "sys.agent.rbe_suppressed",
+            self.pipeline.rbe_suppressed + sum(c.rbe_suppressed for c in fast),
+        )
+        emit(
+            "sys.agent.encode_failures",
+            self.pipeline.encode_failures + sum(c.encode_failures for c in fast),
+        )
         emit("sys.agent.publish_drops", self.publisher.publish_drops)
         emit("sys.agent.publish_duplicates", self.publisher.publish_duplicates)
         emit("sys.agent.publish_lag_ms", self.publisher.publish_lag_ms())
         for supervised in self._supervised:
             emit(f"sys.agent.drops.{supervised.queue.source_class}", supervised.queue.dropped)
             collector = supervised.collector
-            if isinstance(collector, CanCollector):
+            if isinstance(collector, (CanCollector, FastCanCollector)):
                 stall_s = self._stall_detectors[collector.name].observe(
                     read_rx_packets(collector.config.interface),
                     collector.decode_stats.frames,

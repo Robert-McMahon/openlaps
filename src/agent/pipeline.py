@@ -72,6 +72,36 @@ class Pipeline:
         """Cumulative RBE suppressions (feeds ``sys.agent.rbe_suppressed``)."""
         return self._rbe.suppressed_count
 
+    def tap(self, channel_id: int, sample: Sample) -> None:
+        """Show the fusion and timing apps a sample that is batched elsewhere.
+
+        A bus handled by the compiled ingest path is mapped, filtered and
+        serialized there; only the channels an app subscribes to come back
+        through here, pre-filter, and whatever the apps derive is ingested
+        as usual.
+        """
+        fusion = self._fusion_app
+        if fusion is not None and channel_id in fusion.subscribed_channel_ids:
+            for derived in fusion.observe(channel_id, sample):
+                self.ingest(DERIVED_SOURCE_CLASS, derived)
+        timing = self._timing_app
+        if timing is not None and channel_id in timing.subscribed_channel_ids:
+            for derived in timing.observe(channel_id, sample):
+                self.ingest(DERIVED_SOURCE_CLASS, derived)
+
+    def adopt(
+        self, source_class: str, payload: bytes, epoch_unix_ms: int, epoch_mono_ns: int
+    ) -> TickBatch:
+        """Wrap a batch serialized outside the pipeline, giving it a dedupe id."""
+        self._batch_seq += 1
+        return TickBatch(
+            source_class=source_class,
+            payload=payload,
+            epoch_unix_ms=epoch_unix_ms,
+            epoch_mono_ns=epoch_mono_ns,
+            msg_id=f"{source_class}:{epoch_unix_ms}:{self._batch_seq}",
+        )
+
     def ingest(self, source_class: str, sample: Sample) -> None:
         """Run one sample through map -> timing tap -> RBE and stage it."""
         mapping = self._source_map.get(sample.source_ref)

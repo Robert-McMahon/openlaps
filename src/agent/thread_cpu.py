@@ -37,6 +37,13 @@ def _task_cpu_ticks(tid: int) -> int | None:
     return int(fields[11]) + int(fields[12])  # utime + stime
 
 
+def _task_name(tid: int) -> str:
+    try:
+        return (_TASKS / str(tid) / "comm").read_text().strip()
+    except OSError:
+        return OTHER
+
+
 class ThreadCpu:
     """Percent of one core each role used between successive ``observe`` calls."""
 
@@ -70,7 +77,10 @@ class ThreadCpu:
             before = self._last_ticks.get(tid)
             if before is None or elapsed <= 0:
                 continue
-            role = named.get(tid, OTHER)
+            role = named.get(tid)
+            if role is None:
+                # Not a Python thread: the compiled CAN reader names its own.
+                role = role_of(_task_name(tid))
             if role not in used:
                 role = OTHER
             used[role] += 100.0 * (total - before) / self._ticks_per_s / elapsed

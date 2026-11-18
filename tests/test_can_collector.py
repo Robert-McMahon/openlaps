@@ -501,3 +501,86 @@ def test_capture_lag_reports_the_worst_since_it_was_last_taken(tmp_path: Path):
 
     assert collector.take_capture_lag_max_ms() == pytest.approx(250, abs=20)
     assert collector.take_capture_lag_max_ms() < 20
+
+
+def _raw_frame(can_id: int, data: bytes) -> bytes:
+    import struct
+
+    return struct.pack("=IB3x8s", can_id, len(data), data)
+
+
+def _read_from_socketpair(frames: list[bytes], **kwargs) -> tuple[CanCollector, list[Sample]]:
+    """Drive the direct socket loop over a datagram pair standing in for the bus."""
+    import socket
+
+    samples: list[Sample] = []
+    collector = _collector(samples.append, recv_timeout_s=0.02, **kwargs)
+    ours, theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+    stop = threading.Event()
+    with ours, theirs:
+        # Stamping has to be on before the frames arrive, as it is on a real bus.
+        ours.setsockopt(socket.SOL_SOCKET, 35, 1)
+        for frame in frames:
+            theirs.send(frame)
+        reader = threading.Thread(
+            target=collector._read_socket_until_error, args=(ours, stop, 0), daemon=True
+        )
+        reader.start()
+        deadline = time.monotonic() + 2.0
+        while collector.decode_stats.frames < len(frames) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        stop.set()
+        reader.join(timeout=2.0)
+    return collector, samples
+
+
+def test_the_direct_socket_loop_decodes_frames_and_stamps_them_with_the_kernel_time():
+    rpm_frame = _raw_frame(0x360, bytes([0x0F, 0xA0, 0, 0, 0, 0, 0, 0]))
+    before = time.monotonic_ns()
+
+    collector, samples = _read_from_socketpair([rpm_frame, rpm_frame])
+
+    after = time.monotonic_ns()
+    rpm = [s for s in samples if s.source_ref == "can0:haltech.ENGINE1.ENGINE_SPEED"]
+    assert [s.value for s in rpm] == [4000, 4000]
+    # The stamp is when the kernel queued the frame, not when it was read.
+    assert all(before - 5_000_000 <= s.t_mono_ns <= after for s in rpm)
+    assert rpm[0].t_wall_ms == pytest.approx(time.time() * 1000, abs=2000)
+    assert collector.decode_stats.frames == 2
+    assert collector.take_capture_lag_max_ms() < 1500
+
+
+def test_the_direct_socket_loop_counts_remote_and_error_frames_without_decoding_them():
+    remote = _raw_frame(0x360 | 0x40000000, bytes(8))
+    error = _raw_frame(0x20000004, bytes(8))
+
+    collector, samples = _read_from_socketpair([remote, error])
+
+    assert samples == []
+    assert collector.decode_stats.malformed_frames == 2
+
+
+def test_a_stepped_system_clock_moves_the_stamp_mapping_instead_of_every_later_frame(
+    monkeypatch, caplog
+):
+    from collectors.can import _KernelStampClock
+
+    clock = _KernelStampClock("can0")
+    clock.resync()
+    stamp = time.time_ns()
+    assert abs(clock.to_mono_ns(stamp) - time.monotonic_ns()) < 50_000_000
+
+    # chrony finds a source and steps realtime forward by 204 days.
+    step_ns = 17_664_454 * 1_000_000_000
+    real_time_ns = time.time_ns
+    monkeypatch.setattr(time, "time_ns", lambda: real_time_ns() + step_ns)
+    with caplog.at_level(logging.WARNING):
+        for _ in range(20):  # a reading taken across a pre-emption is skipped
+            clock.resync()
+            if clock.steps:
+                break
+
+    assert clock.steps == 1
+    assert "stepped" in caplog.text
+    # A frame the kernel stamps on the new clock still lands at "now".
+    assert abs(clock.to_mono_ns(time.time_ns()) - time.monotonic_ns()) < 50_000_000

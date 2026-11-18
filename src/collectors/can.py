@@ -10,6 +10,7 @@ cheaply downstream by the mapper.
 from __future__ import annotations
 
 import logging
+import select
 import socket
 import struct
 import threading
@@ -41,6 +42,24 @@ _MAX_TRACKED_UNKNOWN_IDS = 256
 RECV_BUFFER_BYTES = 16 * 1024 * 1024
 _SOCKET_POLL_FRAMES = 512
 _SO_MEMINFO = 55
+_SO_TIMESTAMPNS = 35  # also the cmsg type the stamp comes back under
+_SOL_CAN_RAW = 101
+_CAN_RAW_FD_FRAMES = 5
+_CANFD_MTU = 72
+_CAN_EFF_FLAG = 0x80000000
+_CAN_RTR_FLAG = 0x40000000
+_CAN_ERR_FLAG = 0x20000000
+_CAN_EFF_MASK = 0x1FFFFFFF
+_CAN_SFF_MASK = 0x000007FF
+_FRAME_HEADER = struct.Struct("=IB")  # can_id, payload length
+_TIMESPEC = struct.Struct("@ll")
+# Frames taken per wake-up before the loop looks at the stop flag and the
+# drop counter again: a second or so of a busy bus.
+_DRAIN_MAX = 2048
+# A realtime-minus-monotonic reading is trusted only if the two clocks were
+# read this close together, and a change this large is a clock step.
+_CLOCK_BRACKET_NS = 100_000
+_CLOCK_STEP_NS = 250_000
 _SK_MEMINFO_VARS = 9
 _SK_MEMINFO_DROPS = 8
 
@@ -81,6 +100,56 @@ class _FrameClock:
         return self._mono_ref + round((timestamp - self._epoch_ref) * 1e9)
 
 
+class _KernelStampClock:
+    """Turns the kernel's realtime frame stamps into monotonic time.
+
+    The kernel stamps a frame when the driver hands it over, long before this
+    process reads it, so the stamp is the capture time however long the frame
+    then sat in the socket buffer. It is a realtime stamp, though, and realtime
+    gets stepped: a board that boots with a wrong clock is corrected by
+    seconds, or months, once chrony has a source. Realtime and monotonic tick
+    at the same disciplined rate, so their difference is constant *except*
+    across a step. Holding that difference and replacing it when it jumps
+    keeps every frame on the monotonic timebase to within the step-detection
+    threshold, where anchoring once on the first frame would leave every later
+    frame wrong by the size of the step.
+    """
+
+    __slots__ = ("_bus_name", "offset_ns", "steps")
+
+    def __init__(self, bus_name: str) -> None:
+        self._bus_name = bus_name
+        self.offset_ns: int | None = None
+        self.steps = 0
+
+    def resync(self) -> None:
+        """Re-read the clocks' difference; adopt it if the realtime clock stepped."""
+        before = time.monotonic_ns()
+        realtime = time.time_ns()
+        after = time.monotonic_ns()
+        if after - before > _CLOCK_BRACKET_NS:
+            if self.offset_ns is None:
+                self.offset_ns = realtime - after
+            return  # read across a pre-emption: not a measurement
+        offset = realtime - (before + after) // 2
+        if self.offset_ns is None:
+            self.offset_ns = offset
+        elif abs(offset - self.offset_ns) > _CLOCK_STEP_NS:
+            self.steps += 1
+            logger.warning(
+                "bus %s: system clock stepped by %.3f s; frame times follow it",
+                self._bus_name,
+                (offset - self.offset_ns) / 1e9,
+            )
+            self.offset_ns = offset
+
+    def to_mono_ns(self, stamp_ns: int) -> int:
+        """Monotonic time of a frame the kernel stamped at realtime ``stamp_ns``."""
+        if self.offset_ns is None:
+            self.resync()
+        return stamp_ns - self.offset_ns  # type: ignore[operator]
+
+
 @dataclass(slots=True)
 class CanDecodeStats:
     """Decode-side counters, surfaced by the agent as ``sys.agent.*``."""
@@ -109,6 +178,8 @@ class CanTransportStats:
     # the socket buffer is filling, well before anything is dropped.
     capture_lag_ms: float = 0.0
     capture_lag_max_ms: float = 0.0
+    # Times the system clock was stepped under a live connection.
+    clock_steps: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,12 +246,19 @@ class CanDecoder:
         Unknown IDs and undecodable payloads are counted and skipped: a noisy
         or half-understood bus must never interrupt capture.
         """
+        if message.is_error_frame or message.is_remote_frame:
+            self.stats.frames += 1
+            self.stats.malformed_frames += 1
+            return []
+        return self.decode_frame(message.arbitration_id, bool(message.is_extended_id), message.data)
+
+    def decode_frame(
+        self, arbitration_id: int, is_extended: bool, data: bytes | bytearray
+    ) -> list[tuple[str, SampleValue]]:
+        """Decode one data frame given as its bare id and payload."""
         stats = self.stats
         stats.frames += 1
-        if message.is_error_frame or message.is_remote_frame:
-            stats.malformed_frames += 1
-            return []
-        key = (message.arbitration_id, bool(message.is_extended_id))
+        key = (arbitration_id, is_extended)
         candidates = self._by_frame.get(key)
         if candidates is None:
             if key in self._unwanted:
@@ -190,7 +268,6 @@ class CanDecoder:
             self._report_unknown(key)
             return []
 
-        data = message.data
         decoded_values: list[tuple[str, SampleValue]] = []
         failures = 0
         for candidate in candidates:
@@ -278,6 +355,7 @@ class CanCollector:
         self._backoff_start_s = backoff_start_s
         self._backoff_max_s = backoff_max_s
         self._frame_clock = _FrameClock()
+        self._stamp_clock = _KernelStampClock(config.name)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -294,16 +372,99 @@ class CanCollector:
     def handle_message(self, message: can.Message) -> int:
         """Decode and emit one frame; returns the number of samples emitted."""
         t_mono_ns = self._frame_clock.to_mono_ns(message.timestamp)
+        self._note_lag(t_mono_ns)
         t_wall_ms = self._wall_clock(t_mono_ns)
+        decoded = self.decoder.decode(message)
+        for source_ref, value in decoded:
+            self._emit(Sample(source_ref, t_mono_ns, t_wall_ms, value))
+        return len(decoded)
+
+    def _emit_frame(
+        self, arbitration_id: int, is_extended: bool, data: bytes, t_mono_ns: int
+    ) -> None:
+        self._note_lag(t_mono_ns)
+        decoded = self.decoder.decode_frame(arbitration_id, is_extended, data)
+        if not decoded:
+            return
+        t_wall_ms = self._wall_clock(t_mono_ns)
+        emit = self._emit
+        for source_ref, value in decoded:
+            emit(Sample(source_ref, t_mono_ns, t_wall_ms, value))
+
+    def _note_lag(self, t_mono_ns: int) -> None:
         lag_ms = (time.monotonic_ns() - t_mono_ns) / 1e6
         stats = self.stats
         stats.capture_lag_ms = lag_ms
         if lag_ms > stats.capture_lag_max_ms:
             stats.capture_lag_max_ms = lag_ms
-        decoded = self.decoder.decode(message)
-        for source_ref, value in decoded:
-            self._emit(Sample(source_ref, t_mono_ns, t_wall_ms, value))
-        return len(decoded)
+
+    def _read_socket_until_error(
+        self, sock: socket.socket, stop: threading.Event, drops_before: int
+    ) -> bool:
+        """Read the bus socket directly; True if any frame arrived.
+
+        python-can's ``recv`` costs a ``select``, a ``recvmsg`` and a
+        ``Message`` with a dozen fields for every frame, which on a bus at
+        1600 frames/s was most of what this thread did. Here one ``poll``
+        wakes the loop and it then takes frames until the socket is empty,
+        unpacking only the id, the payload and the kernel's stamp.
+        """
+        name = self.config.name
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, _SO_TIMESTAMPNS, 1)
+            sock.setblocking(False)
+        except OSError as exc:
+            self.stats.bus_errors += 1
+            logger.warning("bus %s: cannot prepare the socket: %s", name, exc)
+            return False
+        try:
+            sock.setsockopt(_SOL_CAN_RAW, _CAN_RAW_FD_FRAMES, 1)
+        except OSError:
+            pass  # classic frames only: the read size below still fits them
+        poller = select.poll()
+        poller.register(sock, select.POLLIN)
+        timeout_ms = max(1, round(self._recv_timeout_s * 1000))
+        recvmsg = sock.recvmsg
+        clock = self._stamp_clock
+        clock.offset_ns = None
+        stats = self.stats
+        unpack_header = _FRAME_HEADER.unpack_from
+        received = False
+        while not stop.is_set():
+            try:
+                ready = poller.poll(timeout_ms)
+                stats.socket_drops = drops_before + _socket_drops(sock)
+                if not ready:
+                    continue
+                clock.resync()
+                stats.clock_steps = clock.steps
+                for _ in range(_DRAIN_MAX):
+                    try:
+                        frame, ancdata, _flags, _address = recvmsg(_CANFD_MTU, 64)
+                    except BlockingIOError:
+                        break
+                    if len(frame) < 8:
+                        continue
+                    can_id, length = unpack_header(frame)
+                    stamp_ns = _frame_stamp_ns(ancdata)
+                    t_mono_ns = clock.to_mono_ns(stamp_ns) if stamp_ns else time.monotonic_ns()
+                    received = True
+                    if can_id & (_CAN_ERR_FLAG | _CAN_RTR_FLAG):
+                        self.decoder.stats.frames += 1
+                        self.decoder.stats.malformed_frames += 1
+                        continue
+                    extended = bool(can_id & _CAN_EFF_FLAG)
+                    self._emit_frame(
+                        can_id & (_CAN_EFF_MASK if extended else _CAN_SFF_MASK),
+                        extended,
+                        frame[8 : 8 + length],
+                        t_mono_ns,
+                    )
+            except OSError as exc:
+                stats.bus_errors += 1
+                logger.warning("bus %s: read failed: %s", name, exc)
+                return received
+        return received
 
     def take_capture_lag_max_ms(self) -> float:
         """The worst capture lag since the last call, then start a new window."""
@@ -388,6 +549,8 @@ class CanCollector:
         sock = getattr(bus, "socket", None)
         self.stats.recv_buffer_bytes = _grow_recv_buffer(sock, self.config.name)
         drops_before = self.stats.socket_drops
+        if isinstance(sock, socket.socket) and sock.family == socket.AF_CAN:
+            return self._read_socket_until_error(sock, stop, drops_before)
         since_poll = 0
         while not stop.is_set():
             try:
@@ -405,6 +568,15 @@ class CanCollector:
             received = True
             self.handle_message(message)
         return received
+
+
+def _frame_stamp_ns(ancdata: list[tuple[int, int, bytes]]) -> int:
+    """The kernel's receive stamp from a ``recvmsg`` ancillary list, or 0."""
+    for level, kind, payload in ancdata:
+        if level == socket.SOL_SOCKET and kind == _SO_TIMESTAMPNS:
+            seconds, nanoseconds = _TIMESPEC.unpack_from(payload)
+            return seconds * 1_000_000_000 + nanoseconds
+    return 0
 
 
 def _default_bus_factory(config: BusConfig) -> can.BusABC:

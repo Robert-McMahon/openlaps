@@ -151,7 +151,7 @@ fact from sequence/timestamp continuity.
 | Failure | Behaviour |
 | --- | --- |
 | Local NATS down at startup | Retry with backoff, capture-and-shed meanwhile; `sys.agent.publish_drops` counts the cost. Do not exit: a rebooting broker must not take the collectors' warm state with it |
-| Local NATS dies while running | Same as above; publisher reconnects and resumes. JetStream dedupe (per-batch msg-id = `class:tick_epoch`) makes redelivery after reconnect idempotent |
+| Local NATS dies while running | Same as above; publisher reconnects and resumes. JetStream dedupe (per-batch msg-id = `class:tick_epoch:sequence`, unique per batch and kept across retries) makes redelivery after reconnect idempotent |
 | Collector thread dies (bus off, unplugged serial) | Supervisor in the health loop restarts it with backoff; restarts and current state are visible via `sys.agent.status` payload. The agent keeps running with the collectors it has |
 | Serial device absent at startup | Collector retries open with backoff; not fatal — GPS being unplugged must not stop CAN logging |
 | RTCM subject delivers while receiver busy | Driver write-back is best-effort fire-and-forget; corrections are stateless |

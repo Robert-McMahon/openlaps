@@ -55,6 +55,12 @@ class Pipeline:
         self._timing_app = timing_app
         self._fusion_app = fusion_app
         self._staged: list[tuple[str, int, Sample]] = []
+        # Makes every batch's dedupe id unique. The epoch alone is not: a tick
+        # window that straddles two flushes (the normal case on a live car,
+        # where the pipeline drains mid-window every tick) yields two batches
+        # anchored in the same millisecond, and JetStream silently discards
+        # the second as a duplicate of the first.
+        self._batch_seq = 0
         self._reported_unmapped: set[str] = set()
         self._reported_failures: set[str] = set()
         self.unmapped_refs = 0
@@ -136,13 +142,14 @@ class Pipeline:
                 self.encode_failures += 1
                 continue
             for source_class, payload in emitted.items():
+                self._batch_seq += 1
                 batches.append(
                     TickBatch(
                         source_class=source_class,
                         payload=payload,
                         epoch_unix_ms=epoch_unix_ms,
                         epoch_mono_ns=epoch_mono_ns,
-                        msg_id=f"{source_class}:{epoch_unix_ms}",
+                        msg_id=f"{source_class}:{epoch_unix_ms}:{self._batch_seq}",
                     )
                 )
         return batches

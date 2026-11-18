@@ -172,6 +172,7 @@ def agent_derived_channels(
         DerivedChannel("sys.agent.rbe_suppressed", pb.INT64),
         DerivedChannel("sys.agent.encode_failures", pb.INT64),
         DerivedChannel("sys.agent.publish_drops", pb.INT64),
+        DerivedChannel("sys.agent.publish_duplicates", pb.INT64),
         DerivedChannel("sys.agent.publish_lag_ms", pb.DOUBLE, "ms"),
     ]
     channels += [DerivedChannel(f"sys.agent.drops.{name}", pb.INT64) for name in collector_names]
@@ -466,6 +467,7 @@ class VehicleAgent:
         emit("sys.agent.rbe_suppressed", self.pipeline.rbe_suppressed)
         emit("sys.agent.encode_failures", self.pipeline.encode_failures)
         emit("sys.agent.publish_drops", self.publisher.publish_drops)
+        emit("sys.agent.publish_duplicates", self.publisher.publish_duplicates)
         emit("sys.agent.publish_lag_ms", self.publisher.publish_lag_ms())
         for supervised in self._supervised:
             emit(f"sys.agent.drops.{supervised.queue.source_class}", supervised.queue.dropped)

@@ -101,6 +101,7 @@ class JetStreamPublisher:
         self._buffer_bytes = 0
         self._oldest_pending_mono_ns: int | None = None
         self._publish_drops = 0
+        self._publish_duplicates = 0
         self._published = 0
         self._registry_publishes = 0
         self._connected = False
@@ -166,6 +167,11 @@ class JetStreamPublisher:
     def publish_drops(self) -> int:
         """Batches shed because the local NATS was unavailable or backlogged."""
         return self._publish_drops
+
+    @property
+    def publish_duplicates(self) -> int:
+        """Batches the broker discarded because their dedupe id was already taken."""
+        return self._publish_duplicates
 
     @property
     def published(self) -> int:
@@ -377,7 +383,7 @@ class JetStreamPublisher:
 
                 task, item = pending[0]
                 try:
-                    await task
+                    ack = await task
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -393,6 +399,11 @@ class JetStreamPublisher:
                     continue
                 pending.popleft()
                 self._published += 1
+                if getattr(ack, "duplicate", False):
+                    # The broker already held this id and discarded the batch.
+                    # After a retry that is the dedupe doing its job; in steady
+                    # state it means two different batches shared an id.
+                    self._publish_duplicates += 1
                 with self._lock:
                     self._oldest_pending_mono_ns = pending[0][1].submit_mono_ns if pending else None
         finally:

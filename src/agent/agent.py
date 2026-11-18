@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent import selfprofile
 from agent.clock import SystemClock
 from agent.fusion_app import FUSION_DERIVED_CHANNELS, FusionApp
 from agent.pipeline import DERIVED_SOURCE_CLASS, Pipeline
@@ -71,6 +72,9 @@ class AgentSettings:
     # openlaps_canfast extension is installed and the bus's DBCs fit its
     # plan, "python" never does, "compiled" refuses to start without it.
     can_ingest: str = "auto"
+    # Seconds per window of the built-in sampling profiler (agent/selfprofile.py);
+    # 0 leaves it off.
+    self_profile_s: float = 0.0
     queue_maxlen: int = DEFAULT_MAXLEN
     publish_window: int = DEFAULT_WINDOW
     publish_buffer_bytes: int = DEFAULT_BUFFER_BYTES
@@ -123,6 +127,7 @@ class AgentSettings:
         take("OPENLAPS_VEHICLE_ID", "vehicle_id", str)
         take("OPENLAPS_TICK_MS", "tick_ms", int)
         take("OPENLAPS_CAN_INGEST", "can_ingest", _can_ingest_choice)
+        take("OPENLAPS_SELF_PROFILE_S", "self_profile_s", float)
         take("OPENLAPS_QUEUE_SIZE", "queue_maxlen", int)
         take("OPENLAPS_PUBLISH_WINDOW", "publish_window", int)
         take("OPENLAPS_PUBLISH_BUFFER_BYTES", "publish_buffer_bytes", int)
@@ -413,6 +418,8 @@ class VehicleAgent:
         self._health_thread = threading.Thread(target=self._health_main, name="health", daemon=True)
         self._health_thread.start()
         logger.info("agent: running with %d collector(s)", len(self._supervised))
+        if self.settings.self_profile_s > 0:
+            selfprofile.start(self.settings.self_profile_s)
 
     def stop(self) -> None:
         """Shut down in the spec's order; bounded, idempotent."""

@@ -55,6 +55,12 @@ class Pipeline:
         self._timing_app = timing_app
         self._fusion_app = fusion_app
         self._staged: list[tuple[str, int, Sample]] = []
+        # Makes every batch's dedupe id unique. The epoch alone is not: a tick
+        # window that straddles two flushes (the normal case on a live car,
+        # where the pipeline drains mid-window every tick) yields two batches
+        # anchored in the same millisecond, and JetStream silently discards
+        # the second as a duplicate of the first.
+        self._batch_seq = 0
         self._reported_unmapped: set[str] = set()
         self._reported_failures: set[str] = set()
         self.unmapped_refs = 0
@@ -65,6 +71,36 @@ class Pipeline:
     def rbe_suppressed(self) -> int:
         """Cumulative RBE suppressions (feeds ``sys.agent.rbe_suppressed``)."""
         return self._rbe.suppressed_count
+
+    def tap(self, channel_id: int, sample: Sample) -> None:
+        """Show the fusion and timing apps a sample that is batched elsewhere.
+
+        A bus handled by the compiled ingest path is mapped, filtered and
+        serialized there; only the channels an app subscribes to come back
+        through here, pre-filter, and whatever the apps derive is ingested
+        as usual.
+        """
+        fusion = self._fusion_app
+        if fusion is not None and channel_id in fusion.subscribed_channel_ids:
+            for derived in fusion.observe(channel_id, sample):
+                self.ingest(DERIVED_SOURCE_CLASS, derived)
+        timing = self._timing_app
+        if timing is not None and channel_id in timing.subscribed_channel_ids:
+            for derived in timing.observe(channel_id, sample):
+                self.ingest(DERIVED_SOURCE_CLASS, derived)
+
+    def adopt(
+        self, source_class: str, payload: bytes, epoch_unix_ms: int, epoch_mono_ns: int
+    ) -> TickBatch:
+        """Wrap a batch serialized outside the pipeline, giving it a dedupe id."""
+        self._batch_seq += 1
+        return TickBatch(
+            source_class=source_class,
+            payload=payload,
+            epoch_unix_ms=epoch_unix_ms,
+            epoch_mono_ns=epoch_mono_ns,
+            msg_id=f"{source_class}:{epoch_unix_ms}:{self._batch_seq}",
+        )
 
     def ingest(self, source_class: str, sample: Sample) -> None:
         """Run one sample through map -> timing tap -> RBE and stage it."""
@@ -136,13 +172,14 @@ class Pipeline:
                 self.encode_failures += 1
                 continue
             for source_class, payload in emitted.items():
+                self._batch_seq += 1
                 batches.append(
                     TickBatch(
                         source_class=source_class,
                         payload=payload,
                         epoch_unix_ms=epoch_unix_ms,
                         epoch_mono_ns=epoch_mono_ns,
-                        msg_id=f"{source_class}:{epoch_unix_ms}",
+                        msg_id=f"{source_class}:{epoch_unix_ms}:{self._batch_seq}",
                     )
                 )
         return batches

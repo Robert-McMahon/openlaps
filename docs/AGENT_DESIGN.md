@@ -43,6 +43,22 @@ Sample = (source_ref: str-interned, t_mono_ns: int, t_wall_ms: float, value)
    dict built at startup. Unmapped refs increment a counter and are dropped;
    each distinct unmapped ref is logged once at INFO (a car broadcasts
    plenty a profile deliberately ignores — this is normal, not an error).
+   The agent hands each CAN collector the catalog's source refs, so a frame
+   with no mapped signal is counted (`unwanted_frames`) and skipped before
+   decoding, and unmapped signals of the rest never reach the mapper: on the
+   example car that is a third of the frames and two thirds of the samples.
+   A collector built without that set (the bench and replay tools) still
+   emits everything its DBCs know.
+   **Compiled CAN ingest.** When the `openlaps_canfast` extension
+   (`rust/canfast`) is installed, steps 1, 2, 4 and 5 for a CAN bus happen
+   on a thread of its own outside the interpreter: it owns the bus socket,
+   stamps and decodes frames, applies the RBE policies and serializes the
+   bus's `SampleBatch` payloads. Python builds its plan from the DBCs and
+   the catalog at start (`collectors/can_fast.py`), and the pipeline thread
+   drains finished batches once a tick, together with the pre-RBE samples
+   the timing and fusion apps subscribe to (step 3). `tests/test_can_fast.py`
+   holds the two paths to byte-identical output. `OPENLAPS_CAN_INGEST`
+   selects `auto` (default), `python` or `compiled`.
 3. **Timing tap** — if the channel is one the timing engine subscribes to,
    the sample is handed to it *here, before RBE* (see below).
 4. **RBE / rate filter** — per-channel policy from the catalog:
@@ -151,7 +167,7 @@ fact from sequence/timestamp continuity.
 | Failure | Behaviour |
 | --- | --- |
 | Local NATS down at startup | Retry with backoff, capture-and-shed meanwhile; `sys.agent.publish_drops` counts the cost. Do not exit: a rebooting broker must not take the collectors' warm state with it |
-| Local NATS dies while running | Same as above; publisher reconnects and resumes. JetStream dedupe (per-batch msg-id = `class:tick_epoch`) makes redelivery after reconnect idempotent |
+| Local NATS dies while running | Same as above; publisher reconnects and resumes. JetStream dedupe (per-batch msg-id = `class:tick_epoch:sequence`, unique per batch and kept across retries) makes redelivery after reconnect idempotent |
 | Collector thread dies (bus off, unplugged serial) | Supervisor in the health loop restarts it with backoff; restarts and current state are visible via `sys.agent.status` payload. The agent keeps running with the collectors it has |
 | Serial device absent at startup | Collector retries open with backoff; not fatal — GPS being unplugged must not stop CAN logging |
 | RTCM subject delivers while receiver busy | Driver write-back is best-effort fire-and-forget; corrections are stateless |

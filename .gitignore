@@ -42,3 +42,7 @@ docs/bench/**/*.log
 # OS
 .DS_Store
 site/
+
+# rust/canfast build output
+rust/canfast/target/
+rust/canfast/dist/

@@ -91,6 +91,13 @@ def test_registry_includes_sys_agent_and_derived_channels(tmp_path: Path):
         "sys.agent.drops.serial0",
         "sys.agent.drops.host",
         "sys.agent.stall_s.can0",
+        "sys.agent.socket_drops.can0",
+        "sys.agent.cpu.can0",
+        "sys.agent.cpu.serial0",
+        "sys.agent.cpu.pipeline",
+        "sys.agent.cpu.publisher",
+        "sys.agent.cpu.main",
+        "sys.agent.cpu.other",
     } <= names
     # The timing app is wired per apps.lap_timing in the example catalog.
     assert agent.timing_app is not None

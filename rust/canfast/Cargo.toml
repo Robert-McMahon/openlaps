@@ -1,0 +1,24 @@
+[package]
+name = "openlaps-canfast"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "The CAN ingest path of the openlaps vehicle agent, outside the Python interpreter."
+
+[lib]
+name = "openlaps_canfast"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+libc = "0.2"
+pyo3 = { version = "0.23", features = ["abi3-py312"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = ["extension-module"]
+extension-module = ["pyo3/extension-module"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"

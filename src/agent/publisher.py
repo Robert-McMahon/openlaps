@@ -23,7 +23,7 @@ import logging
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 import nats
@@ -101,6 +101,7 @@ class JetStreamPublisher:
         self._buffer_bytes = 0
         self._oldest_pending_mono_ns: int | None = None
         self._publish_drops = 0
+        self._publish_duplicates = 0
         self._published = 0
         self._registry_publishes = 0
         self._connected = False
@@ -123,15 +124,31 @@ class JetStreamPublisher:
 
     def submit(self, batch: TickBatch) -> None:
         """Queue one tick batch; sheds oldest-first past the byte budget."""
-        item = _QueuedBatch(
-            subject=f"tele.{self._vehicle_id}.{batch.source_class}",
-            payload=batch.payload,
-            msg_id=batch.msg_id,
-            submit_mono_ns=time.monotonic_ns(),
-        )
+        self.submit_many((batch,))
+
+    def submit_many(self, batches: Iterable[TickBatch]) -> None:
+        """Queue a tick's batches together and wake the publish loop once.
+
+        Waking the loop is a write to its self-pipe and a pass through the
+        event loop. Done per batch that was several hundred a second on a
+        loaded car, for batches the loop would have sent together anyway.
+        """
+        now = time.monotonic_ns()
+        items = [
+            _QueuedBatch(
+                subject=f"tele.{self._vehicle_id}.{batch.source_class}",
+                payload=batch.payload,
+                msg_id=batch.msg_id,
+                submit_mono_ns=now,
+            )
+            for batch in batches
+        ]
+        if not items:
+            return
         with self._lock:
-            self._buffer.append(item)
-            self._buffer_bytes += len(item.payload)
+            for item in items:
+                self._buffer.append(item)
+                self._buffer_bytes += len(item.payload)
             while self._buffer_bytes > self._buffer_budget and len(self._buffer) > 1:
                 shed = self._buffer.popleft()
                 self._buffer_bytes -= len(shed.payload)
@@ -166,6 +183,11 @@ class JetStreamPublisher:
     def publish_drops(self) -> int:
         """Batches shed because the local NATS was unavailable or backlogged."""
         return self._publish_drops
+
+    @property
+    def publish_duplicates(self) -> int:
+        """Batches the broker discarded because their dedupe id was already taken."""
+        return self._publish_duplicates
 
     @property
     def published(self) -> int:
@@ -377,7 +399,7 @@ class JetStreamPublisher:
 
                 task, item = pending[0]
                 try:
-                    await task
+                    ack = await task
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -393,6 +415,11 @@ class JetStreamPublisher:
                     continue
                 pending.popleft()
                 self._published += 1
+                if getattr(ack, "duplicate", False):
+                    # The broker already held this id and discarded the batch.
+                    # After a retry that is the dedupe doing its job; in steady
+                    # state it means two different batches shared an id.
+                    self._publish_duplicates += 1
                 with self._lock:
                     self._oldest_pending_mono_ns = pending[0][1].submit_mono_ns if pending else None
         finally:

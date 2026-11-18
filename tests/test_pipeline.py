@@ -80,7 +80,7 @@ def test_mapped_sample_round_trips_with_exact_capture_time(catalog):
 
     assert [batch.source_class for batch in batches] == ["can0"]
     tick = batches[0]
-    assert tick.msg_id == f"can0:{tick.epoch_unix_ms}"
+    assert tick.msg_id == f"can0:{tick.epoch_unix_ms}:1"
     decoded = _decode(tick.payload)
     assert decoded.registry_seq == catalog.registry.registry_seq
     assert decoded.format_version == 1
@@ -209,3 +209,34 @@ def test_encode_failure_discards_one_window_and_recovers(catalog):
     # The pipeline thread survives and the next tick is clean.
     pipeline.ingest("can0", Sample("can0:ecu.ENGINE.RPM", T0 + 30 * MS, _wall(T0 + 30 * MS), 901.0))
     assert len(pipeline.flush(_wall)) == 1
+
+
+def test_a_tick_window_split_across_two_flushes_gets_two_distinct_ids(catalog):
+    """The live agent flushes every tick, mid-window. Two batches anchored in
+    the same millisecond used to share an id, and JetStream dropped the second."""
+    pipeline = Pipeline(catalog, tick_ms=20)
+    ref = "can0:ecu.ENGINE.RPM"
+    pipeline.ingest("can0", Sample(ref, T0, _wall(T0), 1000.0))
+    first = pipeline.flush(_wall)
+    # 0.4 ms later: the next frame on a busy bus, in the same millisecond.
+    later = T0 + 400_000
+    pipeline.ingest("can0", Sample(ref, later, _wall(later), 1001.0))
+    second = pipeline.flush(_wall)
+
+    assert first[0].epoch_unix_ms == second[0].epoch_unix_ms
+    assert first[0].msg_id != second[0].msg_id
+
+
+def test_a_sentence_with_a_character_outside_latin_1_is_malformed_not_a_crash():
+    from collectors.serial.nmea import _validated_body
+
+    body = "GNRMC,1,2"
+    checksum = 0
+    for character in body:
+        checksum ^= ord(character)
+
+    assert _validated_body(f"${body}*{checksum:02X}") == body
+    with pytest.raises(ValueError):
+        _validated_body("$GNRMC,\u20ac*00")
+    with pytest.raises(ValueError, match="mismatch"):
+        _validated_body(f"${body}*{checksum ^ 1:02X}")

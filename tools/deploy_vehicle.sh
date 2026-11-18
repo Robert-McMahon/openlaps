@@ -13,6 +13,10 @@
 #      board can say which revision it is running -- it has no .git.
 #   3. Runs `uv sync --frozen` on the board if pyproject.toml or uv.lock
 #      changed. That downloads packages, so do it before leaving for the track.
+#   3b. Builds the openlaps_canfast wheel for the board's architecture
+#      (tools/build_canfast.sh) and installs it into the board's environment.
+#      Without a Rust toolchain on this machine that step is skipped with a
+#      note and the agent runs its Python CAN ingest path.
 #   4. Restarts openlaps-agent and prints its status and recent journal, and
 #      restarts openlaps-can-watchdog if it is running (it is tools/ code too).
 #   5. Restarts the login user's own units whose script lives under $DEST and
@@ -56,6 +60,18 @@ after="$(ssh "$HOST" "cat $DEST/pyproject.toml $DEST/uv.lock | md5sum")"
 if [[ "$before" != "$after" ]]; then
     echo "==> dependencies changed: uv sync --frozen (needs internet)"
     ssh "$HOST" "cd $DEST && sudo -u $SVC_USER /usr/local/bin/uv sync --frozen"
+fi
+
+# The compiled CAN ingest path is a wheel built here and installed over the
+# board's environment (a `uv sync` removes it, so it goes on after one). No
+# toolchain here just means the agent keeps its Python ingest path.
+arch="$(ssh "$HOST" uname -m)"
+if wheel="$(tools/build_canfast.sh "$arch" 2>/tmp/openlaps-canfast-build.log)"; then
+    echo "==> installing $(basename "$wheel")"
+    scp -q "$wheel" "$HOST:/tmp/"
+    ssh "$HOST" "cd $DEST && sudo -u $SVC_USER /usr/local/bin/uv pip install -q --python .venv/bin/python --force-reinstall --no-deps /tmp/$(basename "$wheel")"
+else
+    echo "note: openlaps_canfast was not built (see /tmp/openlaps-canfast-build.log); the agent will use its Python CAN ingest" >&2
 fi
 
 echo "==> restarting $UNIT"

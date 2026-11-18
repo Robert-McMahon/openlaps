@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "openlaps-canfast"
+version = "0.1.0"
+description = "The CAN ingest path of the openlaps vehicle agent, outside the Python interpreter."
+requires-python = ">=3.13"
+license = "Apache-2.0"
+
+[tool.maturin]
+module-name = "openlaps_canfast"
+features = ["extension-module"]

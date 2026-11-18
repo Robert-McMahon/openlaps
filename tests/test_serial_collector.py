@@ -368,3 +368,32 @@ def test_a_burst_without_a_terminator_is_counted_oversized_and_dropped():
 
     assert collector.stats.oversized_lines == 1
     assert emitted  # the sentence after the junk still decodes
+
+
+class _DescriptorPort:
+    """Stands in for a pyserial port that exposes its file descriptor."""
+
+    def __init__(self, fd: int, timeout: float = 0.05) -> None:
+        self.fd = fd
+        self.timeout = timeout
+
+
+def test_a_real_descriptor_is_read_in_one_go_without_asking_how_much_is_waiting():
+    import os
+
+    from collectors.serial.transport import _read_available
+
+    reader, writer = os.pipe()
+    try:
+        port = _DescriptorPort(reader)
+        assert _read_available(port) == b""  # nothing yet: the timeout, not an error
+        os.write(writer, b"$GNRMC,first*00\r\n$GNRMC,second*00\r\n")
+        assert _read_available(port) == b"$GNRMC,first*00\r\n$GNRMC,second*00\r\n"
+        os.close(writer)
+        writer = -1
+        with pytest.raises(serial.SerialException, match="returned no data"):
+            _read_available(port)
+    finally:
+        os.close(reader)
+        if writer >= 0:
+            os.close(writer)

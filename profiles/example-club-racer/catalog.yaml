@@ -21,14 +21,25 @@
 # radio that had just shown it could not always carry 1 Mbit/s. Three tiers:
 #   - ~100 Hz input voltages: deadband 0.05 V, at most 10 Hz, 5 s heartbeat
 #     (switch edges still arrive within 100 ms; levels fill forward);
-#   - booleans and counters broadcast at 15-38 Hz: at most 5 Hz, 5 s heartbeat
-#     (no deadband -- the filter refuses a non-zero one on a bool; `deadband: 0`
-#     is report-on-change and is what the brake switch uses to keep its edges);
 #   - slow-moving pressures, angles and duties at 20-38 Hz: a deadband at the
 #     sensor's noise floor (2 kPa, 0.5 deg, 0.5 %), at most 20 Hz, 2 s heartbeat.
 # Deadbands sit well under every alarm/watch threshold on the same channel.
+#
+# Every bool, enum, status word, keypad button and monotonic counter (fuel
+# used, trip distance) is lossless instead (issue #40, 2026-11-19):
+# `{deadband: 0, max_interval: 5s}` is report-on-change -- an equality test,
+# so it serves bools and ints alike -- and drops only a value identical to the
+# last one sent. Every edge and every counter step still goes out, at the
+# sample that carried it; the 5 s heartbeat is what Timescale fill-forward and
+# the watch engine's 10 s staleness window need. No min_interval, because a
+# rate limit can swallow a blip shorter than it.
+# The one exception is car.trigger_counter: it steps on every frame while the
+# engine turns, so report-on-change would send it at full rate. It keeps a
+# 200 ms rate limit, which loses nothing a reader can't recover: a 16-bit
+# count of trigger events cannot wrap in 200 ms.
+#
 # rpm, throttle, pedal, MAP, speeds, lambda and knock stay at full rate.
-# `sys.agent.rbe_suppressed` counts what the tiers remove.
+# `sys.agent.rbe_suppressed` counts what the policies remove.
 #
 # Naming: every on-vehicle sensor/actuator reading lives in a flat `car.*`
 # namespace (see docs/CATALOG.md) -- no engine/chassis/wheels/fuel/electrics
@@ -44,19 +55,19 @@ channels:
   car.baro_pressure: { from: "can0:haltech.MISC4.BAROMETRIC_PRESSURE", units: "kPa" }
   car.boost_control_output: { from: "can0:haltech.PWM_OUTPUT.BOOST_CONTROL_OUTPUT", units: "%" }
   car.calculated_air_temp: { from: "can0:haltech.MISC14.CALCULATED_AIR_TEMPERATURE", units: "K" }
-  car.check_engine_light: { from: "can0:haltech.MISC5.CHECK_ENGINE_LIGHT", type: bool }
+  car.check_engine_light: { from: "can0:haltech.MISC5.CHECK_ENGINE_LIGHT", type: bool, rbe: { deadband: 0, max_interval: 5s } }
   car.coolant_pressure: { from: "can0:haltech.ENGINE1.COOLANT_PRESSURE", units: "kPa", rbe: { deadband: 2, min_interval: 50ms, max_interval: 2s } }
   car.coolant_temp: { from: "can0:haltech.TEMPERATURE1.COOLANT_TEMPERATURE", units: "K" }
   car.ecu_temp: { from: "can0:haltech.ECU_TEMPERATURE.ECU_TEMPERATURE", units: "K" }
   car.engine_demand: { from: "can0:haltech.ENGINE2.ENGINE_DEMAND", units: "%", rbe: { deadband: 0.5, min_interval: 50ms, max_interval: 2s } }
-  car.engine_limiting_active: { from: "can0:haltech.MISC2.ENGINE_LIMITING_ACTIVE", type: bool, rbe: { min_interval: 200ms, max_interval: 5s } }
-  car.engine_protection_reason_letter: { from: "can0:haltech.MISC13.ENGINE_PROTECTION_REASON_LETTER", type: int }
-  car.engine_protection_reason_number: { from: "can0:haltech.MISC13.ENGINE_PROTECTION_REASON_NUMBER", type: int }
-  car.engine_protection_severity: { from: "can0:haltech.MISC13.ENGINE_PROTECTION_SEVERITY_LEVEL", type: int }
+  car.engine_limiting_active: { from: "can0:haltech.MISC2.ENGINE_LIMITING_ACTIVE", type: bool, rbe: { deadband: 0, max_interval: 5s } }
+  car.engine_protection_reason_letter: { from: "can0:haltech.MISC13.ENGINE_PROTECTION_REASON_LETTER", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.engine_protection_reason_number: { from: "can0:haltech.MISC13.ENGINE_PROTECTION_REASON_NUMBER", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.engine_protection_severity: { from: "can0:haltech.MISC13.ENGINE_PROTECTION_SEVERITY_LEVEL", type: int, rbe: { deadband: 0, max_interval: 5s } }
   car.exhaust_manifold_pressure: { from: "can0:haltech.MISC11.EXHAUST_MANIFOLD_PRESSURE", units: "kPa", rbe: { deadband: 2, min_interval: 50ms, max_interval: 2s } }
   car.fuel_pressure: { from: "can0:haltech.ENGINE2.FUEL_PRESSURE", units: "kPa", rbe: { deadband: 2, min_interval: 50ms, max_interval: 2s } }
   car.fuel_temp: { from: "can0:haltech.TEMPERATURE1.FUEL_TEMPERATURE", units: "K" }
-  car.gear: { from: "can0:haltech.MISC10.GEAR", type: int, rbe: { min_interval: 200ms, max_interval: 5s } }
+  car.gear: { from: "can0:haltech.MISC10.GEAR", type: int, rbe: { deadband: 0, max_interval: 5s } }
   car.gearbox_oil_temp: { from: "can0:haltech.TEMPERATURE2.GEARBOX_OIL_TEMPERATURE", units: "K" }
   car.ignition_angle_bank1: { from: "can0:haltech.MISC9.IGNITION_ANGLE_BANK1", units: "°", rbe: { deadband: 0.5, min_interval: 50ms, max_interval: 2s } }
   car.ignition_angle_bank2: { from: "can0:haltech.MISC9.IGNITION_ANGLE_BANK2", units: "°", rbe: { deadband: 0.5, min_interval: 50ms, max_interval: 2s } }
@@ -68,24 +79,24 @@ channels:
   car.knock_level2: { from: "can0:haltech.KNOCK.KNOCK_LEVEL2", units: "dB" }
   car.lambda1: { from: "can0:haltech.WIDEBAND1.LAMBDA_SENSOR1", units: "λ" }
   car.lambda_overall: { from: "can0:haltech.MISC10.LAMBDA_OVERALL", units: "λ" }
-  car.launch_control_active: { from: "can0:haltech.MISC5.LAUNCH_CONTROL_ACTIVE", type: bool }
+  car.launch_control_active: { from: "can0:haltech.MISC5.LAUNCH_CONTROL_ACTIVE", type: bool, rbe: { deadband: 0, max_interval: 5s } }
   car.launch_control_ign_retard: { from: "can0:haltech.MISC2.LAUNCH_CONTROL_IGNITION_RETARD", units: "°", rbe: { deadband: 0.5, min_interval: 50ms, max_interval: 2s } }
   car.map: { from: "can0:haltech.ENGINE1.MANIFOLD_PRESSURE", units: "kPa" }
   car.oil_pressure: { from: "can0:haltech.ENGINE2.OIL_PRESSURE", units: "kPa", rbe: { deadband: 2, min_interval: 50ms, max_interval: 2s } }
-  car.oil_pressure_light: { from: "can0:haltech.MISC5.OIL_PRESSURE_LIGHT", type: bool }
+  car.oil_pressure_light: { from: "can0:haltech.MISC5.OIL_PRESSURE_LIGHT", type: bool, rbe: { deadband: 0, max_interval: 5s } }
   car.oil_temp: { from: "can0:haltech.TEMPERATURE1.OIL_TEMPERATURE", units: "K" }
   car.rpm: { from: "can0:haltech.ENGINE1.ENGINE_SPEED", units: "RPM" }
   car.target_boost: { from: "can0:haltech.MISC4.TARGET_BOOST_LEVEL", units: "kPa" }
   car.target_lambda: { from: "can0:haltech.GENERIC3.TARGET_LAMBDA", units: "λ" }
   car.throttle_pos: { from: "can0:haltech.ENGINE1.THROTTLE_POSITION", units: "%" }
   car.trigger_counter: { from: "can0:haltech.TRIGGER.TRIGGER_COUNTER", type: int, rbe: { min_interval: 200ms, max_interval: 5s } }
-  car.trigger_error_count: { from: "can0:haltech.TRIGGER.TRIGGER_SYSTEM_ERROR_COUNT", type: int, rbe: { min_interval: 200ms, max_interval: 5s } }
-  car.trigger_sync_level: { from: "can0:haltech.TRIGGER.TRIGGER_SYNC_LEVEL", type: int, rbe: { min_interval: 200ms, max_interval: 5s } }
+  car.trigger_error_count: { from: "can0:haltech.TRIGGER.TRIGGER_SYSTEM_ERROR_COUNT", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.trigger_sync_level: { from: "can0:haltech.TRIGGER.TRIGGER_SYNC_LEVEL", type: int, rbe: { deadband: 0, max_interval: 5s } }
   car.wastegate_pressure: { from: "can0:haltech.ENGINE2.WASTEGATE_PRESSURE", units: "kPa", rbe: { deadband: 2, min_interval: 50ms, max_interval: 2s } }
 
   # ---- ECU: WB1 CAN wideband (device: wideband) ----
   car.wb1_battery_v: { from: "can0:wideband.WB1_LAMBDA.WB1_BATTERY_VOLTAGE", units: "V", rbe: { deadband: 0.05, min_interval: 50ms, max_interval: 2s } }
-  car.wb1_diagnostic1: { from: "can0:wideband.WB1_LAMBDA.WB1_DIAGNOSTIC_1", type: int, rbe: { min_interval: 200ms, max_interval: 5s } }
+  car.wb1_diagnostic1: { from: "can0:wideband.WB1_LAMBDA.WB1_DIAGNOSTIC_1", type: int, rbe: { deadband: 0, max_interval: 5s } }
   car.wb1_lambda1: { from: "can0:wideband.WB1_LAMBDA.WB1_LAMBDA_1", units: "lambda" }
   car.wb1_sense_resistor1: { from: "can0:wideband.WB1_LAMBDA.WB1_SENSE_RESISTOR_1", units: "ohm", rbe: { deadband: 1, min_interval: 50ms, max_interval: 2s } }
 
@@ -95,9 +106,9 @@ channels:
   # it trails the pedal by up to a quarter of a second; car.brake_pedal_switch
   # (PDM section below) is the one to read braking points from.
   car.brake_pedal_switch_ecu: { from: "can0:haltech.MISC5.BRAKE_PEDAL_SWITCH", type: bool, rbe: { deadband: 0, max_interval: 5s } }
-  car.clutch_switch: { from: "can0:haltech.MISC5.CLUTCH_SWITCH", type: bool }
-  car.tc_active: { from: "can0:haltech.MISC5.TRACTION_CONTROL_ACTIVE", type: bool }
-  car.tc_enabled: { from: "can0:haltech.MISC5.TRACTION_CONTROL_ENABLED", type: bool }
+  car.clutch_switch: { from: "can0:haltech.MISC5.CLUTCH_SWITCH", type: bool, rbe: { deadband: 0, max_interval: 5s } }
+  car.tc_active: { from: "can0:haltech.MISC5.TRACTION_CONTROL_ACTIVE", type: bool, rbe: { deadband: 0, max_interval: 5s } }
+  car.tc_enabled: { from: "can0:haltech.MISC5.TRACTION_CONTROL_ENABLED", type: bool, rbe: { deadband: 0, max_interval: 5s } }
 
   # ---- ECU: wheel-speed sensors + ECU-derived vehicle/driveline speed ----
   car.driveshaft_rpm: { from: "can0:haltech.MISC6.DRIVESHAFT_RPM", units: "RPM" }
@@ -105,29 +116,29 @@ channels:
   car.wheel_speed_fr: { from: "can0:haltech.WHEEL_SPEED.WHEEL_SPEED_FRONT_RIGHT", units: "km/h" }
   car.wheel_speed_rl: { from: "can0:haltech.WHEEL_SPEED.WHEEL_SPEED_REAR_LEFT", units: "km/h" }
   car.wheel_speed_rr: { from: "can0:haltech.WHEEL_SPEED.WHEEL_SPEED_REAR_RIGHT", units: "km/h" }
-  car.trip_distance_m: { from: "can0:haltech.TRIP_METER.DISTANCE_TRIP_METER1", units: "m" }
+  car.trip_distance_m: { from: "can0:haltech.TRIP_METER.DISTANCE_TRIP_METER1", units: "m", rbe: { deadband: 0, max_interval: 5s } }
   car.vehicle_speed: { from: "can0:haltech.MISC3.VEHICLE_SPEED", units: "km/h" }
 
   # ---- ECU: fuel system ----
   car.fuel_flow_rate: { from: "can0:haltech.FUEL_FLOW.FUEL_FLOW", units: "cc/min" }
   car.fuel_level: { from: "can0:haltech.FUEL_LEVEL.FUEL_LEVEL", units: "L" }
-  car.fuel_primary_pump_output: { from: "can0:haltech.MISC12.PRIMARY_FUEL_PUMP_OUTPUT", type: bool }
-  car.fuel_total_used: { from: "can0:haltech.MISC12.TOTAL_FUEL_USED", units: "cc" }
+  car.fuel_primary_pump_output: { from: "can0:haltech.MISC12.PRIMARY_FUEL_PUMP_OUTPUT", type: bool, rbe: { deadband: 0, max_interval: 5s } }
+  car.fuel_total_used: { from: "can0:haltech.MISC12.TOTAL_FUEL_USED", units: "cc", rbe: { deadband: 0, max_interval: 5s } }
   car.fuel_trim_long_term_bank1: { from: "can0:haltech.FUEL_TRIM.FUEL_TRIM_LONG_TERM_BANK1", units: "%" }
-  car.fuel_trip_used: { from: "can0:haltech.TRIP_METER.TOTAL_FUEL_USED_TRIP_METER1", units: "cc" }
+  car.fuel_trip_used: { from: "can0:haltech.TRIP_METER.TOTAL_FUEL_USED_TRIP_METER1", units: "cc", rbe: { deadband: 0, max_interval: 5s } }
 
   # ---- ECU: electrical system -- battery, lighting, raw PDM diagnostic bytes ----
   car.battery_v: { from: "can0:haltech.MISC4.BATTERY_VOLTAGE", units: "Volts" }
-  car.generic_output_states: { from: "can0:haltech.MISC14.GENERIC_OUTPUT_STATES", type: int }
-  car.head_light: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.HEAD_LIGHT_STATE", type: bool, rbe: { min_interval: 200ms, max_interval: 5s } }
-  car.high_beam_light: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.HIGH_BEAM_LIGHT_STATE", type: bool, rbe: { min_interval: 200ms, max_interval: 5s } }
-  car.left_indicator: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.LEFT_INDICATOR_STATE", type: bool, rbe: { min_interval: 200ms, max_interval: 5s } }
-  car.park_light: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.PARK_LIGHT_STATE", type: bool, rbe: { min_interval: 200ms, max_interval: 5s } }
-  car.pdm_raw_byte_0: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_0", type: int }
-  car.pdm_raw_byte_1: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_1", type: int }
-  car.pdm_raw_byte_2: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_2", type: int }
-  car.pdm_raw_byte_3: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_3", type: int }
-  car.right_indicator: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.RIGHT_INDICATOR_STATE", type: bool, rbe: { min_interval: 200ms, max_interval: 5s } }
+  car.generic_output_states: { from: "can0:haltech.MISC14.GENERIC_OUTPUT_STATES", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.head_light: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.HEAD_LIGHT_STATE", type: bool, rbe: { deadband: 0, max_interval: 5s } }
+  car.high_beam_light: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.HIGH_BEAM_LIGHT_STATE", type: bool, rbe: { deadband: 0, max_interval: 5s } }
+  car.left_indicator: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.LEFT_INDICATOR_STATE", type: bool, rbe: { deadband: 0, max_interval: 5s } }
+  car.park_light: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.PARK_LIGHT_STATE", type: bool, rbe: { deadband: 0, max_interval: 5s } }
+  car.pdm_raw_byte_0: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_0", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.pdm_raw_byte_1: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_1", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.pdm_raw_byte_2: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_2", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.pdm_raw_byte_3: { from: "can0:haltech.PDM_INFO.PDM_DATA_BYTE_3", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.right_indicator: { from: "can0:haltech.VEHICLE_LIGHTS_DATA.RIGHT_INDICATOR_STATE", type: bool, rbe: { deadband: 0, max_interval: 5s } }
 
   # ---- IMU: FDI DETA10A (device: imu) ----
   car.accel_x: { from: "can0:imu.FDI_IMU_ACCEL.IMU_ACCEL_X", units: "g" }
@@ -148,18 +159,18 @@ channels:
   # so (unlike the wiring-dependent I/O below) they're mapped unconditionally.
   car.pd16_battery_v: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_BATTERY_VOLTAGE", units: "V" }
   car.pd16_cpu_temp: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_CPU_TEMP", units: "degC" }
-  car.pd16_hco25_12_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_HCO25_12_TEMP_STATUS", type: int }
-  car.pd16_hco25_34_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_HCO25_34_TEMP_STATUS", type: int }
-  car.pd16_ignition_switch: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_IGNITION_SWITCH", type: int }
+  car.pd16_hco25_12_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_HCO25_12_TEMP_STATUS", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.pd16_hco25_34_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_HCO25_34_TEMP_STATUS", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.pd16_ignition_switch: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_IGNITION_SWITCH", type: int, rbe: { deadband: 0, max_interval: 5s } }
   car.pd16_main_rail_temp: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_MAIN_RAIL_TEMP", units: "degC" }
-  car.pd16_main_rail_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_MAIN_RAIL_TEMP_STATUS", type: int }
+  car.pd16_main_rail_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_MAIN_RAIL_TEMP_STATUS", type: int, rbe: { deadband: 0, max_interval: 5s } }
   car.pd16_main_rail_v: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_MAIN_RAIL_VOLTAGE", units: "V" }
   car.pd16_prot_rail_v: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_PROT_RAIL_VOLTAGE", units: "V" }
   car.pd16_thermistor_1_temp: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_THERMISTOR_1_TEMP", units: "degC" }
   car.pd16_thermistor_2_temp: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_THERMISTOR_2_TEMP", units: "degC" }
   car.pd16_thermistor_3_temp: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_THERMISTOR_3_TEMP", units: "degC" }
   car.pd16_total_current: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_TOTAL_CURRENT", units: "A" }
-  car.pd16_tvs_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_TVS_TEMP_STATUS", type: int }
+  car.pd16_tvs_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_TVS_TEMP_STATUS", type: int, rbe: { deadband: 0, max_interval: 5s } }
 
   # Wiring-dependent PDM I/O: deliberately NOT mapped here ("name the measurement,
   # not the wire" -- see docs/CATALOG.md). PD16A_AVI_VOLTAGES / PD16A_SPI_VOLTAGES
@@ -215,29 +226,24 @@ channels:
   car.power_steering_pump_1_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HBO_1_LOAD", units: "%" }
   car.cam_scavenge_pump_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_10_LOAD", units: "%" }
   car.lift_pump_load: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_8_LOAD", units: "%" }
-  # The removed AVI/SPI voltage channels (avi1_v..avi4_v, spi3_v, spi4_v) each
-  # carried an rbe policy -- {deadband: 0.05, max_interval: 5s} -- to keep the
-  # link quiet on these ~100 Hz analog inputs while still guaranteeing a
-  # heartbeat sample for Timescale fill-forward. Re-apply an equivalent policy
-  # (tuned to the mapped signal) once you map one of these.
 
   # ---- PDM/keypad: 15-button CAN keypad, CANopen node 12 (device: haltech2) ----
-  car.wiper_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_1", type: int }
-  car.head_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_2", type: int }
-  car.fuel_pump_changeover_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_3", type: int }
-  car.boost_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_4", type: int }
-  car.keypad_button_5: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_5", type: int }
-  car.dim_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_6", type: int }
-  car.pit_speed_limit_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_7", type: int }
-  car.thermo_fan_1_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_8", type: int }
-  car.hazard_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_9", type: int }
-  car.rotational_idle_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_10", type: int }
-  car.start_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_11", type: int }
-  car.heater_fan_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_12", type: int }
-  car.gearbox_pump_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_13", type: int }
-  car.engine_protection_ack_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_14", type: int }
-  car.fuel_pump_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_15", type: int }
-  car.keypad_nmt_state: { from: "can0:haltech2.KEYPAD_HEARTBEAT.KEYPAD_NMT_STATE", type: int }
+  car.wiper_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_1", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.head_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_2", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.fuel_pump_changeover_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_3", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.boost_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_4", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.keypad_button_5: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_5", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.dim_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_6", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.pit_speed_limit_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_7", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.thermo_fan_1_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_8", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.hazard_light_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_9", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.rotational_idle_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_10", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.start_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_11", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.heater_fan_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_12", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.gearbox_pump_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_13", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.engine_protection_ack_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_14", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.fuel_pump_overide_button: { from: "can0:haltech2.KEYPAD_BUTTONS.KEYPAD_BUTTON_15", type: int, rbe: { deadband: 0, max_interval: 5s } }
+  car.keypad_nmt_state: { from: "can0:haltech2.KEYPAD_HEARTBEAT.KEYPAD_NMT_STATE", type: int, rbe: { deadband: 0, max_interval: 5s } }
 
   # ---- GNSS: UM980 receiver (serial0: UM980, decoder nmea, sentence RMC) ----
   # Not sourced from a DBC: these come from the nmea decoder's parse of the RMC

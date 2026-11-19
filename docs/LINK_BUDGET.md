@@ -89,36 +89,56 @@ epoch fields, ~20 B on its own) and the ~20 B NATS framing estimate get
 paid. Both ticks land in the same ballpark — see §7 for why tick length is
 a weak lever here.
 
-## 4. RBE sensitivity example
+## 4. RBE in the shipped profile
 
-The channel catalog supports per-channel report-by-exception (deadband +
-`max_interval` heartbeat — see `WIRE_FORMAT.md` and the catalog schema).
-`tools/size_batch.py` does not currently support excluding or decimating
-individual streams, so this is computed **analytically**, not from a tool
-run.
+The channel catalog supports per-channel report-by-exception (deadband,
+`min_interval`, `max_interval` heartbeat — see `WIRE_FORMAT.md` and the
+catalog schema). `profiles/example-club-racer/catalog.yaml` ships policies on
+76 of its 145 channels; its header comment explains each one. They fall in
+two kinds:
 
-Hypothetical example: six 100 Hz voltage channels, each carrying a
-`{deadband: 0.05, max_interval: 5s}` RBE policy. The current example profile
-does not map these wiring-dependent inputs and has no active RBE policies;
-this calculation shows the sensitivity if they are added later. At full rate
-these are 6 channels × 100 Hz = **600 samples/s**. Using this document's own
-measured per-sample cost (~15.9 B
-marginal per `DOUBLE` sample, in line with the ~16 B planning figure — see
-§2 and the marginal-cost check in the footnote below):
+- **Lossless** — `{deadband: 0, max_interval: 5s}` on every bool, enum,
+  status word, keypad button and monotonic counter (fuel used, trip
+  distance). Report-on-change drops only a value identical to the last one
+  sent, so every edge and counter step still goes out. The PDM brake switch
+  uses the same rule with a 200 ms heartbeat. `car.trigger_counter`, which
+  steps on every frame, is rate-limited to 5 Hz instead; a 16-bit count
+  cannot wrap in 200 ms, so a reader can still recover every increment.
+- **Lossy, below the noise floor** — the ~100 Hz PD16 input voltages
+  (0.05 V, at most 10 Hz) and the slow pressures, angles, duties and pump
+  current (2 kPa, 0.5°, 0.5 %, 0.2 A, at most 20 Hz). Each deadband sits
+  well under every alarm and watch threshold on the same channel.
 
-```
-600 samples/s × ~16 B/sample ≈ 9,600 B/s ≈ 77 kbit/s  (worst case, values changing every tick)
-```
+rpm, throttle, pedal, MAP, speeds, lambda, knock and the IMU stay at full rate.
 
-Under that policy, once a voltage channel is steady within its 0.05 V deadband,
-it collapses to its `max_interval` heartbeat: 1 sample per 5 s per channel,
-6 channels → 1.2 samples/s ≈ 19 B/s — effectively free. So the **~77 kbit/s
-figure is the worst-case saving**, realised in full only while those
-channels are genuinely steady (car stationary, no switched loads toggling);
-on track, vibration and switching activity will trigger more deadband
-crossings than the idle case, so treat 77 kbit/s as an upper bound on the
-RBE benefit for this stream, not a number to subtract unconditionally from
-the headline offered load.
+**Measured on track** (2026-11-19), by replaying two on-track CAN captures
+from the Collie race of 2026-11-14 through the agent's own decoder, catalog
+mapping and `RbeFilter` (laps 32–34 under a safety car, 390 s; laps 42–44
+green, 280 s). CAN-sourced rows only; GNSS and fused channels are extra:
+
+| CAN rows/s                                  | laps 32–34 | laps 42–44 |
+|---------------------------------------------|-----------:|-----------:|
+| offered (no RBE)                            |      2,852 |      2,819 |
+| 2026-11-08 policies (34 channels)           |      1,502 |      1,511 |
+| + lossless discrete/counter tier (issue #40)|      1,392 |      1,405 |
+
+So RBE now removes about half of all CAN samples. The lossless tier cuts
+about 110 rows/s more, with no information lost. Each discrete channel drops
+from 3.6–19.5 rows/s to its 0.2 rows/s heartbeat. `car.fuel_total_used` drops
+from 7.5 to 2.5–4 rows/s at race pace, because it really does step that
+often. What remains is overwhelmingly signal: the IMU is ~750 rows/s (six
+100 Hz axes and three 50 Hz Euler angles), the 36–38 Hz engine channels
+another ~550, and the unpoliced PD16 output currents and loads ~100. More
+RBE there would mean deadbanding data the timing, fusion and watch layers
+actually use, which is the trade the next section's levers are for.
+
+At the ~16 B marginal cost of a `DOUBLE` sample (§2, and the check below),
+the 1,450 rows/s RBE removes are worth roughly 23 kB/s ≈ **185 kbit/s** of
+offered load on track. A bench at idle does better because fewer channels
+move, so treat a bench number as a ceiling, not a budget.
+
+To rerun it: load the profile with `tools/_bench.py:load_catalog`, decode the
+capture with `CanCollector.replay`, and count `RbeFilter.accept` per channel.
 
 *(Marginal per-sample cost check: a 43-sample batch header-only vs.
 header-plus-samples measures 703 B − 20 B header ≈ 683 B for 43 samples =
@@ -233,11 +253,11 @@ erodes the margin.
   remains a "if we actually need it" lever, not a first-choice one — the
   schema is future-proofed for it, nothing more.
 - **Per-channel rate caps / RBE in the catalog.** Config-only, no code or
-  wire-format change — this is what §4's PD16 example already models.
-  Applying deadband + `max_interval` policies more broadly across the
-  catalog (not just PD16 voltages) trades live fidelity for bandwidth on a
-  per-channel basis, exactly where it matters least (steady-state analog
-  monitoring channels, not fast-changing engine/chassis signals).
+  wire-format change. §4 has what the profile ships and what it measured:
+  every lossless policy is already applied. What is left is lossy, so it
+  trades live fidelity for bandwidth per channel. The cheapest candidates are
+  the PD16 output currents and loads and the slow temperatures, not the
+  fast-changing engine/chassis signals.
 - **Longer ticks — marginal, and here's why.** §3 shows 10 ms → 20 ms only
   moves offered load from 578.4 to 564.0 kbit/s, a **2.5%** change, because
   the only tick-dependent cost is the fixed ~20 B/batch header (protobuf) +

@@ -148,3 +148,76 @@ def test_position_glob_must_resolve_lat_and_lon(catalog):
 def test_missing_track_is_fatal(catalog):
     with pytest.raises(ValueError, match="Wanneroo"):
         build_lap_timing_app(catalog, "position.*", "Suzuka", str(EXAMPLE_PROFILE / "tracks"))
+
+
+def _app_with_state(catalog, state_path: Path) -> LapTimingApp:
+    return build_lap_timing_app(
+        catalog, "position.*", "Wanneroo", str(EXAMPLE_PROFILE / "tracks"), state_path=state_path
+    )
+
+
+def _lap_events(samples: list[Sample]) -> list[dict]:
+    events = [json.loads(sample.value) for sample in _by_channel(samples).get("lap.event", [])]
+    return [event for event in events if event["type"] == "lap_completed"]
+
+
+SESSION = {"session_id": "race-1", "track_name": "Wanneroo"}
+
+
+def test_a_restart_times_the_next_lap_from_the_last_crossing_before_it(catalog, tmp_path):
+    """The Collie 36 h failure: the agent restarted in the pits and its first
+    "lap" ran from the first line it met to start/finish (about a minute),
+    hiding a 33-minute pit visit. Resumed state times it from the last
+    start/finish crossing instead."""
+    state_path = tmp_path / "timing-state.json"
+    path = lap_path(wanneroo_track(), laps=2)
+    halfway = len(path) * 3 // 4  # partway into the second lap
+
+    before = _app_with_state(catalog, state_path)
+    before.apply_session(SESSION)
+    first = _lap_events(_feed(before, catalog, path[:halfway]))
+    assert len(first) == 1 and state_path.exists()
+
+    # The agent is down for 30 minutes; the car carries on along the lap.
+    stopped_s = 1800.0
+    after = _app_with_state(catalog, state_path)
+    after.apply_session(SESSION)
+    rest = [(t + stopped_s, lat, lon) for t, lat, lon in path[halfway:]]
+    resumed = _lap_events(_feed(after, catalog, rest))
+
+    assert after.stats.state_restores == 1
+    assert len(resumed) == 1
+    assert resumed[0]["lap_number"] == 2
+    assert resumed[0]["lap_time"] == pytest.approx(93.0 + stopped_s, abs=2.0)
+    assert resumed[0]["valid"] is False
+
+
+def test_saved_state_from_another_session_is_not_resumed(catalog, tmp_path):
+    state_path = tmp_path / "timing-state.json"
+    path = lap_path(wanneroo_track(), laps=2)
+    # Early in lap 2, so a fresh start still meets a sector line before
+    # start/finish (a sector-less partial lap is dropped as a glitch).
+    halfway = len(path) * 7 // 12
+    before = _app_with_state(catalog, state_path)
+    before.apply_session(SESSION)
+    _feed(before, catalog, path[:halfway])
+
+    after = _app_with_state(catalog, state_path)
+    after.apply_session({**SESSION, "session_id": "race-2"})
+    derived = _feed(after, catalog, path[halfway:])
+    resumed = _lap_events(derived)
+
+    assert after.stats.state_restores == 0
+    # Timing began mid-lap with nothing to resume: the crossing is reported,
+    # its time is unknown rather than the partial lap's.
+    assert len(resumed) == 1 and resumed[0]["lap_time"] is None
+    assert "lap.last_time" not in _by_channel(derived)
+
+
+def test_an_unreadable_state_file_starts_timing_fresh(catalog, tmp_path):
+    state_path = tmp_path / "timing-state.json"
+    state_path.write_text("{not json", encoding="utf-8")
+    app = _app_with_state(catalog, state_path)
+    app.apply_session(SESSION)
+    assert app.stats.state_restores == 0
+    assert _lap_events(_feed(app, catalog, lap_path(wanneroo_track(), laps=1)))

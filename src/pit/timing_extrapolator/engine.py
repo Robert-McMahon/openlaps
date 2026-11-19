@@ -85,9 +85,12 @@ class TimingExtrapolator:
                 self._lap_started_at = crossed_at
                 self._sector_started_at = crossed_at
                 self._running_sector = 1
-                return {
-                    "timing.lap_elapsed_pit": ClockValue(float(event["lap_time"]), "authoritative")
-                }
+                lap_time = event.get("lap_time")
+                if not isinstance(lap_time, (int, float)) or isinstance(lap_time, bool):
+                    # The agent began timing mid-lap: the crossing restarts the
+                    # clocks above, but there is no lap time to show.
+                    return {}
+                return {"timing.lap_elapsed_pit": ClockValue(float(lap_time), "authoritative")}
         return {}
 
     def tick(self, now: float) -> dict[str, ClockValue]:

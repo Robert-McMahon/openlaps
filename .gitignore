@@ -26,6 +26,7 @@ profiles/*
 # after the profile un-ignore rules above, or those re-include it.
 **/.registry-state.json*
 **/.session-state.json*
+**/.timing-state.json*
 **/.claude
 
 # Bench artefacts (docs/plan/PHASE4.md → ground rules): manifests and summary

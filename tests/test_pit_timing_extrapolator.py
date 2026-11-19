@@ -113,6 +113,17 @@ def test_lap_completion_publishes_vehicle_time_then_resets_both_running_clocks()
     assert running["timing.sector_elapsed_pit"].value == pytest.approx(3.0)
 
 
+def test_a_lap_with_no_known_time_restarts_the_clocks_without_publishing_one():
+    engine = TimingExtrapolator(ClockPolicy())
+    healthy(engine)
+
+    completed = engine.observe("lap.event", event("lap_completed", 1_100.0, lap_time=None))
+    running = engine.tick(1_103.0)
+
+    assert "timing.lap_elapsed_pit" not in completed
+    assert running["timing.lap_elapsed_pit"].value == pytest.approx(3.0)
+
+
 def test_each_sector_holds_its_time_until_the_car_is_in_it_again():
     engine = TimingExtrapolator(ClockPolicy())
     healthy(engine)

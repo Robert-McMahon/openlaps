@@ -210,7 +210,9 @@
           "showLegend": true
         },
         "mapping": "auto",
-        "series": [],
+        "series": [
+          {}
+        ],
         "tooltip": {
           "hideZeros": false,
           "mode": "single",

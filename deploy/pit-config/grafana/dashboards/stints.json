@@ -186,8 +186,6 @@
       "description": "The lap holding each stop less the session's median clean lap, in minutes:seconds. It counts the slow drive in and out as well as the time stationary.",
       "fieldConfig": {
         "defaults": {
-          "unit": "time:m:ss",
-          "min": 0,
           "color": {
             "mode": "fixed",
             "fixedColor": "semi-dark-orange"
@@ -208,7 +206,24 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time lost"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:m:ss"
+              },
+              {
+                "id": "min",
+                "value": 0
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "xField": "Stop",
@@ -319,9 +334,6 @@
       "description": "Mean fuel used per clean lap, from the ECU's fuel-used counter. Laps with a pit visit or a counter reset inside them are left out.",
       "fieldConfig": {
         "defaults": {
-          "unit": "litre",
-          "decimals": 2,
-          "min": 0,
           "color": {
             "mode": "palette-classic"
           },
@@ -341,7 +353,28 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mean fuel per lap"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "litre"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "min",
+                "value": 0
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "xField": "Driver",

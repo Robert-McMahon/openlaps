@@ -257,6 +257,10 @@ def test_lap_analysis_is_session_scoped_and_counts_laps_in_crossing_order() -> N
     # The lap-time clock unit belongs to the lap-time field alone: set as the
     # panel default it also formatted the lap axis and the hover time.
     assert "unit" not in scatter["fieldConfig"]["defaults"]
+    # Auto mapping still walks the series list: an empty list maps nothing
+    # and the panel draws "Err". One empty entry means every frame.
+    assert scatter["options"]["mapping"] == "auto"
+    assert scatter["options"]["series"] == [{}]
 
 
 def test_stint_report_covers_stops_driver_consistency_fuel_and_open_stops() -> None:
@@ -276,3 +280,7 @@ def test_stint_report_covers_stops_driver_consistency_fuel_and_open_stops() -> N
         assert '"Driver' in panel_sql or '"Stop"' in panel_sql, panel["title"]
         # Seconds as a Grafana unit render as decimal minutes past 60.
         assert panel["fieldConfig"]["defaults"].get("unit") != "s", panel["title"]
+        if panel["type"] == "barchart":
+            # A panel-wide unit also formats the text labels along the bars'
+            # axis: a clock unit turned every stop's label into NaN.
+            assert "unit" not in panel["fieldConfig"]["defaults"], panel["title"]

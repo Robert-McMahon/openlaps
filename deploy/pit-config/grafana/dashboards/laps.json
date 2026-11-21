@@ -166,8 +166,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "Lap"
+              "id": "byRegexp",
+              "options": "/Lap$/"
             },
             "properties": [
               {
@@ -186,8 +186,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "Lap time"
+              "id": "byRegexp",
+              "options": "/Lap time$/"
             },
             "properties": [
               {
@@ -245,7 +245,8 @@
           "rawQuery": true,
           "rawSql": "SELECT session_lap AS \"Lap\", lap_time_s * 1000 AS \"Lap time\", COALESCE(driver, 'unattributed') AS \"Driver\" FROM (SELECT *, min(lap_time_s) FILTER (WHERE clean) OVER () AS best_s FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session') laps WHERE clean AND lap_time_s <= 1.3 * best_s AND ('$driver' = 'all' OR driver = '$driver') AND ('$stint' = 'all' OR stint_number::text = '$stint') ORDER BY session_lap"
         }
-      ]
+      ],
+      "pluginVersion": "12.4.9"
     },
     {
       "id": 2,

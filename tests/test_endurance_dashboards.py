@@ -257,9 +257,14 @@ def test_lap_analysis_is_session_scoped_and_counts_laps_in_crossing_order() -> N
     # The lap-time clock unit belongs to the lap-time field alone: set as the
     # panel default it also formatted the lap axis and the hover time.
     assert "unit" not in scatter["fieldConfig"]["defaults"]
-    # Auto mapping still walks the series list: an empty list maps nothing
-    # and the panel draws "Err". One empty entry means every frame.
+    # By regex: with a frame per driver the field reads "Simon Lap time".
+    assert {o["matcher"]["id"] for o in scatter["fieldConfig"]["overrides"]} == {"byRegexp"}
+    # Without a pluginVersion of 11.1 or later Grafana takes the options for
+    # the old XY chart format and rewrites them on load: the chart drew "Err",
+    # or the first driver only.
+    assert float(scatter["pluginVersion"].rsplit(".", 1)[0]) >= 11.1
     assert scatter["options"]["mapping"] == "auto"
+    # One entry with no frame: every frame, so every driver, is a series.
     assert scatter["options"]["series"] == [{}]
 
 

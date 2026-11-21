@@ -280,7 +280,7 @@
             "cellOptions": {
               "type": "auto"
             },
-            "filterable": true,
+            "filterable": false,
             "inspect": false
           },
           "mappings": [],
@@ -294,7 +294,44 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Driver"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Clean laps"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spread (s)"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "cellHeight": "sm",
@@ -313,7 +350,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COALESCE(driver, 'unattributed') AS \"Driver\", count(*) AS \"Clean laps\", CASE WHEN percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s) IS NULL THEN NULL ELSE concat(floor((percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s)) / 60)::int, ':', to_char((percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s)) - 60 * floor((percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s)) / 60), 'FM00.000')) END AS \"Median lap\", CASE WHEN min(lap_time_s) IS NULL THEN NULL ELSE concat(floor((min(lap_time_s)) / 60)::int, ':', to_char((min(lap_time_s)) - 60 * floor((min(lap_time_s)) / 60), 'FM00.000')) END AS \"Best lap\", round((percentile_cont(0.75) WITHIN GROUP (ORDER BY lap_time_s) - percentile_cont(0.25) WITHIN GROUP (ORDER BY lap_time_s))::numeric, 2) AS \"Spread (s)\", round(100.0 * count(*) FILTER (WHERE lap_time_s <= best_s * 1.01) / count(*)) AS \"Within 1% of best (%)\" FROM (SELECT *, min(lap_time_s) OVER (PARTITION BY driver) AS best_s FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND clean) paced GROUP BY driver ORDER BY percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s)"
+          "rawSql": "SELECT COALESCE(driver, 'unattributed') AS \"Driver\", count(*) AS \"Clean laps\", CASE WHEN percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s) IS NULL THEN NULL ELSE concat(floor((percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s)) / 60)::int, ':', to_char((percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s)) - 60 * floor((percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s)) / 60), 'FM00.000')) END AS \"Median lap\", CASE WHEN min(lap_time_s) IS NULL THEN NULL ELSE concat(floor((min(lap_time_s)) / 60)::int, ':', to_char((min(lap_time_s)) - 60 * floor((min(lap_time_s)) / 60), 'FM00.000')) END AS \"Best lap\", round((percentile_cont(0.75) WITHIN GROUP (ORDER BY lap_time_s) - percentile_cont(0.25) WITHIN GROUP (ORDER BY lap_time_s))::numeric, 2) AS \"Spread (s)\", round(100.0 * count(*) FILTER (WHERE lap_time_s <= best_s * 1.01) / count(*)) AS \"Within 1% (%)\" FROM (SELECT *, min(lap_time_s) OVER (PARTITION BY driver) AS best_s FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND clean) paced GROUP BY driver ORDER BY percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s)"
         }
       ]
     },
@@ -362,7 +399,7 @@
             "properties": [
               {
                 "id": "unit",
-                "value": "litre"
+                "value": "suffix: L"
               },
               {
                 "id": "decimals",

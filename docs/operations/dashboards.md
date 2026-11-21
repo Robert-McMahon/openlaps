@@ -48,14 +48,16 @@ docker compose -f deploy/pit-compose.yaml restart grafana
   ones pace statistics use.
 - The driver dashboard (`driver.json`) is session-scoped too. It compares
   the `$lap` and `$lap_ref` laps on a 100 ms grid binned to 10 m of
-  `timing.distance`. Grafana shares a crosshair only between panels on a
-  time axis, so its distance traces are time series whose `time` is distance
-  (one metre is one millisecond after the epoch) and the dashboard's fixed
-  time range, 0 to 2.6 s, is the lap: raise `time.to` for a track longer than
-  2,600 m. The axis reads `00:00:01.320` for 1,320 m; the hover gives metres.
-  Channels the car sends only on change (gear, brake switch) are carried
-  forward. Its corner table needs the track's sections
-  in `v_track_sections`: see "Lap sections" in `docs/TRACK_SETUP.md`.
+  `timing.distance`; channels the car sends only on change (gear, brake
+  switch) are carried forward. Its traces are one Business Charts (Apache
+  ECharts) panel, because core Grafana links a crosshair only between panels
+  on a time axis and cannot label an axis with section names. The chart code
+  lives in `deploy/pit-config/grafana/panels/driver_chart.js`; the panel's
+  `options.getOption` is a copy of it, kept equal by a test, so edit the
+  file and paste it into the dashboard JSON (or the reverse). The panel reads
+  two frames: `A`, one row per 10 m, and `B`, the track's sections from
+  `v_track_sections` (see "Lap sections" in `docs/TRACK_SETUP.md`); without
+  sections the axis reads metres.
 - An XY chart panel must carry `"pluginVersion"` (11.1 or later). Without it
   Grafana takes the options for the old XY chart format and rewrites them on
   load, drawing "Err" or one series. Put units and axis limits in overrides

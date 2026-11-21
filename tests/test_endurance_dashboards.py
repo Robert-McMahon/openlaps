@@ -346,43 +346,31 @@ def test_driver_dashboard_compares_a_lap_with_a_reference_by_distance() -> None:
             sql = target["rawSql"]
             assert "$__time" not in sql, panel["title"]
             assert "'$lap'" in sql and "'$lap_ref'" in sql, panel["title"]
-    # Grafana shares a crosshair only between panels on a time axis, so the
-    # distance traces are time series whose "time" is distance: one metre is
-    # one millisecond after the epoch, and the dashboard's fixed range is the
-    # lap. Hovering one marks the same distance on the others, and dragging
-    # across one zooms them all.
-    assert dashboard["graphTooltip"] == 1
-    assert dashboard["timezone"] == "utc"
-    assert dashboard["time"]["from"] == "1970-01-01T00:00:00.000Z"
-    traces = [panel for panel in panels if panel["type"] == "timeseries"]
-    assert [panel["title"] for panel in traces] == [
-        "Speed around the lap",
-        "Time lost or gained against the reference",
-        "Accelerator pedal",
-        "Brake",
-        "Gear",
-    ]
-    for panel in traces:
-        sql = panel["targets"][0]["rawSql"]
-        assert "timing.distance" in sql
-        assert "to_timestamp(bin / 1000.0) AS time" in sql
-        # The axis cannot say metres, so the hover does. A series hidden
-        # from the plot is dropped from the hover too: this one is drawn,
-        # invisibly, on a hidden axis of its own.
-        distance = next(
-            override["properties"]
-            for override in panel["fieldConfig"]["overrides"]
-            if override["matcher"]["options"] == "Distance (m)"
-        )
-        properties = {item["id"]: item["value"] for item in distance}
-        assert properties["custom.hideFrom"]["viz"] is False
-        assert properties["custom.lineWidth"] == 0
-        assert properties["custom.axisPlacement"] == "hidden"
-        assert panel["options"]["tooltip"]["mode"] == "multi"
+    # Core Grafana shares a crosshair only between panels on a time axis and
+    # cannot name the sections along an axis, so the five traces are one
+    # ECharts panel: stacked charts on a real distance axis, hover and zoom
+    # linked between them.
+    chart = next(panel for panel in panels if panel["type"] == "volkovlabs-echarts-panel")
+    assert dashboard.get("graphTooltip", 0) == 0
+    traces, sections = (target["rawSql"] for target in chart["targets"])
+    assert [target["refId"] for target in chart["targets"]] == ["A", "B"]
+    for column in ("Distance", "Speed", "Speed ref", "Pedal", "Brake", "Gear ref", "Time lost"):
+        assert f'AS "{column}"' in traces, column
+    assert "timing.distance" in traces
     # The pedal is what the driver did; the throttle body is what the ECU did.
-    pedal = next(panel for panel in traces if panel["title"] == "Accelerator pedal")
-    assert "car.accel_pedal_pos" in pedal["targets"][0]["rawSql"]
+    assert "car.accel_pedal_pos" in traces
     assert "car.throttle_pos" not in json.dumps(dashboard)
+    # Section edges arrive in the car's own metres: the map's lap fractions
+    # times the distance the car measured for this lap.
+    assert "v_track_sections" in sections and "start_fraction * lap_m.m" in sections
+    # The chart code is edited in its own file; the dashboard carries a copy.
+    code = (DASHBOARDS.parent / "panels" / "driver_chart.js").read_text(encoding="utf-8")
+    assert chart["options"]["getOption"] == code
+    assert chart["options"]["editorMode"] == "code"
+    assert "link: [{ xAxisIndex: 'all' }]" in code, "the crosshair must span every chart"
+    assert "customValues: mids" in code, "the axis is labelled with section names"
+    # A chart this tall must not swallow the page scroll.
+    assert "type: 'inside'" not in code
     gg = next(panel for panel in panels if panel["type"] == "xychart")
     # See the lap scatter: without it Grafana rewrites the options.
     assert float(gg["pluginVersion"].rsplit(".", 1)[0]) >= 11.1

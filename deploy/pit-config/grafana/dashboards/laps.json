@@ -1,7 +1,7 @@
 {
   "uid": "laps",
   "title": "Lap and sector analysis",
-  "description": "Lap and sector analysis \u2014 provisioned openlaps endurance operations dashboard.",
+  "description": "Lap and sector analysis for one session. Every panel reads the session picked at the top, not the dashboard time range.",
   "editable": false,
   "schemaVersion": 41,
   "version": 1,
@@ -57,17 +57,14 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
-        "query": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT concat(to_char(min(crossed_at), 'YYYY-MM-DD HH24:MI'), ' UTC ', COALESCE(max(session_type), 'no session'), ' at ', COALESCE(NULLIF(max(track_name), ''), 'unknown track'), ' (', count(*), ' laps)') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' GROUP BY session_id ORDER BY min(crossed_at) DESC",
+        "definition": "SELECT concat(to_char(min(crossed_at), 'YYYY-MM-DD HH24:MI'), ' UTC ', COALESCE(max(session_type), 'no session'), ' at ', COALESCE(NULLIF(max(track_name), ''), 'unknown track'), ' (', count(*), ' laps)') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' GROUP BY session_id ORDER BY min(crossed_at) DESC",
         "refresh": 1,
         "options": [],
-        "includeAll": true,
-        "sort": 1,
-        "allValue": "all",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        }
+        "includeAll": false,
+        "sort": 0,
+        "current": {},
+        "description": "Every session this vehicle has laps in, newest first, whatever the time range. Opens on the newest."
       },
       {
         "name": "driver",
@@ -77,17 +74,18 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
-        "query": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') GROUP BY driver ORDER BY driver",
+        "definition": "SELECT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') GROUP BY driver ORDER BY driver",
         "refresh": 1,
         "options": [],
         "includeAll": true,
-        "sort": 1,
-        "allValue": "all",
+        "sort": 0,
         "current": {
           "text": "All",
           "value": "$__all"
-        }
+        },
+        "description": "Drivers with laps in the selected session.",
+        "allValue": "all"
       },
       {
         "name": "stint",
@@ -97,65 +95,26 @@
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
-        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
+        "query": "SELECT concat('Stint ', stint_number, ' - ', COALESCE(max(driver), 'unattributed'), ' (', count(*), ' laps)') AS __text, stint_number::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND stint_number IS NOT NULL AND ('$driver' = 'all' OR driver = '$driver') GROUP BY stint_number ORDER BY stint_number",
+        "definition": "SELECT concat('Stint ', stint_number, ' - ', COALESCE(max(driver), 'unattributed'), ' (', count(*), ' laps)') AS __text, stint_number::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND stint_number IS NOT NULL AND ('$driver' = 'all' OR driver = '$driver') GROUP BY stint_number ORDER BY stint_number",
         "refresh": 1,
         "options": [],
         "includeAll": true,
-        "sort": 1,
-        "allValue": "all",
+        "sort": 0,
         "current": {
           "text": "All",
           "value": "$__all"
-        }
-      },
-      {
-        "name": "lap",
-        "label": "Lap",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "timescale"
         },
-        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
-        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
-        "refresh": 1,
-        "options": [],
-        "includeAll": true,
-        "sort": 1,
-        "allValue": "all",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        }
-      },
-      {
-        "name": "lap_compare",
-        "label": "Comparison lap",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "timescale"
-        },
-        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
-        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
-        "refresh": 1,
-        "options": [],
-        "includeAll": true,
-        "sort": 6,
-        "allValue": "all",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        }
+        "description": "Stints of the selected session, in order.",
+        "allValue": "all"
       }
     ]
   },
   "panels": [
     {
       "id": 1,
-      "title": "Lap-time scatter by driver and stint",
-      "type": "timeseries",
+      "title": "Lap times by driver",
+      "type": "xychart",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
@@ -163,12 +122,12 @@
       "gridPos": {
         "x": 0,
         "y": 0,
-        "w": 12,
-        "h": 8
+        "w": 24,
+        "h": 11
       },
+      "description": "One point per clean lap: valid, timed, and with no pit entry or exit inside it. Across is the lap's number in the session, counted in crossing order; up is the lap time. Laps slower than 130% of the session's best clean lap (safety car, traffic jams) are left out so the racing laps fill the panel. The Laps table below lists every lap.",
       "fieldConfig": {
         "defaults": {
-          "unit": "time:m:ss.S",
           "color": {
             "mode": "palette-classic"
           },
@@ -178,33 +137,20 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
-            "barAlignment": 0,
-            "barWidthFactor": 0.6,
-            "drawStyle": "points",
-            "fillOpacity": 0,
-            "gradientMode": "none",
+            "fillOpacity": 70,
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
             },
-            "insertNulls": false,
-            "lineInterpolation": "linear",
             "lineWidth": 0,
-            "pointSize": 7,
+            "pointSize": {
+              "fixed": 6
+            },
             "scaleDistribution": {
               "type": "linear"
             },
-            "showPoints": "always",
-            "showValues": false,
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
+            "show": "points"
           },
           "mappings": [],
           "thresholds": {
@@ -215,29 +161,76 @@
                 "value": null
               }
             ]
-          },
-          "min": 80000,
-          "max": 110000
+          }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lap"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Lap of the session"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lap time"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:m:ss.S"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Lap time"
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
-          "calcs": [
-            "min",
-            "mean",
-            "lastNotNull"
-          ],
-          "displayMode": "table",
+          "calcs": [],
+          "displayMode": "list",
           "placement": "bottom",
           "showLegend": true
         },
+        "mapping": "auto",
+        "series": [],
         "tooltip": {
           "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "Driver"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": false
+            }
+          }
+        }
+      ],
       "targets": [
         {
           "refId": "A",
@@ -246,26 +239,25 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "time_series",
+          "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT crossed_at AS time, concat(COALESCE(driver, 'unattributed'), ', stint ', COALESCE(stint_number::text, '-')) AS \"metric\", lap_time_s * 1000 AS \"Lap time\" FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') ORDER BY crossed_at"
+          "rawSql": "SELECT session_lap AS \"Lap\", lap_time_s * 1000 AS \"Lap time\", COALESCE(driver, 'unattributed') AS \"Driver\" FROM (SELECT *, min(lap_time_s) FILTER (WHERE clean) OVER () AS best_s FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session') laps WHERE clean AND lap_time_s <= 1.3 * best_s AND ('$driver' = 'all' OR driver = '$driver') AND ('$stint' = 'all' OR stint_number::text = '$stint') ORDER BY session_lap"
         }
-      ],
-      "description": "One point per lap at the time it was completed, one colour per driver and stint. The legend gives each stint's best, mean and latest lap. Lap times read minutes:seconds.tenths; the query hands Grafana milliseconds so it can format them as a clock. The axis is fixed at 1:20 to 1:50, so slower laps (pit, safety car) fall off the top."
+      ]
     },
     {
       "id": 2,
-      "title": "Best theoretical lap from sector bests",
+      "title": "Best lap and best theoretical lap",
       "type": "stat",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 12,
-        "h": 8
+        "x": 0,
+        "y": 11,
+        "w": 6,
+        "h": 7
       },
       "fieldConfig": {
         "defaults": {
@@ -290,9 +282,14 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "/^Best theoretical lap$/",
+          "fields": "/.*/",
           "values": false
-        }
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto"
       },
       "targets": [
         {
@@ -304,31 +301,37 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT max(crossed_at) AS time, to_char(make_interval(secs => sum(best_split_s)), 'FMMI:SS.MS') AS \"Best theoretical lap\" FROM (SELECT sector, min(split_time_s) AS best_split_s, max(crossed_at) AS crossed_at FROM v_lap_sectors WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND valid GROUP BY sector) best"
+          "rawSql": "WITH laps AS (SELECT lap_id, lap_time_s FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND clean), sectors AS (SELECT s.sector, min(s.split_time_s) AS best_s FROM laps l JOIN v_lap_sectors s ON s.lap_id = l.lap_id GROUP BY s.sector) SELECT CASE WHEN (SELECT min(lap_time_s) FROM laps) IS NULL THEN NULL ELSE concat(floor(((SELECT min(lap_time_s) FROM laps)) / 60)::int, ':', to_char(((SELECT min(lap_time_s) FROM laps)) - 60 * floor(((SELECT min(lap_time_s) FROM laps)) / 60), 'FM00.000')) END AS \"Best lap\", CASE WHEN (SELECT sum(best_s) FROM sectors) IS NULL THEN NULL ELSE concat(floor(((SELECT sum(best_s) FROM sectors)) / 60)::int, ':', to_char(((SELECT sum(best_s) FROM sectors)) - 60 * floor(((SELECT sum(best_s) FROM sectors)) / 60), 'FM00.000')) END AS \"Best theoretical lap\""
         }
       ],
-      "description": "Definitive sector bests summed; m:ss.mmm."
+      "description": "Fastest clean lap of the session, and the sum of the fastest sector 1, 2 and 3 from clean laps, whoever set them. m:ss.mmm."
     },
     {
-      "id": 3,
-      "title": "Identity-based sector comparison",
+      "id": 5,
+      "title": "Driver pace: best, median and best sectors",
       "type": "table",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 0,
-        "y": 8,
-        "w": 12,
-        "h": 8
+        "x": 6,
+        "y": 11,
+        "w": 18,
+        "h": 7
       },
+      "description": "Clean laps only. Median is the middle lap, so a few slow laps do not move it. The best sectors are each driver's own; Theoretical is their sum.",
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
-          "color": {
-            "mode": "palette-classic"
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
           },
+          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -341,7 +344,13 @@
         },
         "overrides": []
       },
-      "options": {},
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
       "targets": [
         {
           "refId": "A",
@@ -352,52 +361,34 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "WITH pick AS (SELECT CASE WHEN '$lap' = 'all' THEN (SELECT lap_id::text FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') ORDER BY crossed_at DESC LIMIT 1) ELSE '$lap' END AS selected_id, CASE WHEN '$lap_compare' = 'all' THEN (SELECT lap_id::text FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND valid AND pit_status = 'track' ORDER BY lap_time_s LIMIT 1) ELSE '$lap_compare' END AS compare_id) SELECT a.crossed_at AS time, a.sector AS \"Sector\", concat('Lap ', a.lap_number) AS \"Selected lap\", to_char(make_interval(secs => a.split_time_s), 'FMMI:SS.MS') AS \"Selected lap sector\", concat('Lap ', b.lap_number) AS \"Comparison lap\", to_char(make_interval(secs => b.split_time_s), 'FMMI:SS.MS') AS \"Comparison lap sector\", to_char(a.split_time_s - b.split_time_s, 'S990.000') AS \"Sector delta\" FROM pick JOIN v_lap_sectors a ON a.lap_id::text = pick.selected_id JOIN v_lap_sectors b ON b.lap_id::text = pick.compare_id AND b.vehicle_id = a.vehicle_id AND b.sector = a.sector WHERE a.vehicle_id = '$vehicle' ORDER BY a.sector"
+          "rawSql": "WITH laps AS (SELECT lap_id, driver, lap_time_s FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND clean), sectors AS (SELECT l.driver, s.sector, min(s.split_time_s) AS best_s FROM laps l JOIN v_lap_sectors s ON s.lap_id = l.lap_id GROUP BY l.driver, s.sector), pace AS (SELECT driver, count(*) AS laps, min(lap_time_s) AS best_s, percentile_cont(0.5) WITHIN GROUP (ORDER BY lap_time_s) AS median_s FROM laps GROUP BY driver), split AS (SELECT driver, max(best_s) FILTER (WHERE sector = 1) AS s1, max(best_s) FILTER (WHERE sector = 2) AS s2, max(best_s) FILTER (WHERE sector = 3) AS s3, sum(best_s) AS theoretical_s FROM sectors GROUP BY driver) SELECT COALESCE(p.driver, 'unattributed') AS \"Driver\", p.laps AS \"Clean laps\", CASE WHEN p.best_s IS NULL THEN NULL ELSE concat(floor((p.best_s) / 60)::int, ':', to_char((p.best_s) - 60 * floor((p.best_s) / 60), 'FM00.000')) END AS \"Best\", CASE WHEN p.median_s IS NULL THEN NULL ELSE concat(floor((p.median_s) / 60)::int, ':', to_char((p.median_s) - 60 * floor((p.median_s) / 60), 'FM00.000')) END AS \"Median\", CASE WHEN s.s1 IS NULL THEN NULL ELSE concat(floor((s.s1) / 60)::int, ':', to_char((s.s1) - 60 * floor((s.s1) / 60), 'FM00.000')) END AS \"Best S1\", CASE WHEN s.s2 IS NULL THEN NULL ELSE concat(floor((s.s2) / 60)::int, ':', to_char((s.s2) - 60 * floor((s.s2) / 60), 'FM00.000')) END AS \"Best S2\", CASE WHEN s.s3 IS NULL THEN NULL ELSE concat(floor((s.s3) / 60)::int, ':', to_char((s.s3) - 60 * floor((s.s3) / 60), 'FM00.000')) END AS \"Best S3\", CASE WHEN s.theoretical_s IS NULL THEN NULL ELSE concat(floor((s.theoretical_s) / 60)::int, ':', to_char((s.theoretical_s) - 60 * floor((s.theoretical_s) / 60), 'FM00.000')) END AS \"Theoretical\" FROM pace p LEFT JOIN split s ON s.driver IS NOT DISTINCT FROM p.driver ORDER BY p.median_s"
         }
-      ],
-      "description": "Pick two laps to compare sector by sector. With a picker left on All, the selected lap is the latest lap and the comparison lap is the fastest clean lap in the time range. Both pickers are keyed by lap_id, never by a possibly repeated lap number. The delta is signed seconds, selected minus comparison."
+      ]
     },
     {
-      "id": 4,
-      "title": "Degradation by lap-in-stint",
-      "type": "xychart",
+      "id": 6,
+      "title": "Laps",
+      "type": "table",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
       "gridPos": {
-        "x": 12,
-        "y": 8,
-        "w": 12,
-        "h": 8
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 14
       },
+      "description": "Every lap of the session, newest first, for the driver and stint picked at the top. Lap is the count in crossing order; the car's own counter restarts when its agent does. Note says why a lap is not a clean one: stop (a whole pit stop inside the lap), in, out, or invalid.",
       "fieldConfig": {
         "defaults": {
-          "unit": "time:m:ss.S",
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "semi-dark-blue"
-          },
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "fillOpacity": 60,
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
             },
-            "lineWidth": 0,
-            "pointSize": {
-              "fixed": 7
-            },
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "show": "points"
+            "filterable": true,
+            "inspect": false
           },
           "mappings": [],
           "thresholds": {
@@ -414,106 +405,50 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Lap in stint"
+              "options": "Lap"
             },
             "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Stint"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "time"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Crossed"
+              },
               {
                 "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "custom.axisLabel",
-                "value": "Lap in stint"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Lap time"
-            },
-            "properties": [
-              {
-                "id": "custom.axisLabel",
-                "value": "Lap time"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Excluded lap time"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
-                }
+                "value": "time:ddd HH:mm:ss"
               }
             ]
           }
         ]
       },
       "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "mapping": "manual",
-        "series": [
-          {
-            "frame": {
-              "matcher": {
-                "id": "byIndex",
-                "options": 0
-              }
-            },
-            "x": {
-              "matcher": {
-                "id": "byName",
-                "options": "Lap in stint"
-              }
-            },
-            "y": {
-              "matcher": {
-                "id": "byName",
-                "options": "Lap time"
-              }
-            }
-          },
-          {
-            "frame": {
-              "matcher": {
-                "id": "byIndex",
-                "options": 0
-              }
-            },
-            "x": {
-              "matcher": {
-                "id": "byName",
-                "options": "Lap in stint"
-              }
-            },
-            "y": {
-              "matcher": {
-                "id": "byName",
-                "options": "Excluded lap time"
-              }
-            }
-          }
-        ],
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
         }
       },
       "targets": [
@@ -526,11 +461,12 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT crossed_at AS time, lap_in_stint AS \"Lap in stint\", CASE WHEN clean THEN lap_time_s * 1000 END AS \"Lap time\", CASE WHEN NOT clean THEN lap_time_s * 1000 END AS \"Excluded lap time\" FROM (SELECT crossed_at, lap_time_s, row_number() OVER (PARTITION BY session_id, stint_number ORDER BY crossed_at) AS lap_in_stint, (valid AND pit_status = 'track') AS clean FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) AND ('$session' = 'all' OR session_id::text = '$session') AND ('$stint' = 'all' OR stint_number::text = '$stint')) laps ORDER BY crossed_at"
+          "rawSql": "SELECT l.session_lap AS \"Lap\", COALESCE(l.driver, '-') AS \"Driver\", l.stint_number AS \"Stint\", l.lap_in_stint AS \"Lap in stint\", CASE WHEN l.lap_time_s IS NULL THEN NULL ELSE concat(floor((l.lap_time_s) / 60)::int, ':', to_char((l.lap_time_s) - 60 * floor((l.lap_time_s) / 60), 'FM00.000')) END AS \"Time\", CASE WHEN s.s1 IS NULL THEN NULL ELSE concat(floor((s.s1) / 60)::int, ':', to_char((s.s1) - 60 * floor((s.s1) / 60), 'FM00.000')) END AS \"S1\", CASE WHEN s.s2 IS NULL THEN NULL ELSE concat(floor((s.s2) / 60)::int, ':', to_char((s.s2) - 60 * floor((s.s2) / 60), 'FM00.000')) END AS \"S2\", CASE WHEN s.s3 IS NULL THEN NULL ELSE concat(floor((s.s3) / 60)::int, ':', to_char((s.s3) - 60 * floor((s.s3) / 60), 'FM00.000')) END AS \"S3\", concat_ws(', ', NULLIF(l.lap_kind, 'flying'), CASE WHEN NOT l.valid THEN 'invalid' END) AS \"Note\", l.crossed_at AS time FROM (SELECT * FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND ('$driver' = 'all' OR driver = '$driver') AND ('$stint' = 'all' OR stint_number::text = '$stint')) l LEFT JOIN (SELECT lap_id, max(split_time_s) FILTER (WHERE sector = 1) AS s1, max(split_time_s) FILTER (WHERE sector = 2) AS s2, max(split_time_s) FILTER (WHERE sector = 3) AS s3 FROM v_lap_sectors WHERE vehicle_id = '$vehicle' GROUP BY lap_id) s ON s.lap_id = l.lap_id ORDER BY l.crossed_at DESC"
         }
-      ],
-      "description": "Lap time against the lap's position in its stint. Blue points are clean laps; red points are pit and invalid laps, shown but not part of the trend.",
-      "pluginVersion": "12.4.9"
+      ]
     }
-  ]
+  ],
+  "timepicker": {
+    "hidden": true
+  }
 }

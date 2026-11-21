@@ -47,6 +47,7 @@ from pit.live_decoder.config import LiveConfig
 from pit.live_decoder.health import HealthState, serve_health
 from pit.live_decoder.limiter import ConflatingLimiter, LiveUpdate
 from pit.live_decoder.reload import ConfigReloader
+from pit.live_decoder.resend import Resender
 from pit.registry_cache import (
     MSG_TYPE_HEADER,
     MSG_TYPE_REGISTRY,
@@ -354,6 +355,7 @@ class LiveDecoder:
         self.vehicle: str = _resolve_vehicle(settings, self.config)
         self.cache = RegistryCache()
         self.limiter = ConflatingLimiter(self.config)
+        self.resender = Resender()
         self.health = HealthState()
         self.health.config_mtime_ns = self.reloader.mtime_ns
         self.health.stream = settings.stream
@@ -599,6 +601,8 @@ class LiveDecoder:
                     # that stays down costs one attempt per period, not one
                     # per poll.
                     last_message = time.monotonic()
+            for repeat in self.resender.due(self.config, now, self.health.last_message_mono):
+                self.sink.submit(repeat)
             self._reload(now)
             self._sync_limiter_health()
 
@@ -693,8 +697,10 @@ class LiveDecoder:
             logger.warning("live-decoder: config rule %r matches no registry channel", pattern)
 
     def _publish(self, updates: list[LiveUpdate]) -> None:
+        now = time.monotonic()
         for update in updates:
             self.sink.submit(update)
+            self.resender.note(update, now)
 
     def _sync_limiter_health(self) -> None:
         self.health.suppressed.clear()

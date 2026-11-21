@@ -547,6 +547,10 @@ def test_every_dashboard_query_executes_and_returns_configured_fields(timescale_
         for at, kind, line in (
             (stamp - timedelta(minutes=9), "pit_entry", "PitEntryRefuel"),
             (stamp - timedelta(minutes=1), "pit_exit", "PitExitRefuel"),
+            # A pit-lane visit wholly inside lap 1, so the stint report has a
+            # stop lap; lap 2 stays the clean one.
+            (stamp - timedelta(minutes=3, seconds=30), "pit_entry", "PitEntry"),
+            (stamp - timedelta(minutes=2, seconds=30), "pit_exit", "PitExit"),
         ):
             conn.execute(
                 "INSERT INTO samples (time, channel_key, value_text) VALUES (%s, %s, %s)",

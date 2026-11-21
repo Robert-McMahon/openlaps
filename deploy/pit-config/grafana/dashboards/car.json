@@ -5345,92 +5345,25 @@
         "description": "Opens on the vehicle this pit is deployed for (OPENLAPS_VEHICLE_ID); any other vehicle with data in the time range can be picked."
       },
       {
-        "allValue": "all",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "timescale"
-        },
-        "definition": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
-        "includeAll": true,
-        "label": "Session (completed laps)",
         "name": "session",
-        "options": [],
-        "query": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
-        "refresh": 1,
-        "regex": "",
-        "regexApplyTo": "value",
-        "sort": 2,
-        "type": "query"
-      },
-      {
-        "allValue": "all",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        },
+        "label": "Session",
+        "type": "query",
         "datasource": {
           "type": "grafana-postgresql-datasource",
           "uid": "timescale"
         },
-        "definition": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
-        "includeAll": true,
-        "label": "Driver",
-        "name": "driver",
-        "options": [],
-        "query": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
+        "query": "SELECT concat(to_char(min(crossed_at), 'YYYY-MM-DD HH24:MI'), ' UTC ', COALESCE(max(session_type), 'no session'), ' at ', COALESCE(NULLIF(max(track_name), ''), 'unknown track'), ' (', count(*), ' laps)') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' GROUP BY session_id ORDER BY min(crossed_at) DESC",
+        "definition": "SELECT concat(to_char(min(crossed_at), 'YYYY-MM-DD HH24:MI'), ' UTC ', COALESCE(max(session_type), 'no session'), ' at ', COALESCE(NULLIF(max(track_name), ''), 'unknown track'), ' (', count(*), ' laps)') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' GROUP BY session_id ORDER BY min(crossed_at) DESC",
         "refresh": 1,
-        "regex": "",
-        "regexApplyTo": "value",
-        "sort": 3,
-        "type": "query"
-      },
-      {
-        "allValue": "all",
+        "options": [],
+        "includeAll": true,
+        "sort": 0,
         "current": {
           "text": "All",
           "value": "$__all"
         },
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "timescale"
-        },
-        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
-        "includeAll": true,
-        "label": "Stint",
-        "name": "stint",
-        "options": [],
-        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' — ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
-        "refresh": 1,
-        "regex": "",
-        "regexApplyTo": "value",
-        "sort": 4,
-        "type": "query"
-      },
-      {
-        "allValue": "all",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "timescale"
-        },
-        "definition": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
-        "includeAll": true,
-        "label": "Lap",
-        "name": "lap",
-        "options": [],
-        "query": "SELECT concat('Lap ', lap_number, ' — ', COALESCE(driver, 'unattributed'), ' — ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
-        "refresh": 1,
-        "regex": "",
-        "regexApplyTo": "value",
-        "sort": 5,
-        "type": "query"
+        "description": "Every session this vehicle has laps in, newest first, whatever the time range.",
+        "allValue": "all"
       },
       {
         "allowCustomValue": false,

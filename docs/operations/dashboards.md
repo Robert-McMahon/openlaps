@@ -23,7 +23,18 @@ docker compose -f deploy/pit-compose.yaml restart grafana
 - SQL panels query stable views, never base tables.
 - Numeric MQTT payloads retain `value`; display-only timing panels may use the
   publisher's race-formatted `display` field.
-- Keep shared relational template variables aligned with `car.json`.
+- A dashboard carries only the pickers its panels read, and takes them from
+  the shared definitions (`car.json` has the session picker, `laps.json` the
+  driver and stint pickers). The session picker lists every session with
+  laps, newest first, and is not bound to the time range.
+- Report dashboards (`laps.json`, `stints.json`) are session-scoped: every
+  panel filters on `$session`, none reads the time range, and the time picker
+  is hidden. They read `v_session_laps`, whose `session_lap` counts laps in
+  crossing order; `lap_number` restarts with the vehicle agent and is not
+  shown. `clean` laps (valid, timed, no pit entry or exit inside) are the
+  ones pace statistics use.
+- Show lap and stop times as `m:ss` text or with a `time:` unit on a
+  millisecond value. Grafana's seconds unit renders decimal minutes.
 - The video dashboard connects directly from the browser to vehicle go2rtc;
   video does not pass through NATS or TimescaleDB.
 

@@ -38,6 +38,13 @@
 defaults:
   max_hz: 10          # per-channel ceiling; 0 means unlimited
   total_max_hz: 500   # aggregate safety valve; 0 means unlimited
+  # Most channels are sent by the car only when they change, and nothing here
+  # is retained, so a gauge that subscribes late (a dashboard just opened or
+  # just refreshed) would sit on "No data" until its channel next moved. Each
+  # channel's last value is repeated once it has been quiet this long, while
+  # batches are still arriving from the car; 0 turns that off. At most one
+  # extra message per selected channel per second.
+  resend_s: 1
 
 channels:
   # GNSS, 50 Hz at source across 5 channels. The map trail and the speed

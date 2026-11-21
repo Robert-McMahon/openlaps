@@ -5,7 +5,7 @@
   "editable": false,
   "schemaVersion": 41,
   "version": 1,
-  "refresh": "1s",
+  "refresh": "5s",
   "time": {
     "from": "now-15m",
     "to": "now"
@@ -48,86 +48,6 @@
         "sort": 0,
         "current": {},
         "description": "Opens on the vehicle this pit is deployed for (OPENLAPS_VEHICLE_ID); any other vehicle with data in the time range can be picked."
-      },
-      {
-        "name": "session",
-        "label": "Session",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "timescale"
-        },
-        "definition": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
-        "query": "SELECT DISTINCT COALESCE(concat(left(session_id::text, 13), ' UTC ', session_type, ' at ', COALESCE(NULLIF(track_name, ''), 'unknown track')), 'unattributed') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND $__timeFilter(crossed_at) ORDER BY 1",
-        "refresh": 1,
-        "options": [],
-        "includeAll": true,
-        "sort": 1,
-        "allValue": "all",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        }
-      },
-      {
-        "name": "driver",
-        "label": "Driver",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "timescale"
-        },
-        "definition": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
-        "query": "SELECT DISTINCT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') AND $__timeFilter(crossed_at) ORDER BY 1",
-        "refresh": 1,
-        "options": [],
-        "includeAll": true,
-        "sort": 1,
-        "allValue": "all",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        }
-      },
-      {
-        "name": "stint",
-        "label": "Stint",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "timescale"
-        },
-        "definition": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
-        "query": "SELECT DISTINCT concat('Stint ', stint_number, ' \u2014 ', COALESCE(driver, 'unattributed')) AS __text, stint_number::text AS __value FROM v_laps WHERE '$session' <> 'all' AND session_id::text = '$session' AND stint_number IS NOT NULL ORDER BY 1",
-        "refresh": 1,
-        "options": [],
-        "includeAll": true,
-        "sort": 1,
-        "allValue": "all",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        }
-      },
-      {
-        "name": "lap",
-        "label": "Lap",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-postgresql-datasource",
-          "uid": "timescale"
-        },
-        "definition": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
-        "query": "SELECT concat('Lap ', lap_number, ' \u2014 ', COALESCE(driver, 'unattributed'), ' \u2014 ', to_char(crossed_at, 'YYYY-MM-DD HH24:MI:SS')) AS __text, lap_id::text AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND ('$session' = 'all' OR session_id::text = '$session') AND ('$driver' = 'all' OR driver = '$driver') AND $__timeFilter(crossed_at) ORDER BY crossed_at",
-        "refresh": 1,
-        "options": [],
-        "includeAll": true,
-        "sort": 1,
-        "allValue": "all",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        }
       }
     ]
   },
@@ -859,7 +779,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket('200 ms', time) AS \"time\",\n       max(value) FILTER (WHERE channel = 'position.lat')   AS \"latitude\",\n       max(value) FILTER (WHERE channel = 'position.lon')   AS \"longitude\",\n       max(value) FILTER (WHERE channel = 'position.speed') AS \"speed\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle'\n  AND channel IN ('position.lat', 'position.lon', 'position.speed')\n  AND $__timeFilter(time)\nGROUP BY 1\nHAVING max(value) FILTER (WHERE channel = 'position.lat') IS NOT NULL\n   AND max(value) FILTER (WHERE channel = 'position.lon') IS NOT NULL\nORDER BY 1"
+          "rawSql": "SELECT time_bucket('500 ms', time) AS \"time\",\n       max(value) FILTER (WHERE channel = 'position.lat')   AS \"latitude\",\n       max(value) FILTER (WHERE channel = 'position.lon')   AS \"longitude\",\n       max(value) FILTER (WHERE channel = 'position.speed') AS \"speed\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle'\n  AND channel IN ('position.lat', 'position.lon', 'position.speed')\n  AND $__timeFilter(time)\n  AND time > $__timeTo()::timestamptz - interval '150 seconds'\n  AND time > $__timeTo()::timestamptz - interval '150 seconds'\nGROUP BY 1\nHAVING max(value) FILTER (WHERE channel = 'position.lat') IS NOT NULL\n   AND max(value) FILTER (WHERE channel = 'position.lon') IS NOT NULL\nORDER BY 1"
         },
         {
           "refId": "B",
@@ -870,12 +790,12 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT time_bucket('200 ms', time) AS \"time\",\n       max(value) FILTER (WHERE channel = 'position.lat')   AS \"latitude\",\n       max(value) FILTER (WHERE channel = 'position.lon')   AS \"longitude\",\n       max(value) FILTER (WHERE channel = 'position.speed') AS \"speed\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle'\n  AND channel IN ('position.lat', 'position.lon', 'position.speed')\n  AND $__timeFilter(time)\nGROUP BY 1\nHAVING max(value) FILTER (WHERE channel = 'position.lat') IS NOT NULL\n   AND max(value) FILTER (WHERE channel = 'position.lon') IS NOT NULL\nORDER BY 1 DESC\nLIMIT 1"
+          "rawSql": "SELECT time_bucket('500 ms', time) AS \"time\",\n       max(value) FILTER (WHERE channel = 'position.lat')   AS \"latitude\",\n       max(value) FILTER (WHERE channel = 'position.lon')   AS \"longitude\",\n       max(value) FILTER (WHERE channel = 'position.speed') AS \"speed\"\nFROM v_samples_named\nWHERE vehicle_id = '$vehicle'\n  AND channel IN ('position.lat', 'position.lon', 'position.speed')\n  AND $__timeFilter(time)\n  AND time > $__timeTo()::timestamptz - interval '150 seconds'\n  AND time > $__timeTo()::timestamptz - interval '150 seconds'\nGROUP BY 1\nHAVING max(value) FILTER (WHERE channel = 'position.lat') IS NOT NULL\n   AND max(value) FILTER (WHERE channel = 'position.lon') IS NOT NULL\nORDER BY 1 DESC\nLIMIT 1"
         }
       ],
       "timeFrom": "1m",
       "maxDataPoints": 600,
-      "description": "Trail and current position. Pivoted to one frame with real latitude/longitude fields -- the geomap locates by field name, which three separate single-value MQTT frames could never provide.",
+      "description": "Trail and current position. Pivoted to one frame with real latitude/longitude fields -- the geomap locates by field name, which three separate single-value MQTT frames could never provide. The trail is the last 150 seconds at two points a second: about a lap and a half, redrawn every 5 s.",
       "hideTimeOverride": true
     },
     {

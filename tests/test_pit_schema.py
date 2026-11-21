@@ -134,6 +134,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "014_pit_stops_nested.sql",
             "015_pit_stops_session_cap.sql",
             "016_field_carryover.sql",
+            "017_session_laps.sql",
         ]
 
     # A real upgrade runs later in a new process/connection, so deployment
@@ -154,6 +155,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "014_pit_stops_nested.sql",
             "015_pit_stops_session_cap.sql",
             "016_field_carryover.sql",
+            "017_session_laps.sql",
         ]
         assert pending(conn) == []
 
@@ -233,6 +235,7 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "014_pit_stops_nested.sql",
             "015_pit_stops_session_cap.sql",
             "016_field_carryover.sql",
+            "017_session_laps.sql",
         ]
         assert apply_migrations(conn) == [
             "002_trace_read_surface.sql",
@@ -250,6 +253,7 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "014_pit_stops_nested.sql",
             "015_pit_stops_session_cap.sql",
             "016_field_carryover.sql",
+            "017_session_laps.sql",
         ]
         assert pending(conn) == []
 
@@ -446,6 +450,7 @@ def test_grafana_role_reads_every_view_but_not_base_tables(migrated, timescale_d
             "v_samples_1m_named",
             "v_laps",
             "v_lap_sectors",
+            "v_session_laps",
             "v_pit_stops",
             "v_lap_fuel",
             "v_stint_fuel_level",
@@ -649,6 +654,59 @@ def test_lap_sectors_flatten_lap_context_without_emitting_empty_laps(migrated):
             first_crossing - timedelta(seconds=36.8),
         ),
     ]
+
+
+def test_session_laps_number_across_a_restart_and_classify_pit_laps(migrated):
+    """lap_number restarts with the agent and pit_status reads 'track' at the line."""
+    stint = _open_session(migrated)
+    start = datetime(2026, 7, 27, 1, 0, tzinfo=UTC)
+
+    def crossing(minute: float) -> datetime:
+        return start + timedelta(minutes=minute)
+
+    # Two flying laps, a lap holding a whole stop, an agent restart (numbering
+    # back to 1, the first lap untimed), a flying lap, then an in-lap whose
+    # stop is still open.
+    laps = [
+        (1, crossing(2), 100.0),
+        (2, crossing(4), 100.0),
+        (3, crossing(14), 600.0),
+        (1, crossing(30), None),
+        (2, crossing(32), 100.0),
+        (3, crossing(34), 100.0),
+    ]
+    for number, crossed_at, lap_time in laps:
+        migrated.execute(_LAP_UPSERT, (VEHICLE, "s-1", stint, number, crossed_at, lap_time))
+    _insert_pit_events(
+        migrated,
+        [
+            (crossing(5), "pit_entry", "PitEntry"),
+            # A refuel bay inside the pit lane is the same stop, not a second.
+            (crossing(6), "pit_entry", "PitEntryRefuel"),
+            (crossing(9), "pit_exit", "PitExitRefuel"),
+            (crossing(12), "pit_exit", "PitExit"),
+            (crossing(20), "pit_entry", "PitEntry"),
+            (crossing(28), "pit_exit", "PitExit"),
+            (crossing(33.5), "pit_entry", "PitEntry"),
+        ],
+    )
+
+    rows = migrated.execute(
+        "SELECT lap_number, session_lap, lap_in_stint, lap_kind, clean, lap_start_at "
+        "FROM v_session_laps ORDER BY crossed_at"
+    ).fetchall()
+    assert [row[:5] for row in rows] == [
+        (1, 1, 1, "flying", True),
+        (2, 2, 2, "flying", True),
+        (3, 3, 3, "stop", False),
+        # Untimed: the lap began at the previous crossing, so it holds the
+        # stop the agent restarted in.
+        (1, 4, 4, "stop", False),
+        (2, 5, 5, "flying", True),
+        (3, 6, 6, "in", False),
+    ]
+    assert rows[2][5] == crossing(4)
+    assert rows[3][5] == crossing(14)
 
 
 def test_pit_stops_pair_events_and_derive_explicit_stop_types(migrated):

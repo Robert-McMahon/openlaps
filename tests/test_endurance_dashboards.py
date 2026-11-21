@@ -76,7 +76,10 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation() -> None:
     panels = _panels(dashboard)
     topics = _all_topics(dashboard)
 
-    assert dashboard["refresh"] == "1s"
+    # 1 s until the BEERS 36 Hour: thirteen SQL queries, the map and both
+    # tables redrawn every second made the wall sluggish. The lap, sector and
+    # delta tiles are MQTT streams and never waited for a refresh.
+    assert dashboard["refresh"] == "5s"
     non_row_panels = [panel for panel in panels if panel["type"] != "row"]
     alert_strips = [panel for panel in non_row_panels if panel["type"] == "alertlist"]
     assert len(alert_strips) == 1
@@ -184,10 +187,8 @@ def test_fuel_dashboard_is_a_consumer_of_the_strategy_views() -> None:
     assert "480.0" not in sql and "interval '8 minutes'" not in sql
     assert "reset" in text
     assert "lower bound" in text
-    assert all(
-        name in {item["name"] for item in dashboard["templating"]["list"]}
-        for name in ("vehicle", "session", "driver", "stint", "lap")
-    )
+    # Only the pickers a panel reads: a picker nothing reads looks broken.
+    assert [item["name"] for item in dashboard["templating"]["list"]] == ["vehicle", "session"]
     # A projection from three laps and one from a full stint must not look
     # identical: the band panel fills between its lower and upper bound.
     band = next(panel for panel in panels if panel["id"] == 3)
@@ -222,16 +223,49 @@ def test_reliability_dashboard_uses_long_range_aggregate_and_celsius_units() -> 
             assert "- 273.15" in target["rawSql"]
 
 
-def test_lap_analysis_uses_sector_view_and_identity_based_lap_picker() -> None:
+def _session_scoped(dashboard: dict[str, Any]) -> None:
+    """A report dashboard reads its session picker, never the time range."""
+    variables = {item["name"]: item for item in dashboard["templating"]["list"]}
+    session = variables["session"]
+    assert session["includeAll"] is False and session["current"] == {}
+    assert "$__timeFilter" not in session["query"]
+    assert "ORDER BY min(crossed_at) DESC" in session["query"], "newest session first"
+    assert dashboard["timepicker"] == {"hidden": True}
+    for panel in _panels(dashboard):
+        for target in panel.get("targets", []):
+            sql = target["rawSql"]
+            assert "$__time" not in sql, f"panel {panel['id']} still reads the time range"
+            assert "'$session'" in sql, f"panel {panel['id']} ignores the session picker"
+    for variable in variables.values():
+        # Grafana's alphabetical sort puts stint 10 ahead of stint 2.
+        assert variable["sort"] == 0, variable["name"]
+
+
+def test_lap_analysis_is_session_scoped_and_counts_laps_in_crossing_order() -> None:
     dashboard = _dashboard("laps.json")
     sql = _all_sql(dashboard)
     variables = {item["name"]: item for item in dashboard["templating"]["list"]}
 
+    _session_scoped(dashboard)
+    assert list(variables) == ["vehicle", "session", "driver", "stint"]
     assert "v_lap_sectors" in sql
-    assert "lap_time_s" in sql
-    assert "stint_number" in sql
-    assert "valid" in sql
-    assert "lap_id" in variables["lap"]["query"]
+    assert "v_session_laps" in sql
+    # lap_number restarts with the agent; nothing here may show it.
+    assert "lap_number" not in sql and "session_lap" in sql
+    scatter = next(panel for panel in _panels(dashboard) if panel["type"] == "xychart")
+    assert "clean" in scatter["targets"][0]["rawSql"]
+    # The lap-time clock unit belongs to the lap-time field alone: set as the
+    # panel default it also formatted the lap axis and the hover time.
+    assert "unit" not in scatter["fieldConfig"]["defaults"]
+    # By regex: with a frame per driver the field reads "Simon Lap time".
+    assert {o["matcher"]["id"] for o in scatter["fieldConfig"]["overrides"]} == {"byRegexp"}
+    # Without a pluginVersion of 11.1 or later Grafana takes the options for
+    # the old XY chart format and rewrites them on load: the chart drew "Err",
+    # or the first driver only.
+    assert float(scatter["pluginVersion"].rsplit(".", 1)[0]) >= 11.1
+    assert scatter["options"]["mapping"] == "auto"
+    # One entry with no frame: every frame, so every driver, is a series.
+    assert scatter["options"]["series"] == [{}]
 
 
 def test_stint_report_covers_stops_driver_consistency_fuel_and_open_stops() -> None:
@@ -239,8 +273,19 @@ def test_stint_report_covers_stops_driver_consistency_fuel_and_open_stops() -> N
     sql = _all_sql(dashboard)
     text = json.dumps(dashboard).lower()
 
+    _session_scoped(dashboard)
     assert "v_pit_stops" in sql
     assert "v_lap_fuel" in sql
     assert "median" in text
     assert "driving time" in text
     assert "open" in text
+    for panel in _panels(dashboard):
+        panel_sql = panel["targets"][0]["rawSql"]
+        # Every panel names who or which stop a row is about.
+        assert '"Driver' in panel_sql or '"Stop"' in panel_sql, panel["title"]
+        # Seconds as a Grafana unit render as decimal minutes past 60.
+        assert panel["fieldConfig"]["defaults"].get("unit") != "s", panel["title"]
+        if panel["type"] == "barchart":
+            # A panel-wide unit also formats the text labels along the bars'
+            # axis: a clock unit turned every stop's label into NaN.
+            assert "unit" not in panel["fieldConfig"]["defaults"], panel["title"]

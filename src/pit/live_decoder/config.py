@@ -65,6 +65,9 @@ class LiveDefaults(StrictModel):
 
     max_hz: _RATE = 10
     total_max_hz: _RATE = 500
+    # Repeat a channel's last value once it has been quiet this long, while
+    # the car is still sending (live_decoder.resend). 0 turns repeats off.
+    resend_s: _RATE = 1
 
 
 class ChannelRule(StrictModel):

@@ -21,6 +21,7 @@ from pit.live_decoder.config import ConfigError, LiveConfig, load_live_config
 from pit.live_decoder.health import HealthState, serve_health
 from pit.live_decoder.limiter import ConflatingLimiter
 from pit.live_decoder.reload import ConfigReloader
+from pit.live_decoder.resend import FRESH_S, Resender
 from pit.live_decoder.service import (
     LiveDecoder,
     LiveDecoderSettings,
@@ -389,6 +390,46 @@ def test_settings_name_the_pit_sourced_stream(tmp_path):
     )
     with pytest.raises(ValueError, match="OPENLAPS_LIVE_STREAM"):
         LiveDecoderSettings.from_env({"OPENLAPS_LIVE_STREAM": "  "}, config_path=path)
+
+
+def test_a_quiet_channel_is_repeated_while_the_car_is_talking(tmp_path):
+    """A gauge that subscribes late gets the last value within a second."""
+    config = _config(tmp_path)
+    resender = Resender()
+    gear = LiveUpdate("car.gear", 1_780_000_000_000.0, 3.0)
+    event = LiveUpdate("lap.last_time", 1_780_000_000_000.0, 88.4, conflate=False)
+    resender.note(gear, now=10.0)
+    resender.note(event, now=10.0)
+
+    assert resender.due(config, now=10.5, last_message=10.5) == []
+    repeats = resender.due(config, now=11.0, last_message=11.0)
+    # The original capture time, and conflated even for an event channel.
+    assert repeats == [gear, LiveUpdate("lap.last_time", 1_780_000_000_000.0, 88.4)]
+    assert resender.due(config, now=11.5, last_message=11.5) == []
+    assert len(resender.due(config, now=12.0, last_message=12.0)) == 2
+
+    # A channel that is still moving is not repeated on top of itself.
+    resender.note(LiveUpdate("car.gear", 1_780_000_002_500.0, 4.0), now=12.5)
+    assert [update.channel for update in resender.due(config, now=13.0, last_message=13.0)] == [
+        "lap.last_time"
+    ]
+
+
+def test_repeats_stop_when_the_car_goes_quiet_or_the_channel_is_dropped(tmp_path):
+    config = _config(tmp_path)
+    resender = Resender()
+    resender.note(LiveUpdate("car.gear", 1.0, 3.0), now=10.0)
+    resender.note(LiveUpdate("fused.speed", 1.0, 30.0), now=10.0)
+
+    # fused.* is not in this live view: forgotten, never repeated.
+    assert [u.channel for u in resender.due(config, now=11.0, last_message=11.0)] == ["car.gear"]
+    # Nothing from the car for longer than FRESH_S: a dead feed stays dead.
+    assert resender.due(config, now=20.0, last_message=20.0 - FRESH_S - 0.1) == []
+    # It comes back: the last value goes out again at once.
+    assert len(resender.due(config, now=21.0, last_message=21.0)) == 1
+
+    off = config.model_copy(update={"defaults": config.defaults.model_copy(update={"resend_s": 0})})
+    assert resender.due(off, now=30.0, last_message=30.0) == []
 
 
 def test_mqtt_down_drops_without_queueing_or_blocking(tmp_path):

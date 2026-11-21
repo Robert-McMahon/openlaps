@@ -586,6 +586,13 @@ services:
       # The car camera is not a Grafana panel: every dashboard links straight
       # to go2rtc's own player through the pit's video relay, so no video
       # plugin is installed.
+      #
+      # volkovlabs-echarts-panel (Business Charts) earns its slot on the
+      # driver dashboard: core Grafana shares a crosshair only between panels
+      # on a time axis, and cannot label an axis with anything but its own
+      # ticks. One ECharts panel stacks the lap traces on a real distance
+      # axis, labels it with the track's corner names and links hover and
+      # zoom between them. The `driver` dashboard is its only consumer.
       # Alert evaluation floor: 10 s, and on this Grafana it cannot be
       # lowered. Tried on 2026-09-16 against 12.4.9: with
       # GF_UNIFIED_ALERTING_MIN_INTERVAL and _SCHEDULER_TICK_INTERVAL at 2s,
@@ -598,7 +605,7 @@ services:
       # names the fallback for exactly this measurement: sample-rate
       # evaluation of critical limits in the watch service (P7.5), posting
       # to the notifier directly, with Grafana kept as the record.
-      GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.1.0},grafana-clock-panel@${GRAFANA_CLOCK_PLUGIN_VERSION:-3.2.4}
+      GF_PLUGINS_PREINSTALL_SYNC: grafana-mqtt-datasource@${GRAFANA_MQTT_PLUGIN_VERSION:-1.1.0},grafana-clock-panel@${GRAFANA_CLOCK_PLUGIN_VERSION:-3.2.4},volkovlabs-echarts-panel@${GRAFANA_ECHARTS_PLUGIN_VERSION:-7.3.0}
       # Read by the provisioning YAML, which Grafana interpolates at load.
       # No password among them but the read-only one.
       TIMESCALE_HOST: ${TIMESCALE_HOST:-timescaledb}

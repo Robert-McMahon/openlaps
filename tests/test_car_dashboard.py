@@ -1,4 +1,9 @@
-"""P5.4 contract for the provisioned car-and-engine dashboard."""
+"""P5.4 contract for the provisioned car dashboards.
+
+One dashboard until the BEERS 36 Hour; since then live gauges (`car.json`)
+and historical traces (`car-traces.json`) are separate, so a refresh of the
+SQL traces no longer redraws the streaming gauges.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD = ROOT / "deploy/pit-config/grafana/dashboards/car.json"
+TRACES = ROOT / "deploy/pit-config/grafana/dashboards/car-traces.json"
 
 LIVE_CHANNELS = {
     "car.rpm",
@@ -32,9 +38,6 @@ CONTEXT_CHANNELS = {
     "lap.last_time",
     "lap.best_time",
     "timing.delta_best",
-    "sys.agent.publish_lag_ms",
-    "sys.agent.publish_drops",
-    "sys.agent.rbe_suppressed",
 }
 TRACE_CHANNELS = LIVE_CHANNELS | {"car.knock_level1", "car.fuel_level", "car.fuel_total_used"}
 
@@ -43,19 +46,29 @@ def _dashboard() -> dict[str, Any]:
     return json.loads(DASHBOARD.read_text(encoding="utf-8"))
 
 
+def _traces() -> dict[str, Any]:
+    return json.loads(TRACES.read_text(encoding="utf-8"))
+
+
 def _data_panels(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
     return [panel for panel in dashboard["panels"] if panel["type"] != "row"]
 
 
-def test_car_dashboard_has_three_rows_and_operator_link() -> None:
+def test_car_dashboard_has_two_live_rows_and_operator_link() -> None:
     dashboard = _dashboard()
 
     assert dashboard["uid"] == "car"
+    assert dashboard["title"] == "Car: live"
     assert [panel["title"] for panel in dashboard["panels"] if panel["type"] == "row"] == [
         "Live",
         "Context",
-        "Traces",
     ]
+    # Agent and link health live on System status, not among the gauges.
+    titles = {panel["title"] for panel in dashboard["panels"]}
+    assert not titles & {"Publish lag", "Newest live update", "Publish drops", "RBE suppressed"}
+    traces = _traces()
+    assert traces["uid"] == "car-traces" and traces["title"] == "Car: traces"
+    assert not [panel for panel in traces["panels"] if panel["type"] == "row"]
     assert any(
         link["title"] == "Session control" and ":8080" in link["url"] for link in dashboard["links"]
     )
@@ -74,7 +87,7 @@ def test_live_and_context_panels_cover_the_required_mqtt_channels() -> None:
 
 
 def test_trace_panels_use_both_named_views_and_honour_the_time_picker() -> None:
-    panels = _data_panels(_dashboard())
+    panels = _data_panels(_traces())
     sql_targets = [
         target
         for panel in panels
@@ -100,7 +113,8 @@ def test_trace_panels_use_both_named_views_and_honour_the_time_picker() -> None:
 
 
 def test_dashboard_variables_come_from_the_stable_relational_read_surface() -> None:
-    variables = {item["name"]: item for item in _dashboard()["templating"]["list"]}
+    assert [item["name"] for item in _dashboard()["templating"]["list"]] == ["vehicle"]
+    variables = {item["name"]: item for item in _traces()["templating"]["list"]}
 
     assert set(variables) == {"vehicle", "session", "trace_source"}
     assert "v_samples_named" in variables["vehicle"]["query"]
@@ -126,7 +140,7 @@ def _has_kelvin_to_celsius_conversion(panel: dict[str, Any]) -> bool:
 
 def test_temperature_panels_declare_units_and_dashboard_has_no_credentials() -> None:
     dashboard = _dashboard()
-    panels = _data_panels(dashboard)
+    panels = _data_panels(dashboard) + _data_panels(_traces())
     temperature_panels = [
         panel for panel in panels if panel["title"] in {"Coolant temperature", "Oil temperature"}
     ]
@@ -144,6 +158,6 @@ def test_temperature_panels_declare_units_and_dashboard_has_no_credentials() -> 
             assert not _has_kelvin_to_celsius_conversion(panel)
             assert all("- 273.15" in target["rawSql"] for target in panel["targets"])
 
-    serialized = json.dumps(dashboard).lower()
+    serialized = (json.dumps(dashboard) + json.dumps(_traces())).lower()
     assert not any(term in serialized for term in ("password", "api_key", "bearer "))
     assert {panel["datasource"]["uid"] for panel in panels} == {"mqtt-live", "timescale"}

@@ -1,6 +1,6 @@
 {
   "uid": "pitwall",
-  "title": "Pit wall / live timing",
+  "title": "Pit wall",
   "description": "Pit wall / live timing \u2014 provisioned openlaps endurance operations dashboard.",
   "editable": false,
   "schemaVersion": 41,
@@ -639,6 +639,614 @@
       "description": "Delta to best is signed tenths; the predicted lap is a running estimate and reads m:ss.t."
     },
     {
+      "id": 30,
+      "title": "Fuel remaining",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "litre",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, fuel_remaining_l AS \"Fuel remaining\", fuel_remaining_lo_l AS \"Safe figure\", rebase_confidence AS \"Last anchored on\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "Fuel in the tank: the ECU's fuel-used counter counted down from the last known level. Safe figure is the low end of that estimate. Last anchored on says where the known level came from: full (sender read full after a refuel), assumed_full, operator (a fuel mark), surge (surge-tank switch closed) or plan (full tank assumed at the start)."
+    },
+    {
+      "id": 31,
+      "title": "Laps to dry",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, laps_to_dry_lo AS \"Safe (radio this)\", laps_to_dry_hi AS \"Best case\", burn_laps AS \"Burn averaged over (laps)\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "Laps until the tank is dry. Safe is the lower bound: the low end of the fuel estimate over a high burn (mean plus two standard deviations of recent clean laps). Best case is the other end. Burn averaged over says how many laps the burn figure rests on: three laps is a guess, a full stint is not."
+    },
+    {
+      "id": 32,
+      "title": "Pit window",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT time, window_open_lap AS \"Opens at lap\", window_close_lap AS \"Closes at lap\", stops_needed AS \"Stops needed\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+        }
+      ],
+      "description": "From the strategy service. Opens: the earliest lap the car can stop and still reach the end on the planned number of stops. Closes: the last lap it can stay out on the safe fuel figure. Empty when the car makes the end without stopping."
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "max": 145,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "green",
+                "value": 45
+              }
+            ]
+          },
+          "unit": "pressurepsi"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 3,
+        "h": 4
+      },
+      "hideTimeOverride": true,
+      "id": 33,
+      "maxDataPoints": 600,
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.oil_pressure"
+        }
+      ],
+      "timeFrom": "1m",
+      "title": "Oil pressure",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "psi",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "*",
+              "right": {
+                "fixed": "0.145038"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
+        }
+      ],
+      "type": "stat",
+      "description": "Live from the car. Coloured by the same limits as the gauge on Car: live."
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "max": 150,
+          "min": 40,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 115
+              },
+              {
+                "color": "red",
+                "value": 125
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 15,
+        "y": 12,
+        "w": 3,
+        "h": 4
+      },
+      "hideTimeOverride": true,
+      "id": 34,
+      "maxDataPoints": 600,
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.oil_temp"
+        }
+      ],
+      "timeFrom": "1m",
+      "title": "Oil temperature",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "fixed": "273.1"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
+        }
+      ],
+      "type": "stat",
+      "description": "Live from the car. Coloured by the same limits as the gauge on Car: live."
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "max": 125,
+          "min": 40,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 105
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 12,
+        "w": 3,
+        "h": 4
+      },
+      "hideTimeOverride": true,
+      "id": 35,
+      "maxDataPoints": 600,
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.coolant_temp"
+        }
+      ],
+      "timeFrom": "1m",
+      "title": "Coolant temperature",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "-",
+              "right": {
+                "fixed": "273.1"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
+        }
+      ],
+      "type": "stat",
+      "description": "Live from the car. Coloured by the same limits as the gauge on Car: live."
+    },
+    {
+      "datasource": {
+        "type": "grafana-mqtt-datasource",
+        "uid": "mqtt-live"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "max": 145,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 36
+              },
+              {
+                "color": "green",
+                "value": 51
+              }
+            ]
+          },
+          "unit": "pressurepsi"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "x": 21,
+        "y": 12,
+        "w": 3,
+        "h": 4
+      },
+      "hideTimeOverride": true,
+      "id": 36,
+      "maxDataPoints": 600,
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "pluginVersion": "12.4.9",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mqtt-datasource",
+            "uid": "mqtt-live"
+          },
+          "refId": "A",
+          "topic": "openlaps/$vehicle/car.fuel_pressure"
+        }
+      ],
+      "timeFrom": "1m",
+      "title": "Fuel pressure",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "psi",
+            "binary": {
+              "left": {
+                "matcher": {
+                  "id": "byName",
+                  "options": "value"
+                }
+              },
+              "operator": "*",
+              "right": {
+                "fixed": "0.145038"
+              }
+            },
+            "mode": "binary",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "replaceFields": true
+          }
+        }
+      ],
+      "type": "stat",
+      "description": "Live from the car. Coloured by the same limits as the gauge on Car: live."
+    },
+    {
       "id": 6,
       "title": "Track position and speed",
       "type": "geomap",
@@ -648,7 +1256,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 12,
+        "y": 16,
         "w": 16,
         "h": 20
       },
@@ -841,7 +1449,7 @@
       "title": "Current driver",
       "gridPos": {
         "x": 16,
-        "y": 28,
+        "y": 32,
         "w": 4,
         "h": 4
       },
@@ -870,7 +1478,7 @@
       },
       "gridPos": {
         "x": 20,
-        "y": 28,
+        "y": 32,
         "w": 4,
         "h": 4
       },
@@ -951,7 +1559,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 12,
+        "y": 16,
         "w": 8,
         "h": 16
       },
@@ -1101,7 +1709,7 @@
       "title": "Race position",
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 36,
         "w": 6,
         "h": 4
       },
@@ -1163,7 +1771,7 @@
       "title": "Laps to the leader",
       "gridPos": {
         "x": 6,
-        "y": 32,
+        "y": 36,
         "w": 6,
         "h": 4
       },
@@ -1225,7 +1833,7 @@
       "title": "Car ahead / car behind",
       "gridPos": {
         "x": 12,
-        "y": 32,
+        "y": 36,
         "w": 5,
         "h": 4
       },
@@ -1287,7 +1895,7 @@
       "title": "Standings read at",
       "gridPos": {
         "x": 17,
-        "y": 32,
+        "y": 36,
         "w": 3,
         "h": 4
       },
@@ -1316,7 +1924,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 40,
         "w": 24,
         "h": 12
       },
@@ -1489,7 +2097,7 @@
       },
       "gridPos": {
         "x": 20,
-        "y": 32,
+        "y": 36,
         "w": 4,
         "h": 4
       },
@@ -1560,6 +2168,45 @@
           "rawSql": "SELECT now() AS time,\n       (SELECT CASE WHEN e.event ->> 'type' = 'pit_entry'\n                    THEN e.time + make_interval(secs => COALESCE((SELECT rp.refuel_min_s FROM v_session_active a JOIN v_race_plan rp ON rp.session_id = a.session_id WHERE a.vehicle_id = '$vehicle' LIMIT 1), 480))\n               END\n        FROM (SELECT s.time, s.value_text::jsonb AS event\n              FROM v_samples_named s\n              WHERE s.channel = 'lap.event' AND s.vehicle_id = '$vehicle'\n                AND s.value_text IS NOT NULL AND s.time > now() - interval '45 minutes') e\n        WHERE e.event ->> 'type' IN ('pit_entry', 'pit_exit') AND lower(e.event ->> 'line') LIKE '%refuel%'\n        ORDER BY e.time DESC LIMIT 1) AS \"Release at\""
         }
       ]
+    }
+  ],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "openlaps",
+      "tags": [
+        "openlaps"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": ""
+    },
+    {
+      "type": "link",
+      "title": "Session control",
+      "url": "http://localhost:8080/",
+      "tooltip": "Open the session-control operator UI",
+      "icon": "external link",
+      "tags": [],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": true
+    },
+    {
+      "type": "link",
+      "title": "Car camera",
+      "url": "http://localhost:1984/stream.html?src=car_h264&mode=mse",
+      "tooltip": "Open the car camera straight from the pit's video relay, outside Grafana",
+      "icon": "camera",
+      "tags": [],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": true
     }
   ]
 }

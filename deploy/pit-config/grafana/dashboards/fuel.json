@@ -1,7 +1,7 @@
 {
   "uid": "fuel",
-  "title": "Fuel and stint strategy",
-  "description": "Fuel and stint strategy \u2014 provisioned openlaps endurance operations dashboard.",
+  "title": "Strategy",
+  "description": "Fuel, pit window and stop plan from the strategy service.",
   "editable": false,
   "schemaVersion": 41,
   "version": 2,
@@ -159,14 +159,14 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT time, fuel_remaining_l AS \"Fuel remaining\", fuel_remaining_lo_l AS \"Lower bound\", rebase_confidence AS \"Re-base\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+          "rawSql": "SELECT time, fuel_remaining_l AS \"Fuel remaining\", fuel_remaining_lo_l AS \"Safe figure\", rebase_confidence AS \"Last anchored on\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
         }
       ],
-      "description": "Tank contents by the P6.3 model, computed by the strategy service: the last level re-base less the counter deltas since. `Re-base` says where that reading came from. Counter model: full (the sender read full at the end of a refuel), assumed_full (a refuel nothing confirmed), operator (a fuel mark), surge (the surge-tank switch closed), plan (session start, full tank assumed). Level model: key_on, moving, plan."
+      "description": "Fuel in the tank: the ECU's fuel-used counter counted down from the last known level. Safe figure is the low end of that estimate. Last anchored on says where the known level came from: full (sender read full after a refuel), assumed_full, operator (a fuel mark), surge (surge-tank switch closed) or plan (full tank assumed at the start)."
     },
     {
       "id": 8,
-      "title": "Laps to dry (lower bound)",
+      "title": "Laps to dry",
       "type": "stat",
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -217,14 +217,14 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT time, laps_to_dry_lo AS \"Laps to dry\", laps_to_dry_hi AS \"Upper bound\", burn_laps AS \"Laps in burn\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+          "rawSql": "SELECT time, laps_to_dry_lo AS \"Safe (radio this)\", laps_to_dry_hi AS \"Best case\", burn_laps AS \"Burn averaged over (laps)\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
         }
       ],
-      "description": "The number that gets radioed is the lower bound: usable fuel at the low end over burn at the high end (mean + 2 sd of the last clean laps). `Laps in burn` is how many laps that mean rests on -- three laps and a full stint must not look alike."
+      "description": "Laps until the tank is dry. Safe is the lower bound: the low end of the fuel estimate over a high burn (mean plus two standard deviations of recent clean laps). Best case is the other end. Burn averaged over says how many laps the burn figure rests on: three laps is a guess, a full stint is not."
     },
     {
       "id": 15,
-      "title": "Time to empty (lower bound)",
+      "title": "Time to empty",
       "type": "stat",
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -288,10 +288,10 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT time, time_to_dry_s_lo AS \"Time to empty\", time_to_dry_s_hi AS \"Upper bound\", time + time_to_dry_s_lo * interval '1 second' AS \"Empty at\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
+          "rawSql": "SELECT time, time_to_dry_s_lo AS \"Safe\", time_to_dry_s_hi AS \"Best case\", time + time_to_dry_s_lo * interval '1 second' AS \"Empty at\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
         }
       ],
-      "description": "Laps to dry turned into running time at the reference lap time the strategy service uses. Lower bound: counter-based fuel remaining at its low end over burn at its high end. `Empty at` is the clock time that lower bound falls on. Under a safety car the burn per lap drops and this stretches out."
+      "description": "Laps to dry as running time at the strategy service's reference lap time. Safe is the lower bound; Empty at is the clock time it falls on. Under a safety car the burn drops and this stretches."
     },
     {
       "id": 9,
@@ -349,7 +349,7 @@
           "rawSql": "SELECT time, window_open_lap AS \"Opens at lap\", window_close_lap AS \"Closes at lap\", stops_needed AS \"Stops needed\" FROM v_strategy_latest WHERE vehicle_id = '$vehicle'"
         }
       ],
-      "description": "Earliest lap the car can stop and still make the end with the planned number of stops; latest lap it can stay out on the lower-bound fuel. Empty when the car makes the end without stopping."
+      "description": "From the strategy service. Opens: the earliest lap the car can stop and still reach the end on the planned number of stops. Closes: the last lap it can stay out on the safe fuel figure. Empty when the car makes the end without stopping."
     },
     {
       "id": 10,
@@ -929,7 +929,7 @@
     },
     {
       "id": 5,
-      "title": "Strategy interpretation",
+      "title": "How to read this",
       "type": "text",
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -961,9 +961,48 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Every projection here is computed by the strategy service and read from `v_strategy_latest` / `v_strategy_history`; no panel does the arithmetic. Fuel remaining is the **Haltech fuel-used counter** counted down from the last anchor (full tank, operator fuel mark or a held surge-tank closure) -- the `Re-base` label says which. The tank level sender is not drawn on this dashboard. Counter-reset laps are omitted from the burn, not treated as zero; in-laps, out-laps and lap-time outliers are excluded too. Radio the lower bound. The refuelling legal minimum comes from the race plan, not from this dashboard."
+        "content": "All of this comes from the strategy service; no panel does its own arithmetic. Fuel is the ECU's fuel-used counter counted down from the last known level, not the tank sender. **Radio the safe figure.** In-laps, out-laps, outliers and laps with a counter reset are left out of the burn. The refuelling minimum comes from the race plan."
       },
       "targets": []
+    }
+  ],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "openlaps",
+      "tags": [
+        "openlaps"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": ""
+    },
+    {
+      "type": "link",
+      "title": "Session control",
+      "url": "http://localhost:8080/",
+      "tooltip": "Open the session-control operator UI",
+      "icon": "external link",
+      "tags": [],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": true
+    },
+    {
+      "type": "link",
+      "title": "Car camera",
+      "url": "http://localhost:1984/stream.html?src=car_h264&mode=mse",
+      "tooltip": "Open the car camera straight from the pit's video relay, outside Grafana",
+      "icon": "camera",
+      "tags": [],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": true
     }
   ]
 }

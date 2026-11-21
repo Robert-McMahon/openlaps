@@ -1,6 +1,6 @@
 {
   "uid": "reliability",
-  "title": "Reliability watch",
+  "title": "Reliability",
   "description": "Reliability watch — provisioned openlaps endurance operations dashboard.",
   "editable": false,
   "schemaVersion": 41,
@@ -87,8 +87,8 @@
     },
     {
       "id": 1,
-      "title": "Oil pressure against RPM envelope",
-      "type": "xychart",
+      "title": "Oil pressure per 1000 rpm",
+      "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
@@ -101,31 +101,23 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "pressurepsi",
-          "decimals": 1,
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "axisBorderShow": false,
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
+            "drawStyle": "points",
+            "pointSize": 3,
+            "showPoints": "always",
+            "lineWidth": 0,
+            "fillOpacity": 0,
             "axisPlacement": "auto",
-            "fillOpacity": 60,
+            "axisLabel": "",
+            "spanNulls": false,
             "hideFrom": {
               "legend": false,
               "tooltip": false,
               "viz": false
-            },
-            "lineWidth": 0,
-            "pointSize": {
-              "fixed": 4
-            },
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "show": "points"
+            }
           },
           "mappings": [],
           "thresholds": {
@@ -142,6 +134,46 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "psi per 1000 rpm"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "psi per 1000 rpm"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Oil pressure"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "pressurepsi"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": false,
+                  "viz": true
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "RPM"
             },
             "properties": [
@@ -154,20 +186,12 @@
                 "value": 0
               },
               {
-                "id": "custom.axisLabel",
-                "value": "Engine speed"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Oil pressure minimum"
-            },
-            "properties": [
-              {
-                "id": "custom.axisLabel",
-                "value": "Oil pressure (psi gauge)"
+                "id": "custom.hideFrom",
+                "value": {
+                  "legend": true,
+                  "tooltip": false,
+                  "viz": true
+                }
               }
             ]
           }
@@ -175,58 +199,18 @@
       },
       "options": {
         "legend": {
-          "calcs": [],
+          "calcs": [
+            "mean",
+            "min"
+          ],
           "displayMode": "list",
           "placement": "bottom",
           "showLegend": true
         },
-        "mapping": "manual",
-        "series": [
-          {
-            "frame": {
-              "matcher": {
-                "id": "byIndex",
-                "options": 0
-              }
-            },
-            "x": {
-              "matcher": {
-                "id": "byName",
-                "options": "RPM"
-              }
-            },
-            "y": {
-              "matcher": {
-                "id": "byName",
-                "options": "Oil pressure minimum"
-              }
-            }
-          },
-          {
-            "frame": {
-              "matcher": {
-                "id": "byIndex",
-                "options": 0
-              }
-            },
-            "x": {
-              "matcher": {
-                "id": "byName",
-                "options": "RPM"
-              }
-            },
-            "y": {
-              "matcher": {
-                "id": "byName",
-                "options": "Oil pressure maximum"
-              }
-            }
-          }
-        ],
         "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
         }
       },
       "targets": [
@@ -237,13 +221,12 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "table",
+          "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT time, max(CASE WHEN channel = 'car.rpm' THEN avg END) AS \"RPM\", min(CASE WHEN channel = 'car.oil_pressure' THEN min END) * 0.145038 AS \"Oil pressure minimum\", max(CASE WHEN channel = 'car.oil_pressure' THEN max END) * 0.145038 AS \"Oil pressure maximum\" FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.oil_pressure','car.rpm') AND $__timeFilter(time) GROUP BY time ORDER BY time"
+          "rawSql": "SELECT time, psi / (rpm / 1000.0) AS \"psi per 1000 rpm\", psi AS \"Oil pressure\", rpm AS \"RPM\" FROM (SELECT time, avg(avg) FILTER (WHERE channel = 'car.rpm') AS rpm, avg(avg) FILTER (WHERE channel = 'car.oil_pressure') * 0.145038 AS psi, avg(avg) FILTER (WHERE channel = 'car.oil_temp') - 273.15 AS oil_c FROM (SELECT * FROM v_samples_1m_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz > interval '1 hour' UNION ALL SELECT * FROM v_samples_1s_named WHERE $__timeTo()::timestamptz - $__timeFrom()::timestamptz <= interval '1 hour') src WHERE vehicle_id = '$vehicle' AND channel IN ('car.oil_pressure', 'car.rpm', 'car.oil_temp') AND $__timeFilter(time) GROUP BY time) m WHERE rpm >= 3000 AND oil_c >= 80 AND psi IS NOT NULL ORDER BY time"
         }
       ],
-      "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that. Oil pressure is gauge pressure in psi.",
-      "pluginVersion": "12.4.9"
+      "description": "Oil pressure divided by engine speed, over time, so a pump or bearing that is fading shows as a line drifting down instead of a cloud getting thicker. Only moments with the engine above 3000 rpm and the oil above 80 C are plotted: cold oil and idle read high or low for reasons that are not wear. Hover a point for the pressure (psi, gauge) and rpm behind it. One-second detail when the time range is an hour or less, one-minute averages beyond that."
     },
     {
       "id": 2,
@@ -771,6 +754,45 @@
         }
       ],
       "description": "One-second detail when the time range is an hour or less, one-minute aggregates beyond that."
+    }
+  ],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "openlaps",
+      "tags": [
+        "openlaps"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": ""
+    },
+    {
+      "type": "link",
+      "title": "Session control",
+      "url": "http://localhost:8080/",
+      "tooltip": "Open the session-control operator UI",
+      "icon": "external link",
+      "tags": [],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": true
+    },
+    {
+      "type": "link",
+      "title": "Car camera",
+      "url": "http://localhost:1984/stream.html?src=car_h264&mode=mse",
+      "tooltip": "Open the car camera straight from the pit's video relay, outside Grafana",
+      "icon": "camera",
+      "tags": [],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": true
     }
   ]
 }

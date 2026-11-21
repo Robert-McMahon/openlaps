@@ -14,7 +14,6 @@ EXPECTED = {
     "fuel.json": "fuel",
     "reliability.json": "reliability",
     "laps.json": "laps",
-    "stints.json": "stints",
 }
 
 
@@ -51,24 +50,43 @@ def _all_topics(dashboard: dict[str, Any]) -> set[str]:
 
 
 # Dashboards that are not part of the phase 6 endurance set but are
-# provisioned from the same directory: the live gauge panel (P5.3), the car
-# camera (video feed port) and the bring-up/health surface added alongside
-# the GNSS work.
+# provisioned from the same directory: the live gauges (P5.3), their traces,
+# and the bring-up/health surface added alongside the GNSS work. The camera
+# and throttle dashboards went after the BEERS 36 Hour (the camera is a link
+# to go2rtc; the throttle panels are on the traces dashboard), and the stint
+# report became the second half of the session report.
 NON_ENDURANCE = {
     "car.json": "car",
+    "car-traces.json": "car-traces",
     "handling.json": "handling",
-    "video.json": "video",
     "system.json": "system-status",
-    "throttle.json": "throttle",
 }
 
 
-def test_phase_6_adds_exactly_five_endurance_dashboards() -> None:
+def test_the_provisioned_dashboards_are_exactly_these_eight() -> None:
     actual = {
         path.name: json.loads(path.read_text(encoding="utf-8"))["uid"]
         for path in DASHBOARDS.glob("*.json")
     }
     assert actual == {**NON_ENDURANCE, **EXPECTED}
+
+
+def test_every_dashboard_carries_the_same_link_bar() -> None:
+    """Finding a dashboard meant the folder list; now each links to the rest."""
+    bars = []
+    for name in {**NON_ENDURANCE, **EXPECTED}:
+        dashboard = _dashboard(name)
+        assert "openlaps" in dashboard["tags"], name
+        bars.append(json.dumps(dashboard["links"], sort_keys=True))
+    assert len(set(bars)) == 1
+    links = {link["title"]: link for link in json.loads(bars[0])}
+    assert links["openlaps"]["type"] == "dashboards" and links["openlaps"]["tags"] == ["openlaps"]
+    # Passing one dashboard's pickers to the next would hand "all" to a
+    # session picker that has no such option.
+    assert links["openlaps"]["includeVars"] is False
+    assert ":8080" in links["Session control"]["url"]
+    # The camera plays in go2rtc's own page, not in a Grafana panel.
+    assert ":1984" in links["Car camera"]["url"] and "mode=mse" in links["Car camera"]["url"]
 
 
 def test_pitwall_is_sparse_live_timing_with_pit_extrapolation() -> None:
@@ -84,8 +102,24 @@ def test_pitwall_is_sparse_live_timing_with_pit_extrapolation() -> None:
     alert_strips = [panel for panel in non_row_panels if panel["type"] == "alertlist"]
     assert len(alert_strips) == 1
     # Thirteen until the BEERS 36 Hour (2026-11-14), which added a tile per
-    # sector, best lap, the race standings row and the refuel countdown.
-    assert len(non_row_panels) - len(alert_strips) <= 18
+    # sector, best lap, the race standings row and the refuel countdown; then
+    # one strip of fuel and engine vitals, so the wall is the one race screen.
+    assert len(non_row_panels) - len(alert_strips) <= 25
+    strip = {panel["title"]: panel for panel in panels if panel["gridPos"]["y"] == 12}
+    assert list(strip) == [
+        "Fuel remaining",
+        "Laps to dry",
+        "Pit window",
+        "Oil pressure",
+        "Oil temperature",
+        "Coolant temperature",
+        "Fuel pressure",
+    ]
+    for title in ("Fuel remaining", "Laps to dry", "Pit window"):
+        assert "v_strategy_latest" in strip[title]["targets"][0]["rawSql"]
+    for title in ("Oil pressure", "Oil temperature", "Coolant temperature", "Fuel pressure"):
+        assert strip[title]["datasource"]["uid"] == "mqtt-live"
+        assert strip[title]["fieldConfig"]["defaults"]["color"]["mode"] == "thresholds"
     assert {
         "openlaps/$vehicle/timing.lap_elapsed_pit",
         "openlaps/$vehicle/timing.sector_1_pit",
@@ -231,6 +265,10 @@ def _session_scoped(dashboard: dict[str, Any]) -> None:
     assert "$__timeFilter" not in session["query"]
     assert "ORDER BY min(crossed_at) DESC" in session["query"], "newest session first"
     assert dashboard["timepicker"] == {"hidden": True}
+    assert [p["title"] for p in _panels(dashboard) if p["type"] == "row"] == [
+        "Laps and pace",
+        "Stops, stints and driving time",
+    ]
     for panel in _panels(dashboard):
         for target in panel.get("targets", []):
             sql = target["rawSql"]
@@ -253,6 +291,7 @@ def test_lap_analysis_is_session_scoped_and_counts_laps_in_crossing_order() -> N
     # lap_number restarts with the agent; nothing here may show it.
     assert "lap_number" not in sql and "session_lap" in sql
     scatter = next(panel for panel in _panels(dashboard) if panel["type"] == "xychart")
+    assert dashboard["title"] == "Session report"
     assert "clean" in scatter["targets"][0]["rawSql"]
     # The lap-time clock unit belongs to the lap-time field alone: set as the
     # panel default it also formatted the lap axis and the hover time.
@@ -269,17 +308,18 @@ def test_lap_analysis_is_session_scoped_and_counts_laps_in_crossing_order() -> N
 
 
 def test_stint_report_covers_stops_driver_consistency_fuel_and_open_stops() -> None:
-    dashboard = _dashboard("stints.json")
-    sql = _all_sql(dashboard)
-    text = json.dumps(dashboard).lower()
+    dashboard = _dashboard("laps.json")
+    stint_panels = [p for p in _panels(dashboard) if p["type"] != "row" and p["id"] >= 20]
+    sql = "\n".join(p["targets"][0]["rawSql"] for p in stint_panels)
+    text = json.dumps(stint_panels).lower()
 
-    _session_scoped(dashboard)
+    assert len(stint_panels) == 5
     assert "v_pit_stops" in sql
     assert "v_lap_fuel" in sql
     assert "median" in text
     assert "driving time" in text
     assert "open" in text
-    for panel in _panels(dashboard):
+    for panel in stint_panels:
         panel_sql = panel["targets"][0]["rawSql"]
         # Every panel names who or which stop a row is about.
         assert '"Driver' in panel_sql or '"Stop"' in panel_sql, panel["title"]

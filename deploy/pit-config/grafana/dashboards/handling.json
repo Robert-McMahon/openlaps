@@ -21,16 +21,41 @@
   "graphTooltip": 1,
   "links": [
     {
+      "type": "dashboards",
+      "title": "openlaps",
+      "tags": [
+        "openlaps"
+      ],
       "asDropdown": false,
-      "icon": "external link",
       "includeVars": false,
       "keepTime": false,
-      "tags": [],
-      "targetBlank": true,
-      "title": "Session control",
-      "tooltip": "Open the session-control operator UI",
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": ""
+    },
+    {
       "type": "link",
-      "url": "http://localhost:8080/"
+      "title": "Session control",
+      "url": "http://localhost:8080/",
+      "tooltip": "Open the session-control operator UI",
+      "icon": "external link",
+      "tags": [],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": true
+    },
+    {
+      "type": "link",
+      "title": "Car camera",
+      "url": "http://localhost:1984/stream.html?src=car_h264&mode=mse",
+      "tooltip": "Open the car camera straight from the pit's video relay, outside Grafana",
+      "icon": "camera",
+      "tags": [],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": true
     }
   ],
   "liveNow": true,

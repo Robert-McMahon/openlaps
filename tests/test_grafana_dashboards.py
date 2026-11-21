@@ -353,7 +353,7 @@ def test_every_dashboard_opens_on_the_deployed_vehicle(timescale_dsn, monkeypatc
     option when none is saved.
     """
     variables = list(_vehicle_variables())
-    assert len(variables) == 9
+    assert len(variables) == 8
     queries = {variable["query"] for _, variable in variables}
     assert len(queries) == 1, "every dashboard offers vehicles the same way"
     for name, variable in variables:
@@ -526,6 +526,17 @@ def test_every_dashboard_query_executes_and_returns_configured_fields(timescale_
                     "INSERT INTO samples (time, channel_key, value) VALUES (%s, %s, %s)",
                     (stamp, channel_key, float(index)),
                 )
+        # The oil-pressure trend only plots a loaded, warm engine: give it one
+        # (5000 rpm, oil at 96.85 C stored in kelvin, 400 kPa).
+        for channel, value in (
+            ("car.rpm", 5000.0),
+            ("car.oil_temp", 370.0),
+            ("car.oil_pressure", 400.0),
+        ):
+            conn.execute(
+                "UPDATE samples SET value = %s WHERE channel_key = %s",
+                (value, channel_keys[channel]),
+            )
         for at, value in (
             (stamp - timedelta(minutes=4), 1000.0),
             (stamp - timedelta(minutes=2), 1400.0),

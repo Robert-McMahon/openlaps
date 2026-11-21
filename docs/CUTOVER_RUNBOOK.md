@@ -194,7 +194,7 @@ the deployment guide's replay path, run as a drill.
    green. (~10 min)
 
 4. **Exercise the surfaces a session will use.** Open the car dashboard
-   (Grafana `:3000`, folder `openlaps`, dashboard `Car and engine`, uid
+   (Grafana `:3000`, folder `openlaps`, dashboard `Car: live`, uid
    `car`) and watch live gauges move; open the session UI (session-control,
    `:8080`), start a session, change driver, end it. Synthetic laps, if
    wanted, via `tools/lap_simulator.py` — it labels everything `<track>_sim`

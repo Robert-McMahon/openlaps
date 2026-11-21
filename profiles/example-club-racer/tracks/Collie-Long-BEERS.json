@@ -1,4 +1,121 @@
 {
   "length_m": 2550,
-  "mini_sectors": 20
+  "mini_sectors": 20,
+  "sections_length_m": 2553.4,
+  "sections": [
+    {
+      "name": "T1",
+      "kind": "corner",
+      "start_m": 59.0,
+      "end_m": 175.0
+    },
+    {
+      "name": "T2",
+      "kind": "corner",
+      "start_m": 175.0,
+      "end_m": 304.0
+    },
+    {
+      "name": "Str 2-3",
+      "kind": "straight",
+      "start_m": 304.0,
+      "end_m": 500.0
+    },
+    {
+      "name": "T3",
+      "kind": "corner",
+      "start_m": 500.0,
+      "end_m": 580.0
+    },
+    {
+      "name": "T4",
+      "kind": "corner",
+      "start_m": 580.0,
+      "end_m": 630.0
+    },
+    {
+      "name": "Str 4-5",
+      "kind": "straight",
+      "start_m": 630.0,
+      "end_m": 715.0
+    },
+    {
+      "name": "T5",
+      "kind": "corner",
+      "start_m": 715.0,
+      "end_m": 790.0
+    },
+    {
+      "name": "Str 5-6",
+      "kind": "straight",
+      "start_m": 790.0,
+      "end_m": 1165.0
+    },
+    {
+      "name": "T6",
+      "kind": "corner",
+      "start_m": 1165.0,
+      "end_m": 1264.0
+    },
+    {
+      "name": "T7",
+      "kind": "corner",
+      "start_m": 1264.0,
+      "end_m": 1421.0
+    },
+    {
+      "name": "T8",
+      "kind": "corner",
+      "start_m": 1421.0,
+      "end_m": 1500.0
+    },
+    {
+      "name": "T9",
+      "kind": "corner",
+      "start_m": 1500.0,
+      "end_m": 1580.0
+    },
+    {
+      "name": "T10",
+      "kind": "corner",
+      "start_m": 1580.0,
+      "end_m": 1640.0
+    },
+    {
+      "name": "Str 10-11",
+      "kind": "straight",
+      "start_m": 1640.0,
+      "end_m": 2040.0
+    },
+    {
+      "name": "T11",
+      "kind": "corner",
+      "start_m": 2040.0,
+      "end_m": 2100.0
+    },
+    {
+      "name": "T12",
+      "kind": "corner",
+      "start_m": 2100.0,
+      "end_m": 2190.0
+    },
+    {
+      "name": "Str 12-13",
+      "kind": "straight",
+      "start_m": 2190.0,
+      "end_m": 2300.0
+    },
+    {
+      "name": "T13",
+      "kind": "corner",
+      "start_m": 2300.0,
+      "end_m": 2410.0
+    },
+    {
+      "name": "Str 0-1",
+      "kind": "straight",
+      "start_m": 2410.0,
+      "end_m": 59.0
+    }
+  ]
 }

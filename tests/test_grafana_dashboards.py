@@ -256,6 +256,7 @@ def _render_sql(raw_sql: str, *, start: datetime, end: datetime) -> str:
     rendered = rendered.replace("$driver", "Driver A")
     rendered = rendered.replace("$stint", "1")
     rendered = rendered.replace("$lap_compare", "2")
+    rendered = rendered.replace("$lap_ref", "best")
     rendered = rendered.replace("$lap", "1")
     rendered = rendered.replace("$trace_source", source)
     unknown = GRAFANA_MACRO.findall(rendered)
@@ -526,6 +527,32 @@ def test_every_dashboard_query_executes_and_returns_configured_fields(timescale_
                     "INSERT INTO samples (time, channel_key, value) VALUES (%s, %s, %s)",
                     (stamp, channel_key, float(index)),
                 )
+        # The driver dashboard compares lap 1 with the best clean lap (lap 2):
+        # give lap 1 a sample of each channel it reads, as lap 2 has at
+        # `stamp`, and the track one section that holds both.
+        for channel in (
+            "timing.distance",
+            "timing.lap_elapsed",
+            "position.speed",
+            "car.throttle_pos",
+            "car.brake_pedal_switch",
+            "car.gear",
+            "fused.accel_lat",
+            "fused.accel_long",
+        ):
+            conn.execute(
+                "INSERT INTO samples (time, channel_key, value) "
+                "SELECT %s, channel_key, value FROM samples WHERE channel_key = %s",
+                (
+                    stamp - timedelta(minutes=2, seconds=10),
+                    channel_keys[channel],
+                ),
+            )
+        conn.execute(
+            "INSERT INTO track_sections "
+            "(track_name, seq, name, kind, start_m, end_m, lap_length_m) "
+            "VALUES ('Wanneroo', 1, 'T1', 'corner', 50, 10, 100)"
+        )
         # The oil-pressure trend only plots a loaded, warm engine: give it one
         # (5000 rpm, oil at 96.85 C stored in kelvin, 400 kPa).
         for channel, value in (

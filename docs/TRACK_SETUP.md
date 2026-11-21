@@ -232,3 +232,40 @@ lines are correctly placed.
 | Pit events never fire | Name does not contain both `pit` and `entry`/`exit`, or the normal pit path misses the segment |
 | Wrong-way crossings are ignored | The first accepted crossing taught the line the opposite direction; restart the agent and survey in the normal direction first |
 | Duplicate or rapid events | Line lies along the driven path, is crossed during a spin, or is too close to another timing point |
+
+## Lap sections (corners and straights)
+
+The driver dashboard's corner-by-corner table needs to know where each corner
+is. That is not in the KML: it comes from a `sections` list in the track's
+JSON sidecar, in metres along the lap, with the lap length of the map they
+were measured on:
+
+```json
+{
+  "length_m": 2550,
+  "mini_sectors": 20,
+  "sections_length_m": 2553.4,
+  "sections": [
+    {"name": "T1", "kind": "corner", "start_m": 59.0, "end_m": 175.0},
+    {"name": "Str 0-1", "kind": "straight", "start_m": 2410.0, "end_m": 59.0}
+  ]
+}
+```
+
+`kind` is `corner` or `straight`. A section that spans the start line ends
+before it begins. The agent ignores these keys.
+
+If the track is already marked up in MoTeC i2, copy its sections across
+instead of typing them, then load the sidecar into the pit database:
+
+```bash
+uv run tools/track_sections.py from-mt2 MyTrack.mt2 profiles/<profile>/tracks/MyTrack.json
+uv run tools/track_sections.py load profiles/<profile>/tracks/MyTrack.json
+```
+
+`load` replaces that track's sections and reads the database from
+`TIMESCALE_*` (or `--dsn`). The sidecar's file stem must be the track name
+laps are recorded under. Sections are compared with the car's lap distance as
+fractions of a lap, so the map's lap length need not match the car's to the
+metre; check a known lap on the driver dashboard, where the slowest point of
+each corner should fall inside it.

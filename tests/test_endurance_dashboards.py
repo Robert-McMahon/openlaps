@@ -58,7 +58,7 @@ def _all_topics(dashboard: dict[str, Any]) -> set[str]:
 NON_ENDURANCE = {
     "car.json": "car",
     "car-traces.json": "car-traces",
-    "handling.json": "handling",
+    "driver.json": "driver",
     "system.json": "system-status",
 }
 
@@ -305,6 +305,50 @@ def test_lap_analysis_is_session_scoped_and_counts_laps_in_crossing_order() -> N
     assert scatter["options"]["mapping"] == "auto"
     # One entry with no frame: every frame, so every driver, is a series.
     assert scatter["options"]["series"] == [{}]
+
+
+def test_driver_dashboard_compares_a_lap_with_a_reference_by_distance() -> None:
+    dashboard = _dashboard("driver.json")
+    panels = _panels(dashboard)
+    variables = {item["name"]: item for item in dashboard["templating"]["list"]}
+
+    assert list(variables) == ["vehicle", "session", "driver", "lap", "lap_ref"]
+    assert dashboard["timepicker"] == {"hidden": True}
+    # Laps are picked by identity and shown by their number in the session.
+    for name in ("lap", "lap_ref"):
+        query = variables[name]["query"]
+        assert "lap_id::text AS __value" in query or "lap_id::text" in query
+        assert "session_lap" in query and "lap_number" not in query
+        assert variables[name]["sort"] == 0
+    # The reference opens on the session's fastest clean lap.
+    assert variables["lap_ref"]["query"].index("'best' AS __value") < variables["lap_ref"][
+        "query"
+    ].index("UNION ALL")
+    for panel in panels:
+        for target in panel["targets"]:
+            sql = target["rawSql"]
+            assert "$__time" not in sql, panel["title"]
+            assert "'$lap'" in sql and "'$lap_ref'" in sql, panel["title"]
+    charts = [panel for panel in panels if panel["type"] == "xychart"]
+    assert {panel["title"] for panel in charts} == {
+        "Speed around the lap",
+        "Time lost or gained against the reference",
+        "Throttle",
+        "Brake",
+        "Gear",
+        "Grip used (g-g)",
+    }
+    for panel in charts:
+        # See the lap scatter: without it Grafana rewrites the options.
+        assert float(panel["pluginVersion"].rsplit(".", 1)[0]) >= 11.1, panel["title"]
+        assert panel["options"]["series"] == [{}]
+        if panel["title"] != "Grip used (g-g)":
+            assert "timing.distance" in panel["targets"][0]["rawSql"]
+    corners = next(panel for panel in panels if panel["title"] == "Corner by corner")
+    assert "v_track_sections" in corners["targets"][0]["rawSql"]
+    # Sections are compared as fractions of the lap: the car's lap distance
+    # and the track map's never agree to the metre.
+    assert "start_fraction" in corners["targets"][0]["rawSql"]
 
 
 def test_stint_report_covers_stops_driver_consistency_fuel_and_open_stops() -> None:

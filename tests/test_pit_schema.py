@@ -135,6 +135,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "015_pit_stops_session_cap.sql",
             "016_field_carryover.sql",
             "017_session_laps.sql",
+            "018_track_sections.sql",
         ]
 
     # A real upgrade runs later in a new process/connection, so deployment
@@ -156,6 +157,7 @@ def test_003_is_pending_once_on_a_database_with_001_and_002(tmp_path, timescale_
             "015_pit_stops_session_cap.sql",
             "016_field_carryover.sql",
             "017_session_laps.sql",
+            "018_track_sections.sql",
         ]
         assert pending(conn) == []
 
@@ -236,6 +238,7 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "015_pit_stops_session_cap.sql",
             "016_field_carryover.sql",
             "017_session_laps.sql",
+            "018_track_sections.sql",
         ]
         assert apply_migrations(conn) == [
             "002_trace_read_surface.sql",
@@ -254,6 +257,7 @@ def test_002_is_pending_once_on_a_database_with_001(tmp_path, timescale_dsn):
             "015_pit_stops_session_cap.sql",
             "016_field_carryover.sql",
             "017_session_laps.sql",
+            "018_track_sections.sql",
         ]
         assert pending(conn) == []
 
@@ -451,6 +455,7 @@ def test_grafana_role_reads_every_view_but_not_base_tables(migrated, timescale_d
             "v_laps",
             "v_lap_sectors",
             "v_session_laps",
+            "v_track_sections",
             "v_pit_stops",
             "v_lap_fuel",
             "v_stint_fuel_level",

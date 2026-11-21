@@ -530,6 +530,7 @@ to keep stable, and it is these views:
 | `v_laps` | `lap_id, vehicle_id, track_name, lap_number, crossed_at, lap_time_s, valid, pit_status, direction, session_id, session_type, car, stint_number, driver` |
 | `v_lap_sectors` | The `v_laps` context, plus `sector`, `split_time_s`, and the sector's own `crossed_at` (`lap_crossed_at` retains the lap boundary) |
 | `v_session_laps` | The `v_laps` columns, plus `session_lap` and `lap_in_stint` (crossing order; `lap_number` restarts with the agent), `lap_start_at`, `lap_kind` (`flying`, `in`, `out`, or `stop` when a pit-lane entry, exit or both fell inside the lap) and `clean` (valid, timed and flying) |
+| `v_track_sections` | `track_name, seq, name, kind` (`corner` or `straight`), `start_m, end_m, lap_length_m` as the track map measured them, and `start_fraction, end_fraction` of a lap. Loaded by `tools/track_sections.py`; a section spanning the start line ends before it begins |
 | `v_pit_stops` | `vehicle_id, entry_at, exit_at, duration_s, is_open, stop_type, entry_line, exit_line` |
 | `v_lap_fuel` | The `v_laps` context, counter endpoints, `fuel_used_cc`, `fuel_used_l`, and `measurement_status` |
 | `v_stint_fuel_level` | Stint/session/driver context, accepted level sample count, start/end/used litres, and the level trend in L/hour |

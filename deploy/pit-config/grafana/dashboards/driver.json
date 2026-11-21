@@ -1,16 +1,16 @@
 {
   "uid": "driver",
   "title": "Driver",
-  "description": "Driver coaching: one lap against a reference lap, by distance around the track. Reads the session and laps picked at the top, not the dashboard time range.",
+  "description": "Driver coaching: one lap against a reference lap, by distance around the track. Reads the session and laps picked at the top. The distance charts share a crosshair, and dragging across one zooms them all to that stretch of track; double-click a chart to zoom back out.",
   "editable": false,
   "schemaVersion": 41,
   "version": 1,
   "refresh": "",
   "time": {
-    "from": "now-12h",
-    "to": "now"
+    "from": "1970-01-01T00:00:00.000Z",
+    "to": "1970-01-01T00:00:02.600Z"
   },
-  "timezone": "browser",
+  "timezone": "utc",
   "tags": [
     "openlaps",
     "driver"
@@ -203,13 +203,12 @@
     {
       "id": 2,
       "title": "Speed around the lap",
-      "type": "xychart",
-      "pluginVersion": "12.4.9",
+      "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "GPS speed against distance from the start line, in 10 m steps. Where the lines part is where the time went: a later, deeper dip is a later brake; a higher bottom is more corner speed.",
+      "description": "GPS speed against distance from the start line, in 10 m steps. Where the lines part is where the time went: a later, deeper dip is a later brake; a higher bottom is more corner speed. The bottom axis is distance from the start line: Grafana only links crosshairs on a time axis, so read 00:00:01.320 as 1,320 m. The hover gives the distance in metres.",
       "gridPos": {
         "x": 0,
         "y": 5,
@@ -222,12 +221,8 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "show": "lines",
             "lineWidth": 2,
-            "pointSize": {
-              "fixed": 3
-            },
-            "fillOpacity": 60,
+            "fillOpacity": 0,
             "axisPlacement": "auto",
             "axisLabel": "Speed",
             "axisBorderShow": false,
@@ -240,7 +235,11 @@
               "legend": false,
               "tooltip": false,
               "viz": false
-            }
+            },
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "linear"
           },
           "mappings": [],
           "thresholds": {
@@ -255,22 +254,6 @@
           "unit": "velocitykmh"
         },
         "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "/^Distance$/"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "custom.axisLabel",
-                "value": "Distance around the lap (m)"
-              }
-            ]
-          },
           {
             "matcher": {
               "id": "byRegexp",
@@ -300,14 +283,54 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (m)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": false
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
           }
         ]
       },
       "options": {
-        "mapping": "auto",
-        "series": [
-          {}
-        ],
         "legend": {
           "showLegend": true,
           "displayMode": "list",
@@ -315,7 +338,7 @@
           "calcs": []
         },
         "tooltip": {
-          "mode": "single",
+          "mode": "multi",
           "sort": "none",
           "hideZeros": false
         }
@@ -328,22 +351,21 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "table",
+          "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'position.speed') AS speed FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'position.speed') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT bin AS \"Distance\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(speed) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'position.speed') AS speed FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'position.speed') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT to_timestamp(bin / 1000.0) AS time, bin AS \"Distance (m)\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(speed) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
         }
       ]
     },
     {
       "id": 3,
       "title": "Time lost or gained against the reference",
-      "type": "xychart",
-      "pluginVersion": "12.4.9",
+      "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Running difference in seconds: the lap's time at each point less the reference's. Rising means losing time there, falling means gaining it back; the right-hand end is the lap time difference.",
+      "description": "Running difference in seconds: the lap's time at each point less the reference's. Rising means losing time there, falling means gaining it back; the right-hand end is the lap time difference. The bottom axis is distance from the start line: Grafana only links crosshairs on a time axis, so read 00:00:01.320 as 1,320 m. The hover gives the distance in metres.",
       "gridPos": {
         "x": 0,
         "y": 15,
@@ -356,12 +378,8 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "show": "lines",
             "lineWidth": 2,
-            "pointSize": {
-              "fixed": 3
-            },
-            "fillOpacity": 60,
+            "fillOpacity": 0,
             "axisPlacement": "auto",
             "axisLabel": "Seconds (up is slower)",
             "axisBorderShow": false,
@@ -374,7 +392,11 @@
               "legend": false,
               "tooltip": false,
               "viz": false
-            }
+            },
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "linear"
           },
           "mappings": [],
           "thresholds": {
@@ -389,22 +411,6 @@
           "unit": "s"
         },
         "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "/^Distance$/"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "custom.axisLabel",
-                "value": "Distance around the lap (m)"
-              }
-            ]
-          },
           {
             "matcher": {
               "id": "byRegexp",
@@ -457,14 +463,54 @@
                 "value": true
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (m)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": false
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
           }
         ]
       },
       "options": {
-        "mapping": "auto",
-        "series": [
-          {}
-        ],
         "legend": {
           "showLegend": false,
           "displayMode": "list",
@@ -472,7 +518,7 @@
           "calcs": []
         },
         "tooltip": {
-          "mode": "single",
+          "mode": "multi",
           "sort": "none",
           "hideZeros": false
         }
@@ -485,22 +531,21 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "table",
+          "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'timing.lap_elapsed') AS elapsed FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'timing.lap_elapsed') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT bin AS \"Distance\", max(v) FILTER (WHERE which = 'Lap') - max(v) FILTER (WHERE which = 'Reference') AS \"Time lost to reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(elapsed) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin HAVING count(*) = 2 ORDER BY bin"
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'timing.lap_elapsed') AS elapsed FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'timing.lap_elapsed') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT to_timestamp(bin / 1000.0) AS time, bin AS \"Distance (m)\", max(v) FILTER (WHERE which = 'Lap') - max(v) FILTER (WHERE which = 'Reference') AS \"Time lost to reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(elapsed) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin HAVING count(*) = 2 ORDER BY bin"
         }
       ]
     },
     {
       "id": 4,
-      "title": "Throttle",
-      "type": "xychart",
-      "pluginVersion": "12.4.9",
+      "title": "Accelerator pedal",
+      "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Throttle position against distance.",
+      "description": "Accelerator pedal position against distance: what the driver asked for, not what the throttle body did. The bottom axis is distance from the start line: Grafana only links crosshairs on a time axis, so read 00:00:01.320 as 1,320 m. The hover gives the distance in metres.",
       "gridPos": {
         "x": 0,
         "y": 22,
@@ -513,14 +558,10 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "show": "lines",
             "lineWidth": 2,
-            "pointSize": {
-              "fixed": 3
-            },
-            "fillOpacity": 60,
+            "fillOpacity": 0,
             "axisPlacement": "auto",
-            "axisLabel": "Throttle",
+            "axisLabel": "Pedal",
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
@@ -531,7 +572,11 @@
               "legend": false,
               "tooltip": false,
               "viz": false
-            }
+            },
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "linear"
           },
           "mappings": [],
           "thresholds": {
@@ -546,22 +591,6 @@
           "unit": "percent"
         },
         "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "/^Distance$/"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "custom.axisLabel",
-                "value": "Distance around the lap (m)"
-              }
-            ]
-          },
           {
             "matcher": {
               "id": "byRegexp",
@@ -607,14 +636,54 @@
                 "value": 100
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (m)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": false
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
           }
         ]
       },
       "options": {
-        "mapping": "auto",
-        "series": [
-          {}
-        ],
         "legend": {
           "showLegend": true,
           "displayMode": "list",
@@ -622,7 +691,7 @@
           "calcs": []
         },
         "tooltip": {
-          "mode": "single",
+          "mode": "multi",
           "sort": "none",
           "hideZeros": false
         }
@@ -635,22 +704,21 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "table",
+          "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'car.throttle_pos') AS throttle FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'car.throttle_pos') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT bin AS \"Distance\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(throttle) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'car.accel_pedal_pos') AS pedal FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'car.accel_pedal_pos') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT to_timestamp(bin / 1000.0) AS time, bin AS \"Distance (m)\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(pedal) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
         }
       ]
     },
     {
       "id": 5,
       "title": "Brake",
-      "type": "xychart",
-      "pluginVersion": "12.4.9",
+      "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Share of each 10 m step with the brake pedal switch on: where braking starts and how long it is held, not how hard.",
+      "description": "Share of each 10 m step with the brake pedal switch on: where braking starts and how long it is held, not how hard. The bottom axis is distance from the start line: Grafana only links crosshairs on a time axis, so read 00:00:01.320 as 1,320 m. The hover gives the distance in metres.",
       "gridPos": {
         "x": 12,
         "y": 22,
@@ -663,12 +731,8 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "show": "lines",
             "lineWidth": 2,
-            "pointSize": {
-              "fixed": 3
-            },
-            "fillOpacity": 60,
+            "fillOpacity": 0,
             "axisPlacement": "auto",
             "axisLabel": "Brake on",
             "axisBorderShow": false,
@@ -681,7 +745,11 @@
               "legend": false,
               "tooltip": false,
               "viz": false
-            }
+            },
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "stepAfter"
           },
           "mappings": [],
           "thresholds": {
@@ -696,22 +764,6 @@
           "unit": "percent"
         },
         "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "/^Distance$/"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "custom.axisLabel",
-                "value": "Distance around the lap (m)"
-              }
-            ]
-          },
           {
             "matcher": {
               "id": "byRegexp",
@@ -757,14 +809,54 @@
                 "value": 100
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (m)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": false
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
           }
         ]
       },
       "options": {
-        "mapping": "auto",
-        "series": [
-          {}
-        ],
         "legend": {
           "showLegend": true,
           "displayMode": "list",
@@ -772,7 +864,7 @@
           "calcs": []
         },
         "tooltip": {
-          "mode": "single",
+          "mode": "multi",
           "sort": "none",
           "hideZeros": false
         }
@@ -785,22 +877,21 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "table",
+          "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, max(s.value) FILTER (WHERE s.channel = 'car.brake_pedal_switch') AS brake FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'car.brake_pedal_switch') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT which, lap_start_at, t, dist, max(brake) OVER (PARTITION BY which, brake_run) AS brake FROM (SELECT *, count(brake) OVER w AS brake_run FROM grid WINDOW w AS (PARTITION BY which ORDER BY t)) g), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT bin AS \"Distance\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(brake * 100) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, max(s.value) FILTER (WHERE s.channel = 'car.brake_pedal_switch') AS brake FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'car.brake_pedal_switch') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT which, lap_start_at, t, dist, max(brake) OVER (PARTITION BY which, brake_run) AS brake FROM (SELECT *, count(brake) OVER w AS brake_run FROM grid WINDOW w AS (PARTITION BY which ORDER BY t)) g), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT to_timestamp(bin / 1000.0) AS time, bin AS \"Distance (m)\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(brake * 100) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
         }
       ]
     },
     {
       "id": 6,
       "title": "Gear",
-      "type": "xychart",
-      "pluginVersion": "12.4.9",
+      "type": "timeseries",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "timescale"
       },
-      "description": "Gear against distance.",
+      "description": "Gear against distance. The bottom axis is distance from the start line: Grafana only links crosshairs on a time axis, so read 00:00:01.320 as 1,320 m. The hover gives the distance in metres.",
       "gridPos": {
         "x": 0,
         "y": 30,
@@ -813,12 +904,8 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "show": "lines",
             "lineWidth": 2,
-            "pointSize": {
-              "fixed": 3
-            },
-            "fillOpacity": 60,
+            "fillOpacity": 0,
             "axisPlacement": "auto",
             "axisLabel": "Gear",
             "axisBorderShow": false,
@@ -831,7 +918,11 @@
               "legend": false,
               "tooltip": false,
               "viz": false
-            }
+            },
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "stepAfter"
           },
           "mappings": [],
           "thresholds": {
@@ -849,22 +940,6 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "/^Distance$/"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "custom.axisLabel",
-                "value": "Distance around the lap (m)"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
               "options": "/Reference/"
             },
             "properties": [
@@ -899,14 +974,54 @@
                 "value": 0
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (m)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": false
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
           }
         ]
       },
       "options": {
-        "mapping": "auto",
-        "series": [
-          {}
-        ],
         "legend": {
           "showLegend": true,
           "displayMode": "list",
@@ -914,7 +1029,7 @@
           "calcs": []
         },
         "tooltip": {
-          "mode": "single",
+          "mode": "multi",
           "sort": "none",
           "hideZeros": false
         }
@@ -927,9 +1042,9 @@
             "uid": "timescale"
           },
           "editorMode": "code",
-          "format": "table",
+          "format": "time_series",
           "rawQuery": true,
-          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, max(s.value) FILTER (WHERE s.channel = 'car.gear') AS gear FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'car.gear') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT which, lap_start_at, t, dist, max(gear) OVER (PARTITION BY which, gear_run) AS gear FROM (SELECT *, count(gear) OVER w AS gear_run FROM grid WINDOW w AS (PARTITION BY which ORDER BY t)) g), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT bin AS \"Distance\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, max(gear) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, max(s.value) FILTER (WHERE s.channel = 'car.gear') AS gear FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'car.gear') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT which, lap_start_at, t, dist, max(gear) OVER (PARTITION BY which, gear_run) AS gear FROM (SELECT *, count(gear) OVER w AS gear_run FROM grid WINDOW w AS (PARTITION BY which ORDER BY t)) g), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT to_timestamp(bin / 1000.0) AS time, bin AS \"Distance (m)\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, max(gear) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
         }
       ]
     },
@@ -1226,5 +1341,6 @@
       "keepTime": false,
       "targetBlank": true
     }
-  ]
+  ],
+  "graphTooltip": 1
 }

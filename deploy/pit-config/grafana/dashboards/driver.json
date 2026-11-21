@@ -1,0 +1,1346 @@
+{
+  "uid": "driver",
+  "title": "Driver",
+  "description": "Driver coaching: one lap against a reference lap, by distance around the track. Reads the session and laps picked at the top. The distance charts share a crosshair, and dragging across one zooms them all to that stretch of track; double-click a chart to zoom back out.",
+  "editable": false,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "",
+  "time": {
+    "from": "1970-01-01T00:00:00.000Z",
+    "to": "1970-01-01T00:00:02.600Z"
+  },
+  "timezone": "utc",
+  "tags": [
+    "openlaps",
+    "driver"
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": false,
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "vehicle",
+        "label": "Vehicle",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "definition": "SELECT vehicle_id AS __text, vehicle_id AS __value FROM (SELECT DISTINCT vehicle_id FROM v_samples_named WHERE $__timeFilter(time) UNION SELECT current_setting('openlaps.vehicle_id', true)) v WHERE vehicle_id IS NOT NULL ORDER BY (vehicle_id = current_setting('openlaps.vehicle_id', true)) DESC NULLS LAST, 1",
+        "query": "SELECT vehicle_id AS __text, vehicle_id AS __value FROM (SELECT DISTINCT vehicle_id FROM v_samples_named WHERE $__timeFilter(time) UNION SELECT current_setting('openlaps.vehicle_id', true)) v WHERE vehicle_id IS NOT NULL ORDER BY (vehicle_id = current_setting('openlaps.vehicle_id', true)) DESC NULLS LAST, 1",
+        "refresh": 1,
+        "options": [],
+        "includeAll": false,
+        "sort": 0,
+        "current": {},
+        "description": "Opens on the vehicle this pit is deployed for (OPENLAPS_VEHICLE_ID); any other vehicle with data in the time range can be picked."
+      },
+      {
+        "name": "session",
+        "label": "Session",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "query": "SELECT concat(to_char(min(crossed_at), 'YYYY-MM-DD HH24:MI'), ' UTC ', COALESCE(max(session_type), 'no session'), ' at ', COALESCE(NULLIF(max(track_name), ''), 'unknown track'), ' (', count(*), ' laps)') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' GROUP BY session_id ORDER BY min(crossed_at) DESC",
+        "definition": "SELECT concat(to_char(min(crossed_at), 'YYYY-MM-DD HH24:MI'), ' UTC ', COALESCE(max(session_type), 'no session'), ' at ', COALESCE(NULLIF(max(track_name), ''), 'unknown track'), ' (', count(*), ' laps)') AS __text, COALESCE(session_id::text, 'unattributed') AS __value FROM v_laps WHERE vehicle_id = '$vehicle' GROUP BY session_id ORDER BY min(crossed_at) DESC",
+        "refresh": 1,
+        "options": [],
+        "includeAll": false,
+        "sort": 0,
+        "current": {},
+        "description": "Every session this vehicle has laps in, newest first, whatever the time range. Opens on the newest."
+      },
+      {
+        "name": "driver",
+        "label": "Driver",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "query": "SELECT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') GROUP BY driver ORDER BY driver",
+        "definition": "SELECT driver AS __text, driver AS __value FROM v_laps WHERE vehicle_id = '$vehicle' AND driver IS NOT NULL AND ('$session' = 'all' OR session_id::text = '$session') GROUP BY driver ORDER BY driver",
+        "refresh": 1,
+        "options": [],
+        "includeAll": true,
+        "sort": 0,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "description": "Drivers with laps in the selected session.",
+        "allValue": "all"
+      },
+      {
+        "name": "lap",
+        "label": "Lap",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "query": "SELECT concat('Lap ', session_lap, ' - ', COALESCE(driver, 'unattributed'), ' - ', concat(floor((lap_time_s) / 60)::int, ':', to_char((lap_time_s) - 60 * floor((lap_time_s) / 60), 'FM00.000')), CASE WHEN NOT clean THEN ' (not clean)' ELSE '' END) AS __text, lap_id::text AS __value FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND lap_time_s IS NOT NULL AND lap_time_s < 600 AND ('$driver' = 'all' OR driver = '$driver') ORDER BY crossed_at DESC",
+        "definition": "SELECT concat('Lap ', session_lap, ' - ', COALESCE(driver, 'unattributed'), ' - ', concat(floor((lap_time_s) / 60)::int, ':', to_char((lap_time_s) - 60 * floor((lap_time_s) / 60), 'FM00.000')), CASE WHEN NOT clean THEN ' (not clean)' ELSE '' END) AS __text, lap_id::text AS __value FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND lap_time_s IS NOT NULL AND lap_time_s < 600 AND ('$driver' = 'all' OR driver = '$driver') ORDER BY crossed_at DESC",
+        "refresh": 1,
+        "options": [],
+        "includeAll": false,
+        "sort": 0,
+        "current": {},
+        "description": "The lap to study. Newest first; opens on the latest lap."
+      },
+      {
+        "name": "lap_ref",
+        "label": "Reference",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "timescale"
+        },
+        "query": "SELECT __text, __value FROM (SELECT 'Fastest clean lap of the session' AS __text, 'best' AS __value, 0 AS ord, 0::double precision AS t UNION ALL SELECT * FROM (SELECT DISTINCT ON (driver) concat('Fastest by ', COALESCE(driver, 'unattributed'), ': ', concat('Lap ', session_lap, ' - ', COALESCE(driver, 'unattributed'), ' - ', concat(floor((lap_time_s) / 60)::int, ':', to_char((lap_time_s) - 60 * floor((lap_time_s) / 60), 'FM00.000')), CASE WHEN NOT clean THEN ' (not clean)' ELSE '' END)), lap_id::text, 1, lap_time_s FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND lap_time_s IS NOT NULL AND lap_time_s < 600 AND clean ORDER BY driver, lap_time_s) d UNION ALL SELECT concat('Lap ', session_lap, ' - ', COALESCE(driver, 'unattributed'), ' - ', concat(floor((lap_time_s) / 60)::int, ':', to_char((lap_time_s) - 60 * floor((lap_time_s) / 60), 'FM00.000')), CASE WHEN NOT clean THEN ' (not clean)' ELSE '' END), lap_id::text, 2, -extract(epoch FROM crossed_at) FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND lap_time_s IS NOT NULL AND lap_time_s < 600) o ORDER BY ord, t",
+        "definition": "SELECT __text, __value FROM (SELECT 'Fastest clean lap of the session' AS __text, 'best' AS __value, 0 AS ord, 0::double precision AS t UNION ALL SELECT * FROM (SELECT DISTINCT ON (driver) concat('Fastest by ', COALESCE(driver, 'unattributed'), ': ', concat('Lap ', session_lap, ' - ', COALESCE(driver, 'unattributed'), ' - ', concat(floor((lap_time_s) / 60)::int, ':', to_char((lap_time_s) - 60 * floor((lap_time_s) / 60), 'FM00.000')), CASE WHEN NOT clean THEN ' (not clean)' ELSE '' END)), lap_id::text, 1, lap_time_s FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND lap_time_s IS NOT NULL AND lap_time_s < 600 AND clean ORDER BY driver, lap_time_s) d UNION ALL SELECT concat('Lap ', session_lap, ' - ', COALESCE(driver, 'unattributed'), ' - ', concat(floor((lap_time_s) / 60)::int, ':', to_char((lap_time_s) - 60 * floor((lap_time_s) / 60), 'FM00.000')), CASE WHEN NOT clean THEN ' (not clean)' ELSE '' END), lap_id::text, 2, -extract(epoch FROM crossed_at) FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session' AND lap_time_s IS NOT NULL AND lap_time_s < 600) o ORDER BY ord, t",
+        "refresh": 1,
+        "options": [],
+        "includeAll": false,
+        "sort": 0,
+        "current": {},
+        "description": "What to compare it with: the session's fastest clean lap, a driver's fastest, or any lap."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "The two laps",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "The lap picked at the top, and the reference it is compared with. Blue is the lap and orange the reference in every panel below. To reference is the lap time difference: plus means the lap was slower.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "time"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Crossed the line"
+              },
+              {
+                "id": "unit",
+                "value": "time:ddd HH:mm:ss"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END) SELECT which AS \"Which\", concat('Lap ', session_lap) AS \"Lap of the session\", COALESCE(driver, '-') AS \"Driver\", concat(floor((lap_time_s) / 60)::int, ':', to_char((lap_time_s) - 60 * floor((lap_time_s) / 60), 'FM00.000')) AS \"Lap time\", CASE WHEN which = 'Lap' THEN to_char(lap_time_s - (SELECT lap_time_s FROM picked WHERE which = 'Reference'), 'SG990.000') END AS \"To reference (s)\", crossed_at AS time FROM picked ORDER BY which"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Speed around the lap",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "GPS speed against distance from the start line, in 10 m steps. Where the lines part is where the time went: a later, deeper dip is a later brake; a higher bottom is more corner speed. The bottom axis is distance from the start line: Grafana only links crosshairs on a time axis, so read 00:00:01.320 as 1,320 m. The hover gives the distance in metres.",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "Speed",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "linear"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "velocitykmh"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Reference/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^Lap$|Lap$/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (m)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": false
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'position.speed') AS speed FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'position.speed') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT to_timestamp(bin / 1000.0) AS time, bin AS \"Distance (m)\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(speed) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Time lost or gained against the reference",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Running difference in seconds: the lap's time at each point less the reference's. Rising means losing time there, falling means gaining it back; the right-hand end is the lap time difference. The bottom axis is distance from the start line: Grafana only links crosshairs on a time axis, so read 00:00:01.320 as 1,320 m. The hover gives the distance in metres.",
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "Seconds (up is slower)",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "linear"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Reference/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^Lap$|Lap$/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time lost to reference"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.axisCenteredZero",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (m)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": false
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'timing.lap_elapsed') AS elapsed FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'timing.lap_elapsed') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT to_timestamp(bin / 1000.0) AS time, bin AS \"Distance (m)\", max(v) FILTER (WHERE which = 'Lap') - max(v) FILTER (WHERE which = 'Reference') AS \"Time lost to reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(elapsed) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin HAVING count(*) = 2 ORDER BY bin"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Accelerator pedal",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Accelerator pedal position against distance: what the driver asked for, not what the throttle body did. The bottom axis is distance from the start line: Grafana only links crosshairs on a time axis, so read 00:00:01.320 as 1,320 m. The hover gives the distance in metres.",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "Pedal",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "linear"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Reference/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^Lap$|Lap$/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (m)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": false
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'car.accel_pedal_pos') AS pedal FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'car.accel_pedal_pos') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT to_timestamp(bin / 1000.0) AS time, bin AS \"Distance (m)\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(pedal) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Brake",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Share of each 10 m step with the brake pedal switch on: where braking starts and how long it is held, not how hard. The bottom axis is distance from the start line: Grafana only links crosshairs on a time axis, so read 00:00:01.320 as 1,320 m. The hover gives the distance in metres.",
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "Brake on",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "stepAfter"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Reference/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^Lap$|Lap$/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (m)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": false
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, max(s.value) FILTER (WHERE s.channel = 'car.brake_pedal_switch') AS brake FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'car.brake_pedal_switch') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT which, lap_start_at, t, dist, max(brake) OVER (PARTITION BY which, brake_run) AS brake FROM (SELECT *, count(brake) OVER w AS brake_run FROM grid WINDOW w AS (PARTITION BY which ORDER BY t)) g), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT to_timestamp(bin / 1000.0) AS time, bin AS \"Distance (m)\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, avg(brake * 100) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Gear",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Gear against distance. The bottom axis is distance from the start line: Grafana only links crosshairs on a time axis, so read 00:00:01.320 as 1,320 m. The hover gives the distance in metres.",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "axisPlacement": "auto",
+            "axisLabel": "Gear",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "drawStyle": "line",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "stepAfter"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Reference/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^Lap$|Lap$/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Distance (m)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "viz": false,
+                  "legend": true,
+                  "tooltip": false
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "never"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, max(s.value) FILTER (WHERE s.channel = 'car.gear') AS gear FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'car.gear') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT which, lap_start_at, t, dist, max(gear) OVER (PARTITION BY which, gear_run) AS gear FROM (SELECT *, count(gear) OVER w AS gear_run FROM grid WINDOW w AS (PARTITION BY which ORDER BY t)) g), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT to_timestamp(bin / 1000.0) AS time, bin AS \"Distance (m)\", max(v) FILTER (WHERE which = 'Lap') AS \"Lap\", max(v) FILTER (WHERE which = 'Reference') AS \"Reference\" FROM (SELECT which, floor(dist / 10) * 10 AS bin, max(gear) AS v FROM pts GROUP BY 1, 2) b GROUP BY bin ORDER BY bin"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Grip used (g-g)",
+      "type": "xychart",
+      "pluginVersion": "12.4.9",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Each point is a tenth of a second: cornering g across, braking (down) and acceleration (up). A fuller, rounder shape means more of the tyre is being used, especially braking and turning at once.",
+      "gridPos": {
+        "x": 12,
+        "y": 30,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "show": "points",
+            "lineWidth": 2,
+            "pointSize": {
+              "fixed": 3
+            },
+            "fillOpacity": 40,
+            "axisPlacement": "auto",
+            "axisLabel": "Longitudinal g",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Lateral g/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Lateral g"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Reference/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^Lap$|Lap$/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "mapping": "auto",
+        "series": [
+          {}
+        ],
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none",
+          "hideZeros": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_lat') AS lat, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_long') AS lon FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'fused.accel_lat', 'fused.accel_long') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT lat AS \"Lateral g\", lon AS \"Lap\" FROM pts WHERE which = 'Lap' AND lat IS NOT NULL AND lon IS NOT NULL ORDER BY t"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_lat') AS lat, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_long') AS lon FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'fused.accel_lat', 'fused.accel_long') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT lat AS \"Lateral g\", lon AS \"Reference\" FROM pts WHERE which = 'Reference' AND lat IS NOT NULL AND lon IS NOT NULL ORDER BY t"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Corner by corner",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "timescale"
+      },
+      "description": "Each marked section of the lap, from the track map loaded with tools/track_sections.py. Speeds are km/h on the way in, at the slowest point and on the way out, for the lap and (ref) for the reference. Time lost is the lap's time through the section less the reference's, to a tenth of a second; red is where the lap gave time away. Empty until sections are loaded for this track.",
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 24,
+        "h": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": false,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/Time/"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time lost (s)"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "text",
+                      "value": -0.05
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.15
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "timescale"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'position.speed') AS speed FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'position.speed') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL), lap_m AS (SELECT which, max(dist) AS lap_m FROM pts GROUP BY which), sec AS (SELECT s.seq, s.name, s.kind, p.which, count(*) * 0.1 AS secs, min(p.speed) AS v_min, (array_agg(p.speed ORDER BY (p.dist / m.lap_m < s.start_fraction), p.t))[1] AS v_in, (array_agg(p.speed ORDER BY (p.dist / m.lap_m < s.start_fraction) DESC, p.t DESC))[1] AS v_out FROM v_track_sections s JOIN lap_m m ON true JOIN pts p ON p.which = m.which AND p.speed IS NOT NULL AND ((s.start_fraction <= s.end_fraction AND p.dist / m.lap_m >= s.start_fraction AND p.dist / m.lap_m < s.end_fraction) OR (s.start_fraction > s.end_fraction AND (p.dist / m.lap_m >= s.start_fraction OR p.dist / m.lap_m < s.end_fraction))) WHERE s.track_name = (SELECT max(track_name) FROM picked) GROUP BY s.seq, s.name, s.kind, p.which) SELECT name AS \"Section\", round((max(secs) FILTER (WHERE which = 'Lap') - max(secs) FILTER (WHERE which = 'Reference'))::numeric, 1) AS \"Time lost (s)\", round(max(v_in) FILTER (WHERE which = 'Lap')) AS \"Entry\", round(max(v_in) FILTER (WHERE which = 'Reference')) AS \"Entry ref\", round(max(v_min) FILTER (WHERE which = 'Lap')) AS \"Minimum\", round(max(v_min) FILTER (WHERE which = 'Reference')) AS \"Minimum ref\", round(max(v_out) FILTER (WHERE which = 'Lap')) AS \"Exit\", round(max(v_out) FILTER (WHERE which = 'Reference')) AS \"Exit ref\", round(max(secs) FILTER (WHERE which = 'Lap')::numeric, 1) AS \"Time (s)\", round(max(secs) FILTER (WHERE which = 'Reference')::numeric, 1) AS \"Time ref (s)\" FROM sec GROUP BY seq, name ORDER BY seq"
+        }
+      ]
+    }
+  ],
+  "timepicker": {
+    "hidden": true
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "openlaps",
+      "tags": [
+        "openlaps"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": ""
+    },
+    {
+      "type": "link",
+      "title": "Session control",
+      "url": "http://localhost:8080/",
+      "tooltip": "Open the session-control operator UI",
+      "icon": "external link",
+      "tags": [],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": true
+    },
+    {
+      "type": "link",
+      "title": "Car camera",
+      "url": "http://localhost:1984/stream.html?src=car_h264&mode=mse",
+      "tooltip": "Open the car camera straight from the pit's video relay, outside Grafana",
+      "icon": "camera",
+      "tags": [],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": true
+    }
+  ],
+  "graphTooltip": 1
+}

@@ -58,7 +58,7 @@ def _all_topics(dashboard: dict[str, Any]) -> set[str]:
 NON_ENDURANCE = {
     "car.json": "car",
     "car-traces.json": "car-traces",
-    "handling.json": "handling",
+    "driver.json": "driver",
     "system.json": "system-status",
 }
 
@@ -279,6 +279,23 @@ def _session_scoped(dashboard: dict[str, Any]) -> None:
         assert variable["sort"] == 0, variable["name"]
 
 
+def test_the_oil_pressure_trend_shows_pressure_and_rpm_on_hover() -> None:
+    dashboard = _dashboard("reliability.json")
+    panel = next(p for p in _panels(dashboard) if p["title"] == "Oil pressure per 1000 rpm")
+    assert panel["options"]["tooltip"]["mode"] == "multi"
+    for name in ("Oil pressure", "RPM"):
+        properties = {
+            item["id"]: item["value"]
+            for override in panel["fieldConfig"]["overrides"]
+            if override["matcher"]["options"] == name
+            for item in override["properties"]
+        }
+        # Hidden from the plot would also drop it from the hover.
+        assert properties["custom.hideFrom"] == {"viz": False, "legend": True, "tooltip": False}
+        assert properties["custom.lineWidth"] == 0
+        assert properties["custom.axisPlacement"] == "hidden"
+
+
 def test_lap_analysis_is_session_scoped_and_counts_laps_in_crossing_order() -> None:
     dashboard = _dashboard("laps.json")
     sql = _all_sql(dashboard)
@@ -305,6 +322,76 @@ def test_lap_analysis_is_session_scoped_and_counts_laps_in_crossing_order() -> N
     assert scatter["options"]["mapping"] == "auto"
     # One entry with no frame: every frame, so every driver, is a series.
     assert scatter["options"]["series"] == [{}]
+
+
+def test_driver_dashboard_compares_a_lap_with_a_reference_by_distance() -> None:
+    dashboard = _dashboard("driver.json")
+    panels = _panels(dashboard)
+    variables = {item["name"]: item for item in dashboard["templating"]["list"]}
+
+    assert list(variables) == ["vehicle", "session", "driver", "lap", "lap_ref"]
+    assert dashboard["timepicker"] == {"hidden": True}
+    # Laps are picked by identity and shown by their number in the session.
+    for name in ("lap", "lap_ref"):
+        query = variables[name]["query"]
+        assert "lap_id::text AS __value" in query or "lap_id::text" in query
+        assert "session_lap" in query and "lap_number" not in query
+        assert variables[name]["sort"] == 0
+    # The reference opens on the session's fastest clean lap.
+    assert variables["lap_ref"]["query"].index("'best' AS __value") < variables["lap_ref"][
+        "query"
+    ].index("UNION ALL")
+    for panel in panels:
+        for target in panel["targets"]:
+            sql = target["rawSql"]
+            assert "$__time" not in sql, panel["title"]
+            assert "'$lap'" in sql and "'$lap_ref'" in sql, panel["title"]
+    # Grafana shares a crosshair only between panels on a time axis, so the
+    # distance traces are time series whose "time" is distance: one metre is
+    # one millisecond after the epoch, and the dashboard's fixed range is the
+    # lap. Hovering one marks the same distance on the others, and dragging
+    # across one zooms them all.
+    assert dashboard["graphTooltip"] == 1
+    assert dashboard["timezone"] == "utc"
+    assert dashboard["time"]["from"] == "1970-01-01T00:00:00.000Z"
+    traces = [panel for panel in panels if panel["type"] == "timeseries"]
+    assert [panel["title"] for panel in traces] == [
+        "Speed around the lap",
+        "Time lost or gained against the reference",
+        "Accelerator pedal",
+        "Brake",
+        "Gear",
+    ]
+    for panel in traces:
+        sql = panel["targets"][0]["rawSql"]
+        assert "timing.distance" in sql
+        assert "to_timestamp(bin / 1000.0) AS time" in sql
+        # The axis cannot say metres, so the hover does. A series hidden
+        # from the plot is dropped from the hover too: this one is drawn,
+        # invisibly, on a hidden axis of its own.
+        distance = next(
+            override["properties"]
+            for override in panel["fieldConfig"]["overrides"]
+            if override["matcher"]["options"] == "Distance (m)"
+        )
+        properties = {item["id"]: item["value"] for item in distance}
+        assert properties["custom.hideFrom"]["viz"] is False
+        assert properties["custom.lineWidth"] == 0
+        assert properties["custom.axisPlacement"] == "hidden"
+        assert panel["options"]["tooltip"]["mode"] == "multi"
+    # The pedal is what the driver did; the throttle body is what the ECU did.
+    pedal = next(panel for panel in traces if panel["title"] == "Accelerator pedal")
+    assert "car.accel_pedal_pos" in pedal["targets"][0]["rawSql"]
+    assert "car.throttle_pos" not in json.dumps(dashboard)
+    gg = next(panel for panel in panels if panel["type"] == "xychart")
+    # See the lap scatter: without it Grafana rewrites the options.
+    assert float(gg["pluginVersion"].rsplit(".", 1)[0]) >= 11.1
+    assert gg["options"]["series"] == [{}]
+    corners = next(panel for panel in panels if panel["title"] == "Corner by corner")
+    assert "v_track_sections" in corners["targets"][0]["rawSql"]
+    # Sections are compared as fractions of the lap: the car's lap distance
+    # and the track map's never agree to the metre.
+    assert "start_fraction" in corners["targets"][0]["rawSql"]
 
 
 def test_stint_report_covers_stops_driver_consistency_fuel_and_open_stops() -> None:

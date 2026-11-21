@@ -13,7 +13,7 @@ read-only. The repository is the source of truth; a browser edit is temporary.
 | `reliability.json` | Reliability | Slow trends: oil pressure per 1000 rpm, temperatures, knock, PDM currents |
 | `fuel.json` | Strategy | Fuel, laps to dry, pit window and stop plan from the strategy service |
 | `laps.json` | Session report | One session: laps, driver pace, pit stops, stints, driving time |
-| `handling.json` | Handling | g-g plots |
+| `driver.json` | Driver | Coaching: one lap against a reference lap by distance (speed, time lost, throttle, brake, gear, g-g) and corner by corner |
 | `system.json` | System status | GNSS, clocks, agent publish path, ingest, NATS, hosts |
 
 ## Change a dashboard
@@ -46,6 +46,23 @@ docker compose -f deploy/pit-compose.yaml restart grafana
   crossing order; `lap_number` restarts with the vehicle agent and is not
   shown. `clean` laps (valid, timed, no pit entry or exit inside) are the
   ones pace statistics use.
+- The driver dashboard (`driver.json`) is session-scoped too. It compares
+  the `$lap` and `$lap_ref` laps on a 100 ms grid binned to 10 m of
+  `timing.distance`. Grafana shares a crosshair only between panels on a
+  time axis, so its distance traces are time series whose `time` is distance
+  (one metre is one millisecond after the epoch) and the dashboard's fixed
+  time range, 0 to 2.6 s, is the lap: raise `time.to` for a track longer than
+  2,600 m. The axis reads `00:00:01.320` for 1,320 m; the hover gives metres.
+  Channels the car sends only on change (gear, brake switch) are carried
+  forward. Its corner table needs the track's sections
+  in `v_track_sections`: see "Lap sections" in `docs/TRACK_SETUP.md`.
+- An XY chart panel must carry `"pluginVersion"` (11.1 or later). Without it
+  Grafana takes the options for the old XY chart format and rewrites them on
+  load, drawing "Err" or one series. Put units and axis limits in overrides
+  on the plotted fields: panel-wide they also format the x field.
+- A series hidden from a plot (`hideFrom.viz`) is dropped from its hover as
+  well. To show a value only on hover, draw it with line width 0 on a hidden
+  axis and give it a unit of its own so it gets a scale of its own.
 - Show lap and stop times as `m:ss` text or with a `time:` unit on a
   millisecond value. Grafana's seconds unit renders decimal minutes.
 - The car camera is a link, not a panel: `Car camera` on every dashboard

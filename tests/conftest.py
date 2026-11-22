@@ -281,6 +281,16 @@ def timescale_dsn():
 @pytest.fixture
 def mosquitto_url():
     """A fresh anonymous pit-local MQTT broker in docker."""
+    yield from _mosquitto("")
+
+
+@pytest.fixture
+def mosquitto_logging_url():
+    """The same broker, publishing its SUBSCRIBE log as the deployed one does."""
+    yield from _mosquitto("log_dest topic\nlog_type subscribe\n")
+
+
+def _mosquitto(extra_config: str):
     if shutil.which("docker") is None:
         pytest.skip("docker not available")
     port = _free_port()
@@ -289,7 +299,7 @@ def mosquitto_url():
     # confined docker (the snap package, for one) cannot see /tmp and
     # silently substitutes an empty directory for the file, leaving a broker
     # that never starts and a test that skips for the wrong reason.
-    config = "listener 1883\nallow_anonymous true\npersistence false\n"
+    config = "listener 1883\nallow_anonymous true\npersistence false\n" + extra_config
     encoded = base64.b64encode(config.encode()).decode()
     run = subprocess.run(
         [

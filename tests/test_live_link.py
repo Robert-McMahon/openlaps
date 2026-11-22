@@ -643,10 +643,16 @@ def test_backup_addresses_are_asked_only_while_the_preferred_one_delivers_nothin
         # The tunnel delivers: the backup is left alone.
         link.datagram_received(live_wire.encode_frame(1, 1, b"a", None), tunnel)
         assert await asked() == {tunnel}
-        # Only the backup is delivering: keep asking both until the tunnel is back.
+        # The backup gets a frame here first and the tunnel's copy is the
+        # duplicate: the tunnel is still delivering, so still only it.
         link.datagram_received(live_wire.encode_frame(1, 2, b"b", None), radio)
+        link.datagram_received(live_wire.encode_frame(1, 2, b"b", None), tunnel)
+        assert await asked() == {tunnel}
+        # The tunnel goes quiet: both again, until it is heard from.
+        link._primary_heard -= 10  # noqa: SLF001
+        link.datagram_received(live_wire.encode_frame(1, 3, b"c", None), radio)
         assert await asked() == {tunnel, radio}
-        link.datagram_received(live_wire.encode_frame(1, 3, b"c", None), tunnel)
+        link.datagram_received(live_wire.encode_frame(1, 4, b"d", None), tunnel)
         assert await asked() == {tunnel}
 
     asyncio.run(scenario())

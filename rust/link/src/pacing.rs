@@ -101,14 +101,15 @@ impl LowDelay {
     }
 }
 
-impl Controller for LowDelay {
-    fn on_ack(
+impl LowDelay {
+    /// One acknowledgement: `bytes` sent at `sent` were confirmed at `now`.
+    fn acked(
         &mut self,
         now: Instant,
         sent: Instant,
         bytes: u64,
         app_limited: bool,
-        rtt: &RttEstimator,
+        smoothed_rtt: Duration,
     ) {
         let queue = self.note_delay(now, now.saturating_duration_since(sent));
         if let Some(until) = self.drain_until {
@@ -126,7 +127,7 @@ impl Controller for LowDelay {
         } else if now >= self.next_drain && !self.slow_start {
             self.resume_window = self.window;
             self.window = self.min_window();
-            self.drain_until = Some(now + (rtt.get() * 2).max(DRAIN_AT_LEAST));
+            self.drain_until = Some(now + (smoothed_rtt * 2).max(DRAIN_AT_LEAST));
             return;
         }
         let target = self.target.as_secs_f64();
@@ -160,6 +161,19 @@ impl Controller for LowDelay {
         self.credit -= whole;
         let next = self.window as f64 + whole;
         self.window = (next.max(self.min_window() as f64) as u64).min(MAX_WINDOW);
+    }
+}
+
+impl Controller for LowDelay {
+    fn on_ack(
+        &mut self,
+        now: Instant,
+        sent: Instant,
+        bytes: u64,
+        app_limited: bool,
+        rtt: &RttEstimator,
+    ) {
+        self.acked(now, sent, bytes, app_limited, rtt.get());
     }
 
     fn on_congestion_event(
@@ -199,5 +213,105 @@ impl Controller for LowDelay {
 
     fn into_any(self: Box<Self>) -> Box<dyn Any> {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MTU: u64 = 1200;
+
+    fn controller(now: Instant) -> LowDelay {
+        let built =
+            Arc::new(LowDelayConfig::new(Duration::from_millis(150))).build(now, MTU as u16);
+        *built.into_any().downcast::<LowDelay>().unwrap()
+    }
+
+    /// Feed acknowledgements whose delay is `base + queue`, one per 10 ms.
+    fn run(c: &mut LowDelay, now: &mut Instant, acks: u32, queue_ms: u64, app_limited: bool) {
+        let delay = Duration::from_millis(20 + queue_ms);
+        for _ in 0..acks {
+            *now += Duration::from_millis(10);
+            c.acked(*now, *now - delay, MTU, app_limited, delay);
+        }
+    }
+
+    #[test]
+    fn an_empty_queue_lets_the_window_grow() {
+        let mut now = Instant::now();
+        let mut c = controller(now);
+        let start = c.window();
+        run(&mut c, &mut now, 100, 0, false);
+        assert!(
+            c.window() > start * 4,
+            "slow start should have doubled it several times"
+        );
+    }
+
+    #[test]
+    fn a_queue_over_the_target_shrinks_the_window_to_the_floor() {
+        let mut now = Instant::now();
+        let mut c = controller(now);
+        run(&mut c, &mut now, 200, 0, false);
+        let grown = c.window();
+        run(&mut c, &mut now, 1500, 400, false);
+        assert!(c.window() < grown / 4);
+        run(&mut c, &mut now, 20_000, 400, false);
+        assert_eq!(c.window(), MIN_WINDOW_PACKETS * MTU);
+    }
+
+    #[test]
+    fn a_queue_at_the_target_holds_the_window() {
+        let mut now = Instant::now();
+        let mut c = controller(now);
+        run(&mut c, &mut now, 50, 0, false);
+        run(&mut c, &mut now, 50, 60, false); // leaves slow start
+        let held = c.window();
+        run(&mut c, &mut now, 1500, 150, false);
+        let drift = c.window().abs_diff(held);
+        assert!(
+            drift <= 2 * MTU,
+            "window moved {drift} B at the target delay"
+        );
+    }
+
+    #[test]
+    fn an_idle_sender_does_not_grow_the_window() {
+        let mut now = Instant::now();
+        let mut c = controller(now);
+        let start = c.window();
+        run(&mut c, &mut now, 500, 0, true);
+        assert_eq!(c.window(), start);
+    }
+
+    #[test]
+    fn a_busy_sender_pauses_now_and_then_to_see_the_empty_queue() {
+        let mut now = Instant::now();
+        let mut c = controller(now);
+        run(&mut c, &mut now, 50, 0, false);
+        run(&mut c, &mut now, 50, 60, false);
+        let mut paused = false;
+        for _ in 0..3_000 {
+            run(&mut c, &mut now, 1, 100, false);
+            paused |= c.window() == MIN_WINDOW_PACKETS * MTU;
+        }
+        assert!(paused, "30 s of saturation without one drain");
+        // ... and comes back from the pause.
+        run(&mut c, &mut now, 100, 100, false);
+        assert!(c.window() > MIN_WINDOW_PACKETS * MTU);
+    }
+
+    #[test]
+    fn loss_halves_the_window_once_per_round() {
+        let mut now = Instant::now();
+        let mut c = controller(now);
+        run(&mut c, &mut now, 200, 0, false);
+        let grown = c.window();
+        let sent = now;
+        now += Duration::from_millis(30);
+        c.on_congestion_event(now, sent, false, MTU);
+        c.on_congestion_event(now, sent, false, MTU);
+        assert_eq!(c.window(), grown / 2);
     }
 }

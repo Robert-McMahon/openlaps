@@ -318,7 +318,7 @@ mod tests {
         // now three seconds long, so only a handful of cuts can happen.
         let delay = Duration::from_millis(3020);
         for _ in 0..4 {
-            now += delay;
+            now += delay + Duration::from_millis(10);
             c.acked(now, now - delay, MTU, false, delay);
         }
         assert!(c.window() < grown / 100, "{} of {grown} left", c.window());

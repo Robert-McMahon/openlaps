@@ -22,6 +22,8 @@ from pathlib import Path
 from agent import selfprofile
 from agent.clock import SystemClock
 from agent.fusion_app import FUSION_DERIVED_CHANNELS, FusionApp
+from agent.live import DEFAULT_TICK_MS as DEFAULT_LIVE_TICK_MS
+from agent.live import LiveSender
 from agent.pipeline import DERIVED_SOURCE_CLASS, Pipeline, TickBatch
 from agent.publisher import (
     DEFAULT_BUFFER_BYTES,
@@ -86,6 +88,11 @@ class AgentSettings:
     # chrony SOCK refclock that numbers the PPS seconds from the receiver's
     # RMC time (collectors/serial/gnss_time.py). Unset: no feed.
     chrony_nmea_socket: str | None = None
+    # The live link (agent/live.py): the UDP port the pit asks for live
+    # frames on, 0 to leave it off, and the key both ends sign with.
+    live_port: int = 0
+    live_key: str | None = None
+    live_tick_ms: int = DEFAULT_LIVE_TICK_MS
     health_interval_s: float = 1.0
 
     @classmethod
@@ -137,6 +144,9 @@ class AgentSettings:
         take("OPENLAPS_STATE_DIR", "state_dir", Path)
         take("OPENLAPS_RAW_CAPTURE_DIR", "raw_capture_dir", Path)
         take("OPENLAPS_CHRONY_NMEA_SOCKET", "chrony_nmea_socket", str)
+        take("OPENLAPS_LIVE_PORT", "live_port", int)
+        take("OPENLAPS_LIVE_KEY", "live_key", str)
+        take("OPENLAPS_LIVE_TICK_MS", "live_tick_ms", int)
         return cls(**kwargs)
 
 
@@ -307,6 +317,14 @@ class VehicleAgent:
             on_session=self._on_session_payload,
             on_rtcm=self._on_rtcm_payload,
         )
+        self.live: LiveSender | None = None
+        if settings.live_port:
+            self.live = LiveSender(
+                registry_seq=self.catalog.registry.registry_seq,
+                port=settings.live_port,
+                secret=settings.live_key,
+                tick_ms=settings.live_tick_ms,
+            )
 
         self._supervised: list[_Supervised] = []
         self._rtcm_collectors: list[SerialCollector] = []
@@ -414,6 +432,8 @@ class VehicleAgent:
         # Publisher first: it connects, provisions streams, and publishes the
         # registry — retrying forever if the local NATS is still booting.
         self.publisher.start()
+        if self.live is not None:
+            self.live.start()
         self._pipeline_thread = threading.Thread(
             target=self._pipeline_main, name="pipeline", daemon=True
         )
@@ -442,6 +462,8 @@ class VehicleAgent:
         # batches on its way out.
         if self._pipeline_thread is not None:
             self._pipeline_thread.join(timeout=10.0)
+        if self.live is not None:
+            self.live.stop()
         self.publisher.drain(timeout_s=5.0)
         self._publish_final_status()
         self.publisher.stop()
@@ -506,6 +528,8 @@ class VehicleAgent:
         ready.extend(self.pipeline.flush(self.clock))
         # One hand-over per tick: the publisher wakes once for all of them.
         self.publisher.submit_many(ready)
+        if self.live is not None and ready:
+            self.live.submit_many(batch.payload for batch in ready)
 
     # -- health loop ---------------------------------------------------------------
 

@@ -22,6 +22,13 @@ Where the live consumer sits is a deployment choice (``OPENLAPS_LIVE_SOURCE``):
   from the pit's complete local copy, and a consumer that has gone quiet for
   ``resubscribe_after_s`` is replaced with a fresh ``NEW`` one rather than
   left to nats-py's by-sequence recovery, which would replay the gap.
+- ``direct``: on live frames the car sends by datagram, beside the stream
+  (`pit.live_decoder.direct`). The car sends only the selected channels and
+  only when they change, so the gauges cost a few kbit/s instead of a second
+  copy of everything, and a frame that is late is dropped rather than queued,
+  so they stay current while a slow link backs the stream up. Needs
+  ``OPENLAPS_LIVE_CAR_ADDRS``. The pit's sourced copy is still read, for
+  registries and as the fallback when the car sends no frames.
 """
 
 from __future__ import annotations
@@ -44,6 +51,7 @@ from nats.js import JetStreamContext, api
 
 from core.pb import telemetry_pb2 as pb
 from pit.live_decoder.config import LiveConfig
+from pit.live_decoder.direct import DirectLink, DirectSource, parse_car_addrs, selection_for
 from pit.live_decoder.health import HealthState, serve_health
 from pit.live_decoder.limiter import ConflatingLimiter, LiveUpdate
 from pit.live_decoder.reload import ConfigReloader
@@ -74,7 +82,7 @@ _JS_API_TIMEOUT_S = 5.0
 # restarted during a dropout, say). The pit's sourced copy has it; re-scan
 # there, but no more often than this.
 _REGISTRY_RESCAN_MIN_S = 5.0
-LIVE_SOURCES = ("pit", "vehicle")
+LIVE_SOURCES = ("pit", "vehicle", "direct")
 
 
 def mqtt_message(vehicle: str, update: LiveUpdate) -> tuple[str, bytes]:
@@ -125,6 +133,13 @@ class LiveDecoderSettings:
     # link was down (or the consumer died with it); a fresh consumer resumes
     # at "now" instead of replaying the gap.
     resubscribe_after_s: float = 10.0
+    # Direct source only: where the car answers live HELLOs (every address
+    # is tried, and the car replies on each path that reaches it), the key
+    # both ends sign with, and how long frames may be absent before the
+    # pit's sourced copy is shown instead.
+    car_addrs: tuple[tuple[str, int], ...] = ()
+    live_key: str | None = None
+    direct_fallback_s: float = 30.0
 
     @classmethod
     def from_env(
@@ -168,6 +183,15 @@ class LiveDecoderSettings:
         resubscribe_after_s = float(env.get("OPENLAPS_LIVE_RESUBSCRIBE_S", "10"))
         if resubscribe_after_s <= 0:
             raise ValueError("OPENLAPS_LIVE_RESUBSCRIBE_S must be greater than zero")
+        car_addrs = parse_car_addrs(env.get("OPENLAPS_LIVE_CAR_ADDRS", ""))
+        if live_source == "direct" and not car_addrs:
+            raise ValueError(
+                "OPENLAPS_LIVE_SOURCE=direct needs OPENLAPS_LIVE_CAR_ADDRS "
+                "(the car's address, e.g. 192.168.12.222:7423)"
+            )
+        direct_fallback_s = float(env.get("OPENLAPS_LIVE_FALLBACK_S", "30"))
+        if direct_fallback_s <= 0:
+            raise ValueError("OPENLAPS_LIVE_FALLBACK_S must be greater than zero")
         return cls(
             config_path=Path(configured),
             nats_url=env.get("OPENLAPS_NATS_URL", "nats://127.0.0.1:4222").strip(),
@@ -185,6 +209,9 @@ class LiveDecoderSettings:
             vehicle_domain=vehicle_domain,
             vehicle_stream=vehicle_stream,
             resubscribe_after_s=resubscribe_after_s,
+            car_addrs=car_addrs,
+            live_key=env.get("OPENLAPS_LIVE_KEY", "").strip() or None,
+            direct_fallback_s=direct_fallback_s,
         )
 
     @property
@@ -366,6 +393,8 @@ class LiveDecoder:
         self.ready = asyncio.Event()
         self.messages_seen = 0
         self._last_registry: pb.ChannelRegistry | None = None
+        self._direct: DirectLink | None = None
+        self._direct_asked: tuple[int, int] | None = None
 
     @property
     def subject_filter(self) -> str:
@@ -377,6 +406,7 @@ class LiveDecoder:
         sink_task = asyncio.create_task(self.sink.run(stop))
         report_task = asyncio.create_task(self._report_loop(stop))
         client: NatsClient | None = None
+        direct: DirectSource | None = None
         try:
             client = await self._connect_nats(stop)
             if client is None:
@@ -394,11 +424,27 @@ class LiveDecoder:
             subscription = await self._subscribe_live(js_live, stop)
             if subscription is None:
                 return
+            if self.settings.live_source == "direct":
+                self._direct = DirectLink(
+                    self.settings.car_addrs, self.settings.live_key, self.health
+                )
+                await self._direct.open()
+                direct = DirectSource(
+                    self._direct,
+                    subscription,
+                    self.health,
+                    fallback_after_s=self.settings.direct_fallback_s,
+                )
+                self._ask_car()
+                direct.start(stop)
+                subscription = direct
             self.ready.set()
             await self._consume(subscription, stop, js_live, js_registry=js)
         finally:
             self.ready.clear()
             stop.set()
+            if direct is not None:
+                await direct.close()
             for task in (sink_task, report_task):
                 task.cancel()
             await asyncio.gather(sink_task, report_task, return_exceptions=True)
@@ -669,6 +715,24 @@ class LiveDecoder:
         if not was_known:
             self.health.registries += 1
         self._refresh_unmatched_rules()
+        self._ask_car()
+
+    def _ask_car(self) -> None:
+        """Direct mode: keep the car's HELLO in step with config and registry.
+
+        The registry is the one most recently published, which is the one
+        the running agent encodes against (it republishes it periodically);
+        the car ignores a selection made for any other generation.
+        """
+        if self._direct is None or self._last_registry is None:
+            return
+        asked = (self._last_registry.registry_seq, id(self.config))
+        if asked == self._direct_asked:
+            return
+        self._direct_asked = asked
+        self._direct.select(
+            self._last_registry.registry_seq, selection_for(self.config, self._last_registry)
+        )
 
     def _reload(self, now: float) -> None:
         loaded = self.reloader.poll(now)
@@ -687,6 +751,7 @@ class LiveDecoder:
         self.health.config_reloads += 1
         self.health.config_mtime_ns = self.reloader.mtime_ns
         self._refresh_unmatched_rules()
+        self._ask_car()
 
     def _refresh_unmatched_rules(self) -> None:
         if self._last_registry is None:

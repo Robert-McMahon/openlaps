@@ -205,9 +205,20 @@ services:
       # "vehicle" reads the car's own stream through the leafnode, so the
       # gauges show current values the moment the link is back while the
       # sourced copy catches up behind them -- at the cost of every batch
-      # crossing the radio twice while the link is healthy. Registries are
-      # scanned from the pit copy either way.
+      # crossing the radio twice while the link is healthy. "direct" asks the
+      # car for live frames by UDP (OPENLAPS_LIVE_CAR_ADDRS): only the selected
+      # channels, only when they change, beside the stream rather than in it,
+      # so the gauges stay current while a slow link backs the stream up. It
+      # falls back to the pit copy when the car sends no frames. Registries
+      # are scanned from the pit copy in every mode.
       OPENLAPS_LIVE_SOURCE: ${OPENLAPS_LIVE_SOURCE:-pit}
+      # direct source only. Every address is tried and the car answers on each
+      # path that reaches it, so list the tunnel address and the plain radio
+      # one to lose nothing when either fails: host[:port], comma separated,
+      # port 7423 unless given. The key must equal the car's OPENLAPS_LIVE_KEY.
+      OPENLAPS_LIVE_CAR_ADDRS: ${OPENLAPS_LIVE_CAR_ADDRS:-}
+      OPENLAPS_LIVE_KEY: ${OPENLAPS_LIVE_KEY:-}
+      OPENLAPS_LIVE_FALLBACK_S: ${OPENLAPS_LIVE_FALLBACK_S:-30}
       OPENLAPS_VEHICLE_JS_DOMAIN: ${OPENLAPS_VEHICLE_JS_DOMAIN:-veh}
       OPENLAPS_VEHICLE_STREAM: ${OPENLAPS_VEHICLE_STREAM:-TELE}
       # vehicle source only: a consumer silent this long is re-created as

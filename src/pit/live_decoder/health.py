@@ -45,6 +45,12 @@ class HealthState:
         self.live_frame_rejects = 0
         self.live_fallback = False
         self.live_car_addrs: list[str] = []
+        # Direct source: channels the car is being asked for right now,
+        # configured channels left out because nobody is subscribed, and
+        # whether that pruning is active at all.
+        self.live_selected = 0
+        self.live_idle = 0
+        self.live_demand = False
         self.last_message_mono: float | None = None
         self.subject_filter = ""
         self.publish_rate = 0.0
@@ -83,6 +89,9 @@ class HealthState:
             "live_frame_rejects": self.live_frame_rejects,
             "live_fallback": self.live_fallback,
             "live_car_addrs": list(self.live_car_addrs),
+            "live_selected": self.live_selected,
+            "live_idle": self.live_idle,
+            "live_demand": self.live_demand,
             "last_message_age_s": (
                 None
                 if self.last_message_mono is None

@@ -6,7 +6,9 @@ import asyncio
 import math
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
+import aiomqtt
 import pytest
 
 from agent.agent import AgentSettings
@@ -15,6 +17,7 @@ from core import live_wire
 from core.live_wire import Selection, WireError
 from core.pb import telemetry_pb2 as pb
 from pit.live_decoder.config import load_live_config
+from pit.live_decoder.demand import Demand, parse_subscribe_log
 from pit.live_decoder.direct import (
     DirectLink,
     DirectSource,
@@ -23,7 +26,8 @@ from pit.live_decoder.direct import (
     selection_for,
 )
 from pit.live_decoder.health import HealthState
-from pit.live_decoder.service import LiveDecoderSettings
+from pit.live_decoder.resend import Resender
+from pit.live_decoder.service import LiveDecoderSettings, LiveUpdate, MqttSink
 from pit.registry_cache import MSG_TYPE_HEADER, MSG_TYPE_REGISTRY
 
 SEQ = 7
@@ -435,3 +439,180 @@ def test_a_car_with_a_key_does_not_answer_a_pit_without_one() -> None:
         assert sender.frames_sent == 0
     finally:
         sender.stop()
+
+
+# -- only what somebody is watching ---------------------------------------------------
+
+
+def _demand() -> Demand:
+    demand = Demand("car-1")
+    demand.arm()
+    return demand
+
+
+def test_a_channel_nobody_subscribes_to_goes_idle_and_a_subscription_wakes_it() -> None:
+    demand = _demand()
+    assert demand.wanted("car.rpm")
+    demand.published("car.rpm", False, 0.0)
+    assert demand.wanted("car.rpm")  # one verdict is not enough
+    demand.published("car.rpm", False, 2.0)
+    assert not demand.wanted("car.rpm")
+    demand.published("car.coolant", True, 2.0)
+    assert demand.wanted("car.coolant")
+    before = demand.version
+
+    demand.subscribed("openlaps/other-car/car.rpm", 3.0)  # somebody else's car
+    assert not demand.wanted("car.rpm") and demand.version == before
+    demand.subscribed("openlaps/car-1/car.rpm", 3.0)
+    assert demand.wanted("car.rpm") and demand.version == before + 1
+
+
+def test_wildcard_subscriptions_wake_every_channel_they_cover() -> None:
+    demand = _demand()
+    for channel in ("car.rpm", "car.coolant", "lap.number"):
+        demand.published(channel, False, 0.0)
+        demand.published(channel, False, 2.0)
+    demand.subscribed("openlaps/car-1/+", 3.0)
+    assert demand.idle == frozenset()
+
+
+def test_a_verdict_that_crossed_a_subscription_does_not_undo_it() -> None:
+    demand = _demand()
+    demand.published("car.rpm", False, 0.0)
+    demand.subscribed("openlaps/car-1/car.rpm", 1.0)
+    demand.published("car.rpm", False, 1.1)
+    demand.published("car.rpm", False, 1.2)
+    assert demand.wanted("car.rpm")
+    # Long after, with the subscriber gone again, it does go idle.
+    demand.published("car.rpm", False, 10.0)
+    demand.published("car.rpm", False, 12.0)
+    assert not demand.wanted("car.rpm")
+
+
+def test_nothing_is_pruned_until_the_broker_is_known_to_report_subscriptions() -> None:
+    demand = Demand("car-1")  # never armed: an older broker config
+    for now in (0.0, 2.0, 4.0):
+        demand.published("car.rpm", False, now)
+    assert demand.wanted("car.rpm")
+
+
+def test_a_new_broker_connection_wants_everything_again() -> None:
+    demand = _demand()
+    demand.published("car.rpm", False, 0.0)
+    demand.published("car.rpm", False, 2.0)
+    before = demand.version
+    demand.reset()
+    assert demand.wanted("car.rpm") and not demand.armed and demand.version == before + 1
+
+
+def test_the_selection_leaves_out_idle_channels(tmp_path: Path) -> None:
+    demand = _demand()
+    demand.published("car.coolant", False, 0.0)
+    demand.published("car.coolant", False, 2.0)
+    selection = selection_for(_live_config(tmp_path), _registry(), demand.wanted)
+    assert selection.intervals == {RPM: 50, GEAR: 0}
+
+
+def test_the_subscribe_log_line_is_parsed() -> None:
+    line = b"1795322264: grafana-x 0 openlaps/christine/car.rpm"
+    assert parse_subscribe_log(line) == ("grafana-x", "openlaps/christine/car.rpm")
+    assert parse_subscribe_log(b"garbage") is None
+
+
+def test_an_unwatched_channel_is_not_repeated_and_its_last_value_is_forgotten(
+    tmp_path: Path,
+) -> None:
+    config = _live_config(tmp_path)
+    resender = Resender()
+    resender.note(LiveUpdate("car.rpm", 1.0, 3000), 0.0)
+    resender.note(LiveUpdate("car.coolant", 1.0, 88.5), 0.0)
+    due = resender.due(config, 2.0, 2.0, lambda channel: channel != "car.coolant")
+    assert [update.channel for update in due] == ["car.rpm"]
+    # Watched again later: the stale reading must not come back.
+    assert [u.channel for u in resender.due(config, 4.0, 4.0, lambda channel: True)] == ["car.rpm"]
+
+
+def test_narrowing_the_selection_does_not_resend_what_the_pit_already_has() -> None:
+    sampler = _sampler()
+    sampler.observe(_batch(1_000, (RPM, 0, "u", 3000), (COOLANT, 0, "f", 88.5)))
+    assert set(_values(sampler.frames(0))) == {RPM, COOLANT}
+    sampler.select(Selection({RPM: 100}, refresh_ms=1000))
+    assert sampler.frames(100.0) == []
+    # Widened again: only the channel that had been dropped is sent at once.
+    sampler.select(Selection({RPM: 100, COOLANT: 100}, refresh_ms=1000))
+    assert set(_values(sampler.frames(200.0))) == {COOLANT}
+
+
+def test_a_car_with_a_listener_and_nothing_to_send_says_so() -> None:
+    sender = LiveSender(registry_seq=SEQ, port=0, tick_ms=20, bind="127.0.0.1")
+    sender.start()
+
+    async def scenario() -> list[pb.SampleBatch]:
+        link = DirectLink((("127.0.0.1", sender.port),), None, HealthState())
+        await link.open()
+        link.select(SEQ, Selection({}))  # no dashboard open
+        stop = asyncio.Event()
+        hello = asyncio.create_task(link.run(stop))
+        try:
+            first = await asyncio.wait_for(link.frames.get(), timeout=3)
+            second = await asyncio.wait_for(link.frames.get(), timeout=3)
+        finally:
+            stop.set()
+            await asyncio.gather(hello, return_exceptions=True)
+            link.close()
+        return [pb.SampleBatch.FromString(message.data) for message in (first, second)]
+
+    try:
+        batches = asyncio.run(scenario())
+    finally:
+        sender.stop()
+    assert all(batch.registry_seq == SEQ and not batch.samples for batch in batches)
+
+
+def test_the_sink_learns_from_a_real_broker_who_is_watching(
+    mosquitto_logging_url: str, tmp_path: Path
+) -> None:
+    broker = urlparse(mosquitto_logging_url)
+    settings = LiveDecoderSettings(
+        config_path=tmp_path / "unused.yaml",
+        nats_url="nats://unused",
+        mqtt_host=broker.hostname,
+        mqtt_port=broker.port,
+    )
+
+    async def scenario() -> None:
+        demand = Demand("car-1")
+        sink = MqttSink(settings, "car-1", HealthState(), demand)
+        stop = asyncio.Event()
+        run = asyncio.create_task(sink.run(stop))
+
+        async def publish_until(condition, what: str) -> None:
+            deadline = time.monotonic() + 15.0
+            while not condition():
+                assert time.monotonic() < deadline, what
+                for channel in ("car.rpm", "car.coolant"):
+                    sink.submit(LiveUpdate(channel, 1.0, 1))
+                await asyncio.sleep(0.1)
+
+        try:
+            await asyncio.wait_for(sink.connected.wait(), timeout=10)
+            async with aiomqtt.Client(broker.hostname, broker.port) as gauge:
+                await gauge.subscribe("openlaps/car-1/car.rpm")
+                await publish_until(lambda: demand.armed, "never armed")
+                # Only the rpm gauge is open: coolant goes idle, rpm does not.
+                await publish_until(lambda: not demand.wanted("car.coolant"), "coolant stayed")
+                assert demand.wanted("car.rpm")
+                # A coolant gauge opens: wanted again without waiting for a publish.
+                await gauge.subscribe("openlaps/car-1/car.coolant")
+                deadline = time.monotonic() + 5.0
+                while not demand.wanted("car.coolant"):
+                    assert time.monotonic() < deadline, "subscription did not wake coolant"
+                    await asyncio.sleep(0.05)
+            # The dashboard closed: both go idle.
+            await publish_until(lambda: len(demand.idle) == 2, "channels stayed after close")
+        finally:
+            stop.set()
+            run.cancel()
+            await asyncio.gather(run, return_exceptions=True)
+
+    asyncio.run(scenario())

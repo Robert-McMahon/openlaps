@@ -51,6 +51,12 @@ from nats.js import JetStreamContext, api
 
 from core.pb import telemetry_pb2 as pb
 from pit.live_decoder.config import LiveConfig
+from pit.live_decoder.demand import (
+    PROBE_INTERVAL_S,
+    SUBSCRIBE_LOG_TOPIC,
+    Demand,
+    parse_subscribe_log,
+)
 from pit.live_decoder.direct import DirectLink, DirectSource, parse_car_addrs, selection_for
 from pit.live_decoder.health import HealthState, serve_health
 from pit.live_decoder.limiter import ConflatingLimiter, LiveUpdate
@@ -83,6 +89,9 @@ _JS_API_TIMEOUT_S = 5.0
 # there, but no more often than this.
 _REGISTRY_RESCAN_MIN_S = 5.0
 LIVE_SOURCES = ("pit", "vehicle", "direct")
+# MQTT 5 PUBACK reason code.
+_NO_MATCHING_SUBSCRIBERS = 16
+_MAX_OPEN_PROBES = 4_096
 
 
 def mqtt_message(vehicle: str, update: LiveUpdate) -> tuple[str, bytes]:
@@ -259,10 +268,22 @@ def _resolve_vehicle(settings: LiveDecoderSettings, config: LiveConfig) -> str:
 class MqttSink:
     """Bounded non-blocking MQTT handoff with reconnect and drop accounting."""
 
-    def __init__(self, settings: LiveDecoderSettings, vehicle: str, health: HealthState) -> None:
+    def __init__(
+        self,
+        settings: LiveDecoderSettings,
+        vehicle: str,
+        health: HealthState,
+        demand: Demand | None = None,
+    ) -> None:
         self.settings = settings
         self.vehicle = vehicle
         self.health = health
+        # Set in direct mode: the sink asks the broker which channels have a
+        # subscriber (pit.live_decoder.demand) as a by-product of publishing.
+        self.demand = demand
+        self._client_id = f"openlaps-live-decoder-{os.urandom(4).hex()}"
+        self._probed: dict[str, float] = {}
+        self._probes: dict[int, str] = {}
         self.connected = asyncio.Event()
         self.suppressed: dict[str, int] = defaultdict(int)
         self._limited: OrderedDict[str, LiveUpdate] = OrderedDict()
@@ -298,16 +319,22 @@ class MqttSink:
         backoff = _CONNECT_BACKOFF_START_S
         connected_once = False
         while not stop.is_set():
+            watcher: asyncio.Task[None] | None = None
             try:
                 async with aiomqtt.Client(
                     self.settings.mqtt_host,
                     self.settings.mqtt_port,
                     username=self.settings.mqtt_username,
                     password=self.settings.mqtt_password,
+                    identifier=self._client_id,
+                    # MQTT 5: its publish acknowledgement says whether anyone
+                    # was subscribed, which is what demand tracking runs on.
+                    protocol=aiomqtt.ProtocolVersion.V5,
                 ) as client:
                     if connected_once:
                         self.health.mqtt_reconnects += 1
                     connected_once = True
+                    watcher = await self._watch_demand(client)
                     self.connected.set()
                     backoff = _CONNECT_BACKOFF_START_S
                     logger.info(
@@ -316,6 +343,10 @@ class MqttSink:
                         self.settings.mqtt_port,
                     )
                     while not stop.is_set():
+                        if watcher is not None and watcher.done():
+                            # The broker connection is gone; surface why.
+                            watcher.result()
+                            raise aiomqtt.MqttError("subscription watcher stopped")
                         update = await self._next_pending(stop)
                         if update is None:
                             break
@@ -330,7 +361,8 @@ class MqttSink:
                             )
                             continue
                         try:
-                            await client.publish(topic, payload, qos=0, retain=False)
+                            if not self._probe(client, update.channel, topic, payload):
+                                await client.publish(topic, payload, qos=0, retain=False)
                         except Exception:
                             self.health.mqtt_drops += 1
                             raise
@@ -344,8 +376,65 @@ class MqttSink:
                     logger.warning("live-decoder: MQTT unavailable: %s", exc)
                     await _sleep_unless(stop, backoff)
                     backoff = min(backoff * 2, _CONNECT_BACKOFF_MAX_S)
+            finally:
+                _cancel(watcher)
         self.connected.clear()
         self._drop_queued()
+
+    async def _watch_demand(self, client: aiomqtt.Client) -> asyncio.Task[None] | None:
+        """Start learning who is subscribed, from scratch, on this connection."""
+        demand = self.demand
+        if demand is None:
+            return None
+        demand.reset()
+        self._probed.clear()
+        self._probes.clear()
+        paho = client._client  # noqa: SLF001 - aiomqtt hides the ack's reason code
+        inner = paho.on_publish
+
+        def on_publish(paho_client, userdata, mid, reason_code, properties) -> None:  # noqa: ANN001
+            channel = self._probes.pop(mid, None)
+            if channel is not None:
+                matched = reason_code.value != _NO_MATCHING_SUBSCRIBERS
+                demand.published(channel, matched, time.monotonic())
+            inner(paho_client, userdata, mid, reason_code, properties)
+
+        paho.on_publish = on_publish
+        await client.subscribe(SUBSCRIBE_LOG_TOPIC)
+
+        async def watch() -> None:
+            async for message in client.messages:
+                parsed = parse_subscribe_log(bytes(message.payload))
+                if parsed is None:
+                    continue
+                subscriber, topic_filter = parsed
+                if subscriber == self._client_id:
+                    # Our own SUBSCRIBE coming back proves the broker
+                    # publishes them, so pruning cannot strand a gauge.
+                    if not demand.armed and topic_filter == SUBSCRIBE_LOG_TOPIC:
+                        demand.arm()
+                        logger.info("live-decoder: asking the car only for watched channels")
+                    continue
+                demand.subscribed(topic_filter, time.monotonic())
+
+        return asyncio.create_task(watch())
+
+    def _probe(self, client: aiomqtt.Client, channel: str, topic: str, payload: bytes) -> bool:
+        """Send this publish at QoS 1 if the channel is due a subscriber check."""
+        demand = self.demand
+        if demand is None or not demand.armed:
+            return False
+        now = time.monotonic()
+        if now - self._probed.get(channel, float("-inf")) < PROBE_INTERVAL_S:
+            return False
+        self._probed[channel] = now
+        info = client._client.publish(topic, payload, qos=1, retain=False)  # noqa: SLF001
+        if info.rc != 0:
+            raise aiomqtt.MqttCodeError(info.rc, "Could not publish message")
+        if len(self._probes) > _MAX_OPEN_PROBES:
+            self._probes.clear()
+        self._probes[info.mid] = channel
+        return True
 
     async def _next_pending(self, stop: asyncio.Event) -> LiveUpdate | None:
         while not stop.is_set():
@@ -389,7 +478,10 @@ class LiveDecoder:
         self.health.live_source = settings.live_source
         self.health.live_stream = settings.live_stream
         self.health.subject_filter = self.subject_filter
-        self.sink = MqttSink(settings, self.vehicle, self.health)
+        # Direct mode only: there the selection costs radio, so it follows
+        # what the broker says is being watched.
+        self.demand = Demand(self.vehicle) if settings.live_source == "direct" else None
+        self.sink = MqttSink(settings, self.vehicle, self.health, self.demand)
         self.ready = asyncio.Event()
         self.messages_seen = 0
         self._last_registry: pb.ChannelRegistry | None = None
@@ -647,8 +739,12 @@ class LiveDecoder:
                     # that stays down costs one attempt per period, not one
                     # per poll.
                     last_message = time.monotonic()
-            for repeat in self.resender.due(self.config, now, self.health.last_message_mono):
+            wanted = self.demand.wanted if self.demand is not None else None
+            for repeat in self.resender.due(
+                self.config, now, self.health.last_message_mono, wanted
+            ):
                 self.sink.submit(repeat)
+            self._ask_car()
             self._reload(now)
             self._sync_limiter_health()
 
@@ -726,13 +822,19 @@ class LiveDecoder:
         """
         if self._direct is None or self._last_registry is None:
             return
-        asked = (self._last_registry.registry_seq, id(self.config))
+        demand = self.demand
+        version = demand.version if demand is not None else 0
+        asked = (self._last_registry.registry_seq, id(self.config), version)
         if asked == self._direct_asked:
             return
         self._direct_asked = asked
-        self._direct.select(
-            self._last_registry.registry_seq, selection_for(self.config, self._last_registry)
+        selection = selection_for(
+            self.config, self._last_registry, demand.wanted if demand is not None else None
         )
+        self._direct.select(self._last_registry.registry_seq, selection)
+        self.health.live_selected = len(selection.intervals)
+        self.health.live_idle = len(demand.idle) if demand is not None else 0
+        self.health.live_demand = demand is not None and demand.armed
 
     def _reload(self, now: float) -> None:
         loaded = self.reloader.poll(now)
@@ -807,6 +909,11 @@ class LiveDecoder:
                     self.subject_filter,
                     self.settings.live_stream,
                 )
+
+
+def _cancel(task: asyncio.Task[None] | None) -> None:
+    if task is not None:
+        task.cancel()
 
 
 async def _sleep_unless(stop: asyncio.Event, delay: float) -> None:

@@ -221,7 +221,7 @@ def _can_ingest_choice(value: str) -> str:
 
 def thread_roles(collector_names: list[str]) -> list[str]:
     """The roles `sys.agent.cpu.*` reports: one per collector, plus the agent's own."""
-    return [*collector_names, "pipeline", "publisher", "health", "main"]
+    return [*collector_names, "pipeline", "publisher", "live", "health", "main"]
 
 
 class VehicleAgent:

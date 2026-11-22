@@ -348,6 +348,89 @@ capture_time_ms = SampleBatch.batch_epoch_unix_ms + Sample.t_offset_us / 1000.0
   a single `SampleBatch` never mixes samples meant for two different
   registry generations.
 
+## Live link
+
+The stream above is the record: ordered, acknowledged, gap-free, and for
+those reasons exactly as late as the radio is slow. Gauges want the opposite
+trade, so they do not ride it. Beside the stream the car sends **live
+frames**: UDP datagrams holding the newest value of each channel the pit's
+live view selects, sent only when that value changes. Nothing is queued or
+retried; a lost or late frame is superseded by the next one. Implementation:
+`core/live_wire.py` (formats), `agent/live.py` (car), `pit/live_decoder/direct.py`
+(pit, `OPENLAPS_LIVE_SOURCE=direct`).
+
+Measured on the bench with a replayed race CAN capture (2026-11-22): 97
+selected channels cost about 20 kbit/s, against roughly 430 kbit/s for the
+stream, and with the car's link throttled to 100 kbit/s the gauges stayed a
+median 80 ms old while the stream ran 7-19 s late.
+
+**Who talks first.** The pit. About once a second the live-decoder sends a
+`HELLO` to every address in `OPENLAPS_LIVE_CAR_ADDRS` (UDP port 7423 by
+default). The car streams frames back to the address each valid HELLO came
+from, for as long as HELLOs keep arriving (5 s timeout), so:
+
+- the car needs no pit address and no channel selection of its own, and
+  sends nothing to a network where no pit is listening;
+- the link follows whatever path reaches the car. List the tunnel address
+  and the plain radio-network address and the car answers on both; the pit
+  drops the duplicates, and losing either path costs nothing. A plain local
+  network with no tunnel at all is just the one-address case;
+- one pit is served at a time: a second listener is ignored until the first
+  has been silent for the timeout.
+
+**Datagram layout.** Network byte order. Every datagram starts with the
+4-byte prefix `"OL"`, type (`1` HELLO, `2` FRAME), version (`1`).
+
+| Datagram | After the prefix |
+| --- | --- |
+| HELLO | `session` u64 (random per live-decoder process), `counter` u32 (rises every cycle; an older one is refused), `registry_seq` u32, `selection_version` u32, `refresh_ms` u32, `part` u8, `parts` u8, then pairs of varints: `channel_id`, `interval_ms` |
+| FRAME | `boot` u32 (random per agent process), `seq` u32 (rises per frame), then one serialized `SampleBatch` |
+
+A selection too big for one datagram is split across `parts` HELLOs sharing
+a `selection_version`; the car applies it once it holds them all. A HELLO
+whose `registry_seq` is not the agent's own is ignored, because its channel
+ids would mean something else.
+
+**What a frame carries.** A `SampleBatch` exactly as on the stream
+(`format_version` 1, the agent's `registry_seq`), so the pit decodes it with
+the same code. Each sample keeps its true capture time (`batch_epoch_unix_ms`
+is the oldest sample in the frame). The agent builds frames every
+`OPENLAPS_LIVE_TICK_MS` (100 ms, i.e. 10 Hz gauges). A selected channel is
+included when
+
+- its newest value differs from the one last sent **and** at least
+  `interval_ms` has passed since (the live view's `max_hz`; 0 = every frame), or
+- it has not been sent for `refresh_ms` (the live view's `resend_s`), which
+  repeats an unchanged value. This is what heals a lost datagram and fills a
+  gauge that has only just subscribed. A steady value therefore crosses once
+  a second, not ten times.
+
+The agent samples batches *after* the catalog's report-by-exception filter,
+so "differs" means what the catalog already says is a significant change
+for that channel.
+
+**Ordering and duplicates.** The pit accepts a frame only if its `seq` is
+higher than the last one taken from the same `boot`; a repeat (the second
+path) or an overtaken frame is dropped. A new `boot` means the agent
+restarted and resets the comparison.
+
+**Signing.** With `OPENLAPS_LIVE_KEY` set on both ends (the same secret),
+every datagram ends in a 16-byte keyed BLAKE2b tag over everything before
+it, and anything untagged or mistagged is dropped. This is authenticity
+only: it stops a stranger on the network redirecting or faking the gauges.
+It does not hide the values; a tunnel does, when one is in use. Without a
+key the link works unsigned and both ends log a warning.
+
+**Fallback.** In `direct` mode the live-decoder still reads the pit's
+sourced copy: registries only arrive that way, and when the car has sent no
+frame for `OPENLAPS_LIVE_FALLBACK_S` (30 s) the copy's batches drive the
+gauges instead, as in `pit` mode, until frames return.
+
+**Not solved here.** A frame only stays fresh if it is not queued behind
+the stream at the bottleneck. On the bench a datagram flow sharing one
+queue with a saturating TCP flow arrived seconds late. Giving live frames
+priority over the stream on a shared radio is separate work.
+
 ## `lap.event` payload schema
 
 The timing engine (`src/agent/timing_app.py`, hosted in-agent per

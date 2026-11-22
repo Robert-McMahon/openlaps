@@ -1,0 +1,39 @@
+# The car's end of the pit-car link tunnel (rust/link, docs/WIRE_FORMAT.md ->
+# Link tunnel). One QUIC connection from the pit carries the live gauge frames
+# ahead of the NATS leafnode stream, so a slow radio delays the stream and
+# not the gauges.
+#
+# Install:
+#   sudo install -m 0644 deploy/systemd/openlaps-link.service /etc/systemd/system/
+#   sudo install -d -o openlaps -g openlaps -m 0700 /etc/openlaps/tls
+#   sudo install -o openlaps -g openlaps -m 0600 <tls dir>/{server-cert,server-key,ca}.pem /etc/openlaps/tls/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now openlaps-link
+#
+# The certificates are the ones the vehicle's NATS leafnode listener uses; the
+# pit authenticates with its leafnode client certificate. The binary is put
+# in place by tools/deploy_vehicle.sh. Listens on UDP 7424.
+[Unit]
+Description=openlaps pit-car link tunnel (QUIC)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=openlaps
+Group=openlaps
+# Optional overrides, e.g. OPENLAPS_LINK_ARGS=--target-delay-ms 100
+EnvironmentFile=-/etc/openlaps/link.env
+ExecStart=/opt/openlaps/bin/openlaps-link car \
+    --cert /etc/openlaps/tls/server-cert.pem \
+    --key /etc/openlaps/tls/server-key.pem \
+    --ca /etc/openlaps/tls/ca.pem \
+    --listen 0.0.0.0:7424 --tcp 127.0.0.1:7422 --udp 127.0.0.1:7423 $OPENLAPS_LINK_ARGS
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

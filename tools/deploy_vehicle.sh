@@ -74,6 +74,16 @@ else
     echo "note: openlaps_canfast was not built (see /tmp/openlaps-canfast-build.log); the agent will use its Python CAN ingest" >&2
 fi
 
+# The link tunnel is a standalone binary built here. It is only restarted on
+# a board that has its unit installed (deploy/systemd/openlaps-link.service).
+if link="$(tools/build_link.sh "$arch" 2>/tmp/openlaps-link-build.log)"; then
+    echo "==> installing openlaps-link"
+    scp -q "$link" "$HOST:/tmp/openlaps-link"
+    ssh "$HOST" "sudo -u $SVC_USER install -D -m 0755 /tmp/openlaps-link $DEST/bin/openlaps-link.new && sudo -u $SVC_USER mv $DEST/bin/openlaps-link.new $DEST/bin/openlaps-link && rm -f /tmp/openlaps-link && (sudo systemctl try-restart openlaps-link 2>/dev/null || true)"
+else
+    echo "note: openlaps-link was not built (see /tmp/openlaps-link-build.log); the tunnel binary on the board is unchanged" >&2
+fi
+
 echo "==> restarting $UNIT"
 ssh "$HOST" "sudo systemctl restart $UNIT && sleep 3 && systemctl is-active $UNIT && journalctl -u $UNIT -n 15 --no-pager"
 ssh "$HOST" "sudo systemctl try-restart openlaps-can-watchdog 2>/dev/null || true"

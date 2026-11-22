@@ -1,0 +1,20 @@
+[package]
+name = "openlaps-link"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "One QUIC connection between pit and car that carries live gauge frames ahead of the telemetry stream."
+
+[dependencies]
+anyhow = "1"
+bytes = "1"
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pemfile = "2"
+quinn-proto = { version = "0.11", default-features = false, features = ["rustls-ring"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "signal", "sync"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

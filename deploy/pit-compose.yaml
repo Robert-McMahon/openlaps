@@ -665,6 +665,41 @@ services:
 
   # --- remote ECU tuning (opt-in) ---------------------------------------------
 
+  link:
+    # The pit's end of the pit-car link tunnel (rust/link, docs/WIRE_FORMAT.md
+    # -> Link tunnel): one QUIC connection to the car that carries live gauge
+    # frames ahead of the leafnode stream, so a slow radio delays the stream
+    # and not the gauges. Opt in with `--profile link`, then send both through
+    # it:
+    #     NATS_VEHICLE_EXTRA_HOST=openlaps-luckfox:127.0.0.1   (leaf URL host -> here)
+    #     OPENLAPS_LIVE_CAR_ADDRS=nats:7423,<car address>       (tunnel first, direct as backup)
+    # It shares the NATS container's network, which is what lets the leaf URL
+    # keep the name in the car's certificate while dialling this service on
+    # 127.0.0.1:7422. NATS_LEAFNODE_URL_ALT stays the car's real address, so
+    # the stream still gets through if the tunnel does not.
+    profiles: ["link"]
+    <<: *openlaps-image
+    network_mode: "service:nats"
+    user: "0:0"   # to read the leafnode client key in NATS_TLS_DIR, as NATS does
+    command:
+      - openlaps-link
+      - pit
+      - --cert=/etc/nats/tls/client-cert.pem
+      - --key=/etc/nats/tls/client-key.pem
+      - --ca=/etc/nats/tls/ca.pem
+      # Every address is dialled at once; the first path to answer is used.
+      - --car=${OPENLAPS_LINK_CAR_ADDRS:-openlaps-car:7424}
+      - --server-name=${OPENLAPS_LINK_SERVER_NAME:-openlaps-luckfox}
+      - --tcp=127.0.0.1:7422
+      - --udp=0.0.0.0:7423
+      - --target-delay-ms=${OPENLAPS_LINK_TARGET_DELAY_MS:-150}
+    volumes:
+      - ${NATS_TLS_DIR:?set NATS_TLS_DIR in .env}:/etc/nats/tls:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
   video-relay:
     # Lets phones and tablets on the pit LAN watch the car camera without
     # being on the tailnet: they open http://<pit-host>:1984 and this forwards

@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 HELLO_INTERVAL_S = 1.0
 _RESOLVE_INTERVAL_S = 30.0
+# Frames absent from the preferred address this long: ask the backups too.
+_BACKUP_AFTER_S = 3.0
 _QUEUE_SIZE = 256
 # With no resend configured a lost frame would never heal; repeat anyway,
 # just rarely.
@@ -116,6 +118,7 @@ class DirectLink(asyncio.DatagramProtocol):
         self._boot: int | None = None
         self._seq = 0
         self._wake = asyncio.Event()
+        self._from_primary = False
         self.frames: asyncio.Queue[LiveMessage] = asyncio.Queue(_QUEUE_SIZE)
         self.last_frame_mono: float | None = None
         if self._key is None:
@@ -171,6 +174,7 @@ class DirectLink(asyncio.DatagramProtocol):
             self._health.live_frame_duplicates += 1
             return
         self._seq = seq
+        self._from_primary = bool(self._resolved) and addr[:2] == self._resolved[0]
         self._health.live_frames += 1
         self.last_frame_mono = time.monotonic()
         if self.frames.full():
@@ -207,7 +211,14 @@ class DirectLink(asyncio.DatagramProtocol):
         except WireError as exc:
             logger.error("live-decoder: %s", exc)
             return
-        for addr in self._resolved:
+        # The first address is the preferred path and the rest are backups,
+        # asked only while the preferred one is delivering nothing. Asking
+        # them all, all the time, would have the car send every frame once
+        # per path, which is the wrong thing to double on a starved radio.
+        last = self.last_frame_mono
+        primary_ok = last is not None and now - last < _BACKUP_AFTER_S
+        targets = self._resolved[:1] if primary_ok and self._from_primary else self._resolved
+        for addr in targets:
             for datagram in datagrams:
                 self._transport.sendto(datagram, addr)
 

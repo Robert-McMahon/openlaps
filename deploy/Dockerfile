@@ -33,6 +33,17 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
 
+# The link tunnel (rust/link): one small binary, used only by the optional
+# `link` service of the pit stack. Built against an older Debian than the
+# runtime image so the binary's libc requirement is always met.
+FROM rust:1-slim-bookworm AS link
+WORKDIR /src
+COPY rust/link/Cargo.toml rust/link/Cargo.lock ./
+COPY rust/link/src ./src
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target \
+    cargo build --release --locked && cp target/release/openlaps-link /openlaps-link
+
 FROM python:3.13-slim AS runtime
 
 # libpq for psycopg's binary wheel is already vendored; nothing else is
@@ -62,6 +73,7 @@ COPY --from=build --chown=openlaps:openlaps /app/src /app/src
 # Deploy-time helpers that are not part of the wheel: the pit stream
 # provisioner is run once at bring-up, by hand or by the compose one-shot.
 COPY --chown=openlaps:openlaps deploy/provision_pit_streams.py /app/deploy/
+COPY --from=link /openlaps-link /usr/local/bin/openlaps-link
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

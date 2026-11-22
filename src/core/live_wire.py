@@ -35,8 +35,9 @@ VERSION = 1
 TYPE_HELLO = 1
 TYPE_FRAME = 2
 DEFAULT_PORT = 7423
-# Stays under the 1280-byte tunnel MTU with room for IP, UDP and the tag.
-MAX_DATAGRAM = 1200
+# Small enough to ride inside a QUIC datagram (rust/link) on a 1280-byte
+# tunnel MTU, with room for the headers of both and for the tag.
+MAX_DATAGRAM = 1100
 MAC_BYTES = 16
 
 _PREFIX = struct.Struct("!2sBB")

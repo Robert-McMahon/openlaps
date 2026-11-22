@@ -47,3 +47,4 @@ site/
 # rust/canfast build output
 rust/canfast/target/
 rust/canfast/dist/
+rust/link/target/

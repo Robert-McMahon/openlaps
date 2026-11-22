@@ -45,6 +45,9 @@ services:
       NATS_LEAFNODE_URL: ${NATS_LEAFNODE_URL:?set NATS_LEAFNODE_URL in .env}
       # Optional second address for the same car (see deploy/nats/pit.conf).
       NATS_LEAFNODE_URL_ALT: ${NATS_LEAFNODE_URL_ALT:-${NATS_LEAFNODE_URL}}
+      # Unanswered 10 s pings before the pit drops a connection. 2 bounds a
+      # dead radio at ~30 s; with the link tunnel use 30 (see pit.conf).
+      NATS_PING_MAX: ${NATS_PING_MAX:-2}
     # Lets a leafnode URL use a name from the vehicle certificate's SAN for an
     # address DNS does not know, e.g. the car's Tailscale address:
     #     NATS_VEHICLE_EXTRA_HOST=openlaps-luckfox:100.x.y.z
@@ -664,6 +667,55 @@ services:
       start_period: 60s
 
   # --- remote ECU tuning (opt-in) ---------------------------------------------
+
+  link:
+    # The pit's end of the pit-car link tunnel (rust/link, docs/WIRE_FORMAT.md
+    # -> Link tunnel): one QUIC connection to the car that carries live gauge
+    # frames ahead of the leafnode stream, so a slow radio delays the stream
+    # and not the gauges. Opt in with `--profile link`, then send both through
+    # it:
+    #     NATS_VEHICLE_EXTRA_HOST=openlaps-luckfox:127.0.0.1   (leaf URL host -> here)
+    #     NATS_LEAFNODE_URL_ALT=                                (unset: one URL, this one)
+    #     OPENLAPS_LINK_CAR_ADDRS=<car>:7424                    (the car's tunnel)
+    #     OPENLAPS_LINK_DIRECT_ADDRS=<car>:7422                 (the car's leafnode listener)
+    #     OPENLAPS_LIVE_CAR_ADDRS=nats:7423,<car address>       (tunnel first, direct as backup)
+    #     NATS_PING_MAX=30                                      (the tunnel detects a dead path)
+    # It shares the NATS container's network, which is what lets the leaf URL
+    # keep the name in the car's certificate while dialling this service on
+    # 127.0.0.1:7422. With no tunnel (a car without one, or a path that drops
+    # UDP) it passes the leafnode connection straight to the car's listener,
+    # and moves it into the tunnel when one comes up. Leave the leaf's second
+    # URL unset: a leaf that has gone to the car by itself is out of this
+    # service's reach and stays outside the tunnel until its next reconnect.
+    profiles: ["link"]
+    <<: *openlaps-image
+    network_mode: "service:nats"
+    user: "0:0"   # to read the leafnode client key in NATS_TLS_DIR, as NATS does
+    command:
+      - openlaps-link
+      - pit
+      - --cert=/etc/nats/tls/client-cert.pem
+      - --key=/etc/nats/tls/client-key.pem
+      - --ca=/etc/nats/tls/ca.pem
+      # Every address is dialled at once; the first path to answer is used.
+      - --car=${OPENLAPS_LINK_CAR_ADDRS:-openlaps-car:7424}
+      - --direct=${OPENLAPS_LINK_DIRECT_ADDRS:-openlaps-car:7422}
+      - --server-name=${OPENLAPS_LINK_SERVER_NAME:-openlaps-luckfox}
+      - --tcp=127.0.0.1:7422
+      - --udp=0.0.0.0:7423
+      - --target-delay-ms=${OPENLAPS_LINK_TARGET_DELAY_MS:-150}
+    volumes:
+      - ${NATS_TLS_DIR:?set NATS_TLS_DIR in .env}:/etc/nats/tls:ro
+    depends_on:
+      nats:
+        condition: service_started
+        # It lives in that container's network: when compose restarts NATS,
+        # restart this too. (After a bare `docker restart` of NATS it notices
+        # the dead network and exits to be restarted. If NATS is *recreated*,
+        # `docker compose up -d link` is needed as well: the old container no
+        # longer exists for this one to rejoin.)
+        restart: true
+    restart: unless-stopped
 
   video-relay:
     # Lets phones and tablets on the pit LAN watch the car camera without

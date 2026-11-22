@@ -150,7 +150,10 @@ flowchart LR
   stream, holding only the selected channels and only when they change.
   A late frame is dropped rather than queued, so the gauges stay current
   while a slow radio backs the stream up, for a few kbit/s instead of a
-  second copy of everything. See `docs/WIRE_FORMAT.md` → Live link.
+  second copy of everything. See `docs/WIRE_FORMAT.md` → Live link. An
+  optional **link tunnel** (`openlaps-link`, one QUIC connection between
+  pit and car) carries those frames ahead of the leafnode stream and keeps
+  the stream from queueing on the radio in front of them.
 - **session-control** publishes driver/stint/session state on `cmd.<vehicle>.*`
   (replicated to the vehicle over the same leafnode); the agent stamps active
   session identity onto derived channels so every lap is attributable.

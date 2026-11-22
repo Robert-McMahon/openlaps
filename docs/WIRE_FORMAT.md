@@ -442,10 +442,86 @@ sourced copy: registries only arrive that way, and when the car has sent no
 frame for `OPENLAPS_LIVE_FALLBACK_S` (30 s) the copy's batches drive the
 gauges instead, as in `pit` mode, until frames return.
 
-**Not solved here.** A frame only stays fresh if it is not queued behind
-the stream at the bottleneck. On the bench a datagram flow sharing one
-queue with a saturating TCP flow arrived seconds late. Giving live frames
-priority over the stream on a shared radio is separate work.
+**Sharing the radio with the stream.** Sent as a flow of its own, a live
+frame queues at the radio behind whatever the stream has already put there,
+and a stream that is catching up puts seconds there. The link tunnel below
+exists to prevent that; without it the live link is only as fresh as the
+radio's queue is short.
+
+**Preferred path and backups.** The first address in
+`OPENLAPS_LIVE_CAR_ADDRS` is the preferred path (the tunnel, when one is
+used). The others are asked only while the preferred one has delivered
+nothing for 3 s, so the car does not send every frame once per path.
+
+## Link tunnel
+
+`openlaps-link` (`rust/link`) puts the leafnode stream and the live link
+inside **one QUIC connection**, so that one sender decides what goes first.
+It is optional, runs at both ends, and neither NATS nor the live link knows
+it is there: each talks to a local port.
+
+```
+pit                                                        car
+NATS leaf ---tcp 7422--> [link pit] ==== QUIC ==== [link car] --tcp--> NATS :7422
+live-decoder -udp 7423->      "     UDP 7424 (datagrams)   "  --udp--> agent :7423
+```
+
+- **Live frames** (HELLOs one way, frames the other) cross as QUIC
+  datagrams: unreliable, sent ahead of stream data, and dropped rather than
+  queued when the link cannot take them (the send buffer holds about four
+  frames).
+- **The leafnode connection** crosses as a QUIC stream, byte for byte, with
+  its own TLS intact. It takes whatever capacity the live frames leave.
+- **The queue stays short.** Sending live frames first is not enough if the
+  stream has already filled the radio's queue, which any loss-based
+  congestion control does. The tunnel uses a delay-based controller
+  (`rust/link/src/pacing.rs`, the LEDBAT idea): the lowest recent round-trip
+  time is taken as the empty-queue delay, and the stream is held to the rate
+  that keeps the delay about `--target-delay-ms` (150) above it. Every 20 s
+  of saturation it pauses for a moment to see the empty queue again.
+- **Who dials, and trust.** The pit dials UDP 7424 on every address in
+  `OPENLAPS_LINK_CAR_ADDRS` at once and uses the first to answer. Both ends
+  authenticate with the leafnode certificates (mutual TLS against the
+  deployment CA; the car's certificate name is `OPENLAPS_LINK_SERVER_NAME`).
+  It works over any IP path: a tunnel address, or a plain radio network.
+- **No tunnel, no harm.** While there is no QUIC connection (a car without
+  the service, a path that drops UDP), the pit end passes the leafnode
+  connection straight to `OPENLAPS_LINK_DIRECT_ADDRS`, and moves it into
+  the tunnel 5 s after one comes up. HELLOs are dropped meanwhile and the
+  live-decoder turns to its backup address.
+
+Measured on the bench (2026-11-22), replayed race CAN load, all 97 live
+channels subscribed, the tunnel's single connection throttled at the car:
+
+| Link | Gauges (median age) | Stream |
+| --- | --- | --- |
+| unthrottled | 0.1 s | current |
+| 250 kbit/s | 0.3 s | about a third of its rate, falling behind |
+| 100 kbit/s | 0.45 s, rpm at 8 Hz | about a tenth of its rate |
+| 30 kbit/s | 1.1 to 1.4 s, at a reduced rate | a trickle |
+
+The leafnode stayed connected throughout, and after the throttle was
+released the gauges were current within 15 s and the stream within 35 s.
+For comparison, without the tunnel a small datagram flow sharing a
+100 kbit/s link with a saturating TCP flow arrived 1.5 to 8 s late and half
+of it was lost.
+
+Two NATS settings belong with the tunnel:
+
+- **The car announces `127.0.0.1:7422`** (`advertise` in
+  `deploy/nats/vehicle.conf`). A leafnode server tells the pit one address
+  of its own, and the pit adds it to the URLs it reconnects over; left
+  alone that is the car's LAN address, which takes the leafnode around the
+  tunnel on every other reconnect.
+- **`NATS_PING_MAX=30` on the pit.** A PONG travels in order behind the
+  car's backlog, so at the default of 2 the pit hangs up on a link that is
+  slow but working, and a leafnode cannot be re-established while a round
+  trip exceeds a second. The tunnel detects a dead path itself (8 s) and
+  closes the connection.
+
+Deployment: car, `deploy/systemd/openlaps-link.service` (the binary is
+installed by `tools/deploy_vehicle.sh`); pit, the `link` profile of
+`deploy/pit-compose.yaml`, whose comment lists the five settings.
 
 ## `lap.event` payload schema
 

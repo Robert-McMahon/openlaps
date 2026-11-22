@@ -409,6 +409,22 @@ The agent samples batches *after* the catalog's report-by-exception filter,
 so "differs" means what the catalog already says is a significant change
 for that channel.
 
+**Only what is watched.** The live view config says which channels *may*
+be shown; the selection in the HELLO is the part of it somebody is looking
+at. The pit's MQTT broker knows that, and the live-decoder learns it two
+ways (`pit/live_decoder/demand.py`): one publish per channel every two
+seconds goes out at QoS 1 over MQTT 5, and the broker's acknowledgement
+says when a channel has no subscriber (twice in a row and it leaves the
+selection); and the broker publishes every SUBSCRIBE it receives
+(`log_dest topic`, `log_type subscribe` in `deploy/mosquitto/mosquitto.conf`),
+which puts a channel back the moment a gauge opens, with a HELLO sent at
+once rather than on the next second. With no dashboard open the selection is
+empty and the car sends only a one-per-second empty frame, so the pit can
+still tell a quiet car from a lost one. A live-decoder that has just started
+or reconnected to the broker asks for everything and prunes again within
+seconds; a broker that does not publish its SUBSCRIBE log is never pruned
+against at all.
+
 **Ordering and duplicates.** The pit accepts a frame only if its `seq` is
 higher than the last one taken from the same `boot`; a repeat (the second
 path) or an overtaken frame is dropped. A new `boot` means the agent

@@ -46,6 +46,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_TICK_MS = 100
 # A subscriber that has not said HELLO for this long is gone.
 HELLO_TIMEOUT_S = 5.0
+# With a listener but nothing to send, an empty frame goes out this often.
+KEEPALIVE_S = 1.0
 _MAX_SUBSCRIBER_ADDRS = 4
 _MAX_PENDING_BATCHES = 4_096
 # One sample's worst case on the wire: submessage framing, a 5-byte channel
@@ -98,9 +100,14 @@ class LiveSampler:
         return self._selection
 
     def select(self, selection: Selection) -> None:
-        """Adopt the pit's selection; everything in it is due at once."""
+        """Adopt the pit's selection; channels new to it are due at once.
+
+        The pit narrows and widens the selection as dashboards open and
+        close, so what it already has is not sent again.
+        """
         self._selection = selection
-        self._sent.clear()
+        for channel_id in [c for c in self._sent if c not in selection.intervals]:
+            del self._sent[channel_id]
 
     def forget_sent(self) -> None:
         """Treat every channel as unsent: a listener has just (re)appeared."""
@@ -302,6 +309,7 @@ class LiveSender:
         # filter starts again when the frame counter does.
         self._boot = struct.unpack("!I", os.urandom(4))[0]
         self._seq = 0
+        self._last_frame = float("-inf")
         self.frames_sent = 0
         self.bytes_sent = 0
         self.bad_datagrams = 0
@@ -372,7 +380,21 @@ class LiveSender:
         addrs = self._subscribers.addrs
         if not addrs or self._sock is None:
             return
-        for batch in self._sampler.frames(now * 1000.0):
+        batches = self._sampler.frames(now * 1000.0)
+        if batches:
+            self._last_frame = now
+        elif now - self._last_frame >= KEEPALIVE_S:
+            # Nothing selected, or nothing due: say so, so the pit can tell
+            # a quiet car from a lost one.
+            self._last_frame = now
+            batches = [
+                pb.SampleBatch(
+                    registry_seq=self._sampler.registry_seq,
+                    batch_epoch_unix_ms=int(time.time() * 1000),
+                    format_version=1,
+                ).SerializeToString()
+            ]
+        for batch in batches:
             self._seq += 1
             datagram = live_wire.encode_frame(self._boot, self._seq, batch, self._key)
             for addr in addrs:

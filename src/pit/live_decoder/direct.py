@@ -24,6 +24,7 @@ import os
 import socket
 import struct
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from core import live_wire
@@ -44,12 +45,21 @@ _REFRESH_FLOOR_MS = 5_000
 _MAX_INTERVAL_MS = 60_000
 
 
-def selection_for(config: LiveConfig, registry: pb.ChannelRegistry) -> Selection:
-    """The live view's rules, resolved against one registry generation."""
+def selection_for(
+    config: LiveConfig,
+    registry: pb.ChannelRegistry,
+    wanted: Callable[[str], bool] | None = None,
+) -> Selection:
+    """The live view's rules, resolved against one registry generation.
+
+    ``wanted`` narrows it to the channels somebody is watching
+    (`pit.live_decoder.demand`); with nobody watching it is empty and the
+    car sends only its keep-alive.
+    """
     intervals: dict[int, int] = {}
     for channel in registry.channels:
         max_hz = config.max_hz_for(channel.name)
-        if max_hz is None:
+        if max_hz is None or (wanted is not None and not wanted(channel.name)):
             continue
         intervals[channel.id] = 0 if max_hz == 0 else min(_MAX_INTERVAL_MS, round(1000 / max_hz))
     resend_ms = round(config.defaults.resend_s * 1000)
@@ -105,6 +115,7 @@ class DirectLink(asyncio.DatagramProtocol):
         self._resolved_at = float("-inf")
         self._boot: int | None = None
         self._seq = 0
+        self._wake = asyncio.Event()
         self.frames: asyncio.Queue[LiveMessage] = asyncio.Queue(_QUEUE_SIZE)
         self.last_frame_mono: float | None = None
         if self._key is None:
@@ -133,13 +144,16 @@ class DirectLink(asyncio.DatagramProtocol):
     def select(self, registry_seq: int, selection: Selection) -> None:
         """What to ask the car for from the next HELLO on."""
         if registry_seq != self._registry_seq or selection != self._selection:
-            logger.info(
+            logger.debug(
                 "live-decoder: asking the car for %d live channels of registry %d",
                 len(selection.intervals),
                 registry_seq,
             )
         self._registry_seq = registry_seq
         self._selection = selection
+        # Do not make a gauge that has just been opened wait for the next
+        # scheduled HELLO.
+        self._wake.set()
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
         try:
@@ -166,11 +180,12 @@ class DirectLink(asyncio.DatagramProtocol):
     async def run(self, stop: asyncio.Event) -> None:
         """Say HELLO until stopped."""
         while not stop.is_set():
+            self._wake.clear()
             await self._hello()
-            try:
-                await asyncio.wait_for(stop.wait(), timeout=HELLO_INTERVAL_S)
-            except TimeoutError:
-                pass
+            waits = [asyncio.create_task(stop.wait()), asyncio.create_task(self._wake.wait())]
+            await asyncio.wait(waits, timeout=HELLO_INTERVAL_S, return_when=asyncio.FIRST_COMPLETED)
+            for wait in waits:
+                wait.cancel()
 
     async def _hello(self) -> None:
         if self._transport is None or self._selection is None or self._registry_seq is None:

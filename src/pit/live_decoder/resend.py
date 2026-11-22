@@ -14,6 +14,7 @@ re-sends stop with it: nothing here can make a dead feed look alive.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from pit.live_decoder.config import LiveConfig
@@ -40,15 +41,27 @@ class Resender:
         """Record a value handed to MQTT at ``now``."""
         self._last[update.channel] = _Last(update, now)
 
-    def due(self, config: LiveConfig, now: float, last_message: float) -> list[LiveUpdate]:
-        """Values to repeat now; empty when disabled or the car is quiet."""
+    def due(
+        self,
+        config: LiveConfig,
+        now: float,
+        last_message: float,
+        wanted: Callable[[str], bool] | None = None,
+    ) -> list[LiveUpdate]:
+        """Values to repeat now; empty when disabled or the car is quiet.
+
+        ``wanted`` says which channels the car is still being asked for
+        (direct mode). One it is not sending is forgotten: its last value
+        only gets older, and repeating it to the next gauge that subscribes
+        would show a reading from whenever somebody last looked.
+        """
         interval = config.defaults.resend_s
         if interval <= 0 or now - last_message > FRESH_S:
             return []
         repeats: list[LiveUpdate] = []
         for channel in list(self._last):
-            if config.max_hz_for(channel) is None:
-                # Dropped from the live view by a reload.
+            if config.max_hz_for(channel) is None or (wanted is not None and not wanted(channel)):
+                # Dropped from the live view by a reload, or nobody watching.
                 del self._last[channel]
                 continue
             last = self._last[channel]

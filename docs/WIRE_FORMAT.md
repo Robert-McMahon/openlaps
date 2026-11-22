@@ -496,13 +496,28 @@ channels subscribed, the tunnel's single connection throttled at the car:
 | Link | Gauges (median age) | Stream |
 | --- | --- | --- |
 | unthrottled | 0.1 s | current |
-| 250 kbit/s | 0.3 s | 14 to 43 s behind |
-| 100 kbit/s | 0.1 to 0.5 s | stalled, one leaf reconnect |
-| 30 kbit/s | 0.8 to 2.3 s, at a reduced rate | stalled |
+| 250 kbit/s | 0.3 s | about a third of its rate, falling behind |
+| 100 kbit/s | 0.45 s, rpm at 8 Hz | about a tenth of its rate |
+| 30 kbit/s | 1.1 to 1.4 s, at a reduced rate | a trickle |
 
+The leafnode stayed connected throughout, and after the throttle was
+released the gauges were current within 15 s and the stream within 35 s.
 For comparison, without the tunnel a small datagram flow sharing a
 100 kbit/s link with a saturating TCP flow arrived 1.5 to 8 s late and half
 of it was lost.
+
+Two NATS settings belong with the tunnel:
+
+- **The car announces `127.0.0.1:7422`** (`advertise` in
+  `deploy/nats/vehicle.conf`). A leafnode server tells the pit one address
+  of its own, and the pit adds it to the URLs it reconnects over; left
+  alone that is the car's LAN address, which takes the leafnode around the
+  tunnel on every other reconnect.
+- **`NATS_PING_MAX=30` on the pit.** A PONG travels in order behind the
+  car's backlog, so at the default of 2 the pit hangs up on a link that is
+  slow but working, and a leafnode cannot be re-established while a round
+  trip exceeds a second. The tunnel detects a dead path itself (8 s) and
+  closes the connection.
 
 Deployment: car, `deploy/systemd/openlaps-link.service` (the binary is
 installed by `tools/deploy_vehicle.sh`); pit, the `link` profile of

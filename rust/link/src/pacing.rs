@@ -134,9 +134,15 @@ impl LowDelay {
         let off = ((target - queue.as_secs_f64()) / target).clamp(-1.0, 1.0);
         if queue > self.target * 2 && sent > self.cut_at {
             // Well over: the link got slower under us. Stepping down a packet
-            // per round trip would leave live frames late for many seconds.
+            // per round trip would leave live frames late for many seconds,
+            // and so would a fixed cut when the link has lost most of its
+            // capacity at once (a round trip is then seconds long, and each
+            // cut waits for one). The queue is about window/rate deep, so
+            // the window that would hold it at twice the target is the
+            // present one scaled by that ratio.
             self.slow_start = false;
-            self.window = (self.window * 3 / 4).max(self.min_window());
+            let scale = (target * 2.0 / queue.as_secs_f64()).clamp(0.2, 0.75);
+            self.window = ((self.window as f64 * scale) as u64).max(self.min_window());
             self.cut_at = now;
             return;
         }
@@ -300,6 +306,22 @@ mod tests {
         // ... and comes back from the pause.
         run(&mut c, &mut now, 100, 100, false);
         assert!(c.window() > MIN_WINDOW_PACKETS * MTU);
+    }
+
+    #[test]
+    fn a_collapse_in_capacity_is_answered_in_a_few_round_trips() {
+        let mut now = Instant::now();
+        let mut c = controller(now);
+        run(&mut c, &mut now, 400, 0, false);
+        let grown = c.window();
+        // Three seconds of queue: twenty times the target. Round trips are
+        // now three seconds long, so only a handful of cuts can happen.
+        let delay = Duration::from_millis(3020);
+        for _ in 0..4 {
+            now += delay;
+            c.acked(now, now - delay, MTU, false, delay);
+        }
+        assert!(c.window() < grown / 100, "{} of {grown} left", c.window());
     }
 
     #[test]

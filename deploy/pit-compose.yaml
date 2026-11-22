@@ -45,6 +45,9 @@ services:
       NATS_LEAFNODE_URL: ${NATS_LEAFNODE_URL:?set NATS_LEAFNODE_URL in .env}
       # Optional second address for the same car (see deploy/nats/pit.conf).
       NATS_LEAFNODE_URL_ALT: ${NATS_LEAFNODE_URL_ALT:-${NATS_LEAFNODE_URL}}
+      # Unanswered 10 s pings before the pit drops a connection. 2 bounds a
+      # dead radio at ~30 s; with the link tunnel use 30 (see pit.conf).
+      NATS_PING_MAX: ${NATS_PING_MAX:-2}
     # Lets a leafnode URL use a name from the vehicle certificate's SAN for an
     # address DNS does not know, e.g. the car's Tailscale address:
     #     NATS_VEHICLE_EXTRA_HOST=openlaps-luckfox:100.x.y.z
@@ -676,6 +679,7 @@ services:
     #     OPENLAPS_LINK_CAR_ADDRS=<car>:7424                    (the car's tunnel)
     #     OPENLAPS_LINK_DIRECT_ADDRS=<car>:7422                 (the car's leafnode listener)
     #     OPENLAPS_LIVE_CAR_ADDRS=nats:7423,<car address>       (tunnel first, direct as backup)
+    #     NATS_PING_MAX=30                                      (the tunnel detects a dead path)
     # It shares the NATS container's network, which is what lets the leaf URL
     # keep the name in the car's certificate while dialling this service on
     # 127.0.0.1:7422. With no tunnel (a car without one, or a path that drops
@@ -707,7 +711,9 @@ services:
         condition: service_started
         # It lives in that container's network: when compose restarts NATS,
         # restart this too. (After a bare `docker restart` of NATS it notices
-        # the dead network and exits to be restarted.)
+        # the dead network and exits to be restarted. If NATS is *recreated*,
+        # `docker compose up -d link` is needed as well: the old container no
+        # longer exists for this one to rejoin.)
         restart: true
     restart: unless-stopped
 

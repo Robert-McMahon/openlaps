@@ -145,7 +145,12 @@ flowchart LR
   dropout's backlog before reaching "now") or on the vehicle's own stream
   through the leafnode (`vehicle`: gauges show current values the moment
   the link returns while the sourced copy catches up, for the price of
-  each batch crossing the radio twice while the link is healthy).
+  each batch crossing the radio twice while the link is healthy), or on the
+  **live link** (`direct`): small UDP frames the car sends beside the
+  stream, holding only the selected channels and only when they change.
+  A late frame is dropped rather than queued, so the gauges stay current
+  while a slow radio backs the stream up, for a few kbit/s instead of a
+  second copy of everything. See `docs/WIRE_FORMAT.md` → Live link.
 - **session-control** publishes driver/stint/session state on `cmd.<vehicle>.*`
   (replicated to the vehicle over the same leafnode); the agent stamps active
   session identity onto derived channels so every lap is attributable.

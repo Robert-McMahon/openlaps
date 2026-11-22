@@ -37,6 +37,14 @@ class HealthState:
         self.live_stream = ""
         self.live_resubscribes = 0
         self.live_subscribe_failures = 0
+        # Direct source: frames taken from the car, frames dropped as
+        # repeats or overtaken, datagrams refused, and whether the sourced
+        # copy is standing in for a car that sends none.
+        self.live_frames = 0
+        self.live_frame_duplicates = 0
+        self.live_frame_rejects = 0
+        self.live_fallback = False
+        self.live_car_addrs: list[str] = []
         self.last_message_mono: float | None = None
         self.subject_filter = ""
         self.publish_rate = 0.0
@@ -70,6 +78,11 @@ class HealthState:
             "live_stream": self.live_stream,
             "live_resubscribes": self.live_resubscribes,
             "live_subscribe_failures": self.live_subscribe_failures,
+            "live_frames": self.live_frames,
+            "live_frame_duplicates": self.live_frame_duplicates,
+            "live_frame_rejects": self.live_frame_rejects,
+            "live_fallback": self.live_fallback,
+            "live_car_addrs": list(self.live_car_addrs),
             "last_message_age_s": (
                 None
                 if self.last_message_mono is None

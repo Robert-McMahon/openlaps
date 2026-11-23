@@ -484,11 +484,15 @@ live-decoder -udp 7423->      "     UDP 7424 (datagrams)   "  --udp--> agent :74
   authenticate with the leafnode certificates (mutual TLS against the
   deployment CA; the car's certificate name is `OPENLAPS_LINK_SERVER_NAME`).
   It works over any IP path: a tunnel address, or a plain radio network.
-- **No tunnel, no harm.** While there is no QUIC connection (a car without
-  the service, a path that drops UDP), the pit end passes the leafnode
-  connection straight to `OPENLAPS_LINK_DIRECT_ADDRS`, and moves it into
-  the tunnel 5 s after one comes up. HELLOs are dropped meanwhile and the
-  live-decoder turns to its backup address.
+- **No tunnel, no stream.** With the `link` profile on, the tunnel is the
+  leafnode's only way to the car. While there is no QUIC connection (the
+  car's service stopped, a path that drops UDP) the pit end refuses the
+  leafnode connection; NATS retries every second and is carried again
+  within a second of the tunnel returning. Nothing is lost: the car keeps
+  the stream and the pit catches up. HELLOs are dropped meanwhile and the
+  live-decoder turns to its backup address. There is deliberately no
+  second route for the stream: a tunnel that does not work is a bug to
+  fix, not a case to run around.
 
 Measured on the bench (2026-11-22), replayed race CAN load, all 97 live
 channels subscribed, the tunnel's single connection throttled at the car:
@@ -521,7 +525,17 @@ Two NATS settings belong with the tunnel:
 
 Deployment: car, `deploy/systemd/openlaps-link.service` (the binary is
 installed by `tools/deploy_vehicle.sh`); pit, the `link` profile of
-`deploy/pit-compose.yaml`, whose comment lists the five settings.
+`deploy/pit-compose.yaml`, whose comment lists the settings.
+
+**Still to do: drop the leafnode's own TLS.** Inside the tunnel the stream
+is encrypted twice, once by QUIC and once by the leafnode, and both ends
+are authenticated twice with the same certificates. The inner layer costs
+about 22 bytes per NATS write and a second handshake on every reconnect,
+on the link that can least afford either. It stays until the tunnel has
+proven itself on a real radio, because removing it makes the tunnel
+mandatory: the car's leafnode listener must then bind to loopback only
+(`listen: 127.0.0.1:7422`, no `tls` block, and none on the pit's remote),
+so a pit without the tunnel can no longer connect at all.
 
 ## `lap.event` payload schema
 

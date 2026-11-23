@@ -3,7 +3,7 @@
 # Channel catalog for the example profile: maps every source-native CAN
 # signal and serial/GNSS field this car currently records to a canonical
 # channel name. See docs/CATALOG.md for the schema, naming convention, and
-# the full old-config -> canonical coverage table.
+# a table of which DBC signal maps to which channel.
 #
 # `from` addresses a source signal as "<bus-or-serial>:<device>.<MESSAGE>.<SIGNAL>"
 # (CAN) or "<serial>:<driver>.<SENTENCE>.<field>" (serial) or "host:<metric>".
@@ -172,13 +172,12 @@ channels:
   car.pd16_total_current: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_TOTAL_CURRENT", units: "A" }
   car.pd16_tvs_temp_status: { from: "can0:haltech2.PD16A_DIAGNOSTICS.PD16A_TVS_TEMP_STATUS", type: int, rbe: { deadband: 0, max_interval: 5s } }
 
-  # Wiring-dependent PDM I/O: deliberately NOT mapped here ("name the measurement,
-  # not the wire" -- see docs/CATALOG.md). PD16A_AVI_VOLTAGES / PD16A_SPI_VOLTAGES
-  # (analog inputs AVI1-4, SPI3-4) and PD16A_OUTPUT_STATUS (per-output
-  # current/status/load for HBO1-2, HCO25_1-4, HCO8_1-10) describe whatever
-  # happens to be physically wired to that pin, not a fixed physical quantity --
-  # a generic example catalog has no honest canonical name to give them. Map
-  # each one when you know what's connected, e.g.:
+  # Wiring-dependent PDM I/O. PD16A_AVI_VOLTAGES / PD16A_SPI_VOLTAGES (analog
+  # inputs AVI1-4, SPI3-4) and PD16A_OUTPUT_STATUS (per-output
+  # current/status/load for HBO1-2, HCO25_1-4, HCO8_1-10) report whatever is
+  # wired to each pin, so each channel below is named after what is connected
+  # on this car ("name the measurement, not the wire", docs/CATALOG.md).
+  # Another car must rename them to match its own wiring.
 
   #Analog inputs
   car.transmission_oil_temp_volts: { from: "can0:haltech2.PD16A_AVI_VOLTAGES.PD16A_AVI_2_VOLTAGE", units: "V", rbe: { deadband: 0.05, min_interval: 100ms, max_interval: 5s } }

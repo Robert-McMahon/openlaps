@@ -84,6 +84,41 @@ nats --server nats://127.0.0.1:4222 stream ls
 Expect `TELE` and `CMD`. Continue with [stack verification](verification.md)
 after the pit is running.
 
+## Live frames (optional)
+
+Live frames let the pit's gauges stay current when the stream is behind. Set
+these in the agent's environment (`deploy/.env` for Compose,
+`/etc/openlaps/agent.env` for systemd) and restart the agent:
+
+```text
+OPENLAPS_LIVE_PORT=7423
+OPENLAPS_LIVE_KEY=<openssl rand -hex 32>
+```
+
+The agent sends nothing until a pit asks. The key signs every datagram and
+must equal the pit's `OPENLAPS_LIVE_KEY`. Without a key the link works
+unsigned and logs a warning.
+
+## Link tunnel (optional)
+
+The tunnel carries live frames ahead of the stream in one QUIC connection.
+The vehicle end is a systemd service on every target. `tools/deploy_vehicle.sh`
+builds the `openlaps-link` binary and installs it in `/opt/openlaps/bin`.
+Install the unit once:
+
+```bash
+sudo install -m 0644 deploy/systemd/openlaps-link.service /etc/systemd/system/
+sudo install -d -o openlaps -g openlaps -m 0700 /etc/openlaps/tls
+sudo install -o openlaps -g openlaps -m 0600 \
+  <tls dir>/{server-cert,server-key,ca}.pem /etc/openlaps/tls/
+sudo systemctl daemon-reload && sudo systemctl enable --now openlaps-link
+```
+
+It uses the leafnode's server certificate and listens on UDP 7424. The
+vehicle's `deploy/nats/vehicle.conf` already announces `127.0.0.1:7422` to
+the pit, which keeps the leafnode inside the tunnel when it reconnects. The
+pit side is described in [Pit installation](pit.md).
+
 ## Direct systemd deployment
 
 `deploy/systemd/openlaps-agent.service` runs the agent from `/opt/openlaps`.

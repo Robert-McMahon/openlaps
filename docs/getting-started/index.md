@@ -8,13 +8,16 @@ You need:
 
 - a Linux vehicle computer with SocketCAN and a supported GNSS path;
 - a Linux pit computer with Docker Compose;
-- IP reachability from the pit to the vehicle on the radio network;
+- IP reachability from the pit to the vehicle, over a radio network, an
+  overlay network such as Tailscale, or both;
 - Python 3.13 and [uv](https://docs.astral.sh/uv/) for development;
 - per-deployment NATS TLS material and passwords.
 
-The pit initiates the TLS leafnode connection to the vehicle on port `7422`.
-That means the vehicle must be reachable from the pit network. NAT or a default
-WSL2 NAT boundary needs explicit routing or port forwarding.
+The pit starts every connection to the vehicle: the TLS leafnode on TCP port
+`7422`, and optionally live frames on UDP `7423` and the link tunnel on UDP
+`7424`. The vehicle must therefore be reachable from the pit network. NAT in
+front of the vehicle, or a default WSL2 NAT boundary, needs explicit routing
+or port forwarding.
 
 ## Read in this order
 

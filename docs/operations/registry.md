@@ -131,7 +131,7 @@ those logs. The usual cause is a daemon that was edited but not reloaded.
   skipping it. The build-time `ghcr.io/astral-sh/uv` and PyPI are why the
   openlaps image is built at the pit, online.
 - **Grafana's plugin** is still fetched on the first start into its named
-  volume, as the [cutover runbook](../CUTOVER_RUNBOOK.md) says; the registry
+  volume, as the [commissioning runbook](../CUTOVER_RUNBOOK.md) says; the registry
   does not change that. Warm the volume online.
 - **The registry image itself** lives in the pit daemon's cache. `docker
   save registry:3.1.1 -o registry.tar` somewhere safe covers a pit that has

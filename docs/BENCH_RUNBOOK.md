@@ -1,23 +1,21 @@
-# Bench runbook — Phase 4 measurement runs
+# Bench runbook
 
-The operator document for P4.3 (steady state), P4.4 (dropout ladder) and
-P4.5 (range and degradation). P4.0 built the instrument
-(`tools/link_probe.py`), P4.1 built the sources
-(`tools/bench-hardware.yaml`, `tools/bench_gps.py`, `tools/bench_check.py`);
-this turns them into something a person can run twice and get comparable
-numbers from.
+The operator procedure for the bench measurement runs: steady state, the
+dropout ladder, and range and degradation. The instrument is
+`tools/link_probe.py`. The sources are `tools/bench-hardware.yaml`,
+`tools/bench_gps.py` and `tools/bench_check.py`. This runbook describes how
+to run them so that two runs give comparable numbers.
 
-**This document does not restate the [deployment guide](operations/index.md).** Bring-up order, the
-`OPENLAPS_NATS_URL` distinction, the subject-less sourced stream, the
-per-hop verification and the secrets rules all live there and are not
-duplicated here. What follows is the bench-specific delta plus the parts
-the deployment guide has no reason to know about: clock discipline, wire
-counters, the clean-slate procedure, and what a run has to emit to count as
-a result.
+This document does not repeat the [deployment guide](operations/index.md).
+Bring-up order, the `OPENLAPS_NATS_URL` distinction, the subject-less
+sourced stream, the per-hop verification and the secrets rules are
+described there. This runbook covers what is specific to the bench: clock
+discipline, wire counters, the clean-slate procedure, and what a run must
+record to count as a result.
 
-**A number without provenance is not a result** (`docs/plan/PHASE4.md` →
-ground rules). Every run writes a manifest. A figure that later appears in
-`docs/LINK_BUDGET.md` cites the manifest it came from, or it does not go in.
+Every run writes a manifest. A figure in `docs/LINK_BUDGET.md` must cite
+the manifest it came from. A number without a manifest is not a result
+(`docs/bench/README.md`).
 
 ---
 
@@ -33,18 +31,27 @@ ground rules). Every run writes a manifest. A figure that later appears in
 | Health | — | `8080`–`8083` |
 | Radio | HaLowLink unit, local to the SBC | HaLowLink unit, local to the pit |
 
-The pit dials the vehicle and never the reverse (`deploy/README.md`), which
-is why the two `nft` rulesets in `deploy/nft/` are mirrors of each other
-rather than one shared file — see §4.
+The pit dials the vehicle and the vehicle never dials the pit
+(`docs/ARCHITECTURE.md`, The vehicle-to-pit link). For this reason the two
+`nft` rulesets in `deploy/nft/` mirror each other and are not one shared
+file (see §4).
 
-The bench runs the **real deployment**, not a reduced stack: all application
-services enabled for the run, the real agent and the real leafnode. Measuring
-a reduced stack would measure something we are not going to run.
+The table shows the leafnode connecting directly. With the optional link
+tunnel (the pit stack's `link` profile and `openlaps-link.service` on the
+vehicle) the pit dials UDP `7424` on the vehicle instead, and the leafnode
+bytes travel inside that QUIC connection. With
+`OPENLAPS_LIVE_SOURCE=direct` and no tunnel, the pit also sends to UDP
+`7423` on the vehicle. See `docs/WIRE_FORMAT.md`, sections "Live link" and
+"Link tunnel".
 
-**Two probes, one per host, merged afterwards** (locked decision 3). Neither
-probe reaches across the link it is measuring: a probe polling the far end
-over the radio adds its own load and loses exactly the samples that matter
-during a sever.
+The bench runs the real deployment: all application services enabled for
+the run, the real agent and the real leafnode. A reduced stack would not
+measure the system that will be run.
+
+**Two probes, one per host, merged afterwards.** Neither probe reaches
+across the link it is measuring. A probe that polls the far end over the
+radio adds its own load, and it loses its samples during a sever, which are
+the samples the run needs.
 
 ---
 
@@ -56,10 +63,10 @@ assumes they are already done.
 ### Both hosts
 
 **`nft` counters, and read access to them.** Load the ruleset (§4) and give
-the probe's user a way to read counters without becoming root. `nft` needs
-`CAP_NET_ADMIN` even to *list*, and the probe must not run as root — it
-writes the run CSV, and a root-owned artefact is a nuisance for the rest of
-the analysis.
+the probe's user a way to read counters without becoming root. `nft`
+requires `CAP_NET_ADMIN` even to list counters, and the probe must not run
+as root: it writes the run CSV, and a root-owned file is inconvenient for
+the rest of the analysis.
 
 ```bash
 sudo tee /etc/sudoers.d/openlaps-bench >/dev/null <<'EOF'
@@ -72,17 +79,17 @@ sudo visudo -c -f /etc/sudoers.d/openlaps-bench
 ```
 
 Then pass `--nft-command "sudo -n nft -j list counters"` to the probe. `-n`
-matters: without it a probe that has lost its sudo timestamp blocks on a
-password prompt for the rest of the run instead of recording a reason and
-carrying on.
+is required. Without it, a probe that has lost its sudo timestamp blocks on
+a password prompt for the rest of the run. With it, the probe records a
+reason and continues.
 
 **`chrony`**, for §3. Install it on both hosts; the configuration is per
 role and is in §3.
 
-**SSH to the local router**, for the radio adapter. Key-based, through
-`ssh-agent` and `~/.ssh/config` — the probe shells out to the system `ssh`
-and has no password option, deliberately (`docs/plan/PHASE4.md` → ground
-rules: no secrets, and nothing that lands in shell history).
+**SSH to the local router**, for the radio adapter. Use key-based access
+through `ssh-agent` and `~/.ssh/config`. The probe runs the system `ssh`
+and has no password option, so that no secret is stored or appears in shell
+history.
 
 ```
 # ~/.ssh/config
@@ -92,9 +99,9 @@ Host halow-vehicle
     IdentityFile ~/.ssh/id_ed25519_halow
 ```
 
-Confirm the adapter's command works before a run depends on it — the
-chipset's reporting varies, and which of these answers is a per-unit fact,
-not a guess:
+Confirm the adapter's command works before a run depends on it. The
+chipset's reporting varies, and which of these commands answers differs per
+unit:
 
 ```bash
 ssh halow-vehicle "iw dev wlan0 station dump"
@@ -104,8 +111,8 @@ ssh halow-vehicle "iw dev wlan0 station dump"
 ssh halow-vehicle "ubus call iwinfo assoclist '{\"device\":\"wlan0\"}'"
 ```
 
-Whichever answers, pass `--radio-adapter auto` and let the probe record
-which one it used in `radio_source`.
+Whichever answers, pass `--radio-adapter auto`. The probe records which one
+it used in `radio_source`.
 
 ### Vehicle SBC only
 
@@ -118,14 +125,13 @@ sudo modprobe vcan && sudo ip link add dev vcan0 type vcan && sudo ip link set u
 **`can-utils`** for `canplayer`, and `uv sync` in the checkout.
 
 **If the agent runs under `deploy/systemd/openlaps-agent.service`, it cannot
-see the GPS feeder.** The unit sets `PrivateTmp=true`, so the agent gets its
-own `/tmp` namespace and never sees the `/tmp/openlaps-bench-gps` symlink
-`tools/bench_gps.py` publishes — the profile's serial port simply does not
-exist as far as the agent is concerned. This presents as a collector that
-never produces `position.*`, which is indistinguishable at a glance from the
-void-fix problem `bench_gps.py` exists to solve. Either run the agent in the
-foreground for bench runs (§6, and what the bench does today) or add a
-drop-in:
+see the GPS feeder.** The unit sets `PrivateTmp=true`, so the agent has its
+own `/tmp` namespace and does not see the `/tmp/openlaps-bench-gps` symlink
+that `tools/bench_gps.py` publishes. For the agent, the profile's serial
+port does not exist. The symptom is a collector that never produces
+`position.*`, which looks the same as the void-fix problem that
+`bench_gps.py` exists to solve. Either run the agent in the foreground for
+bench runs (§6, the current practice) or add a drop-in:
 
 ```bash
 sudo systemctl edit openlaps-agent   # [Service] \n PrivateTmp=false
@@ -135,26 +141,27 @@ sudo systemctl edit openlaps-agent   # [Service] \n PrivateTmp=false
 
 ## 3. Clock discipline
 
-`docs/ARCHITECTURE.md` → "Link dropout and recovery" is explicit that
-ingest-writer's `lag_ms` is **relative**: the two hosts' monotonic clocks
-share no epoch, so `batch_epoch_mono_ns` cannot yield a one-way latency, and
-"anything wanting absolute source-to-row latency has to measure it end to
-end with a shared time reference". P4.3's latency distribution is only as
-good as what this section establishes, so establish it first and record it.
+`docs/ARCHITECTURE.md` (Link dropout and recovery) states that
+ingest-writer's `lag_ms` is relative: the two hosts' monotonic clocks share
+no epoch, so `batch_epoch_mono_ns` cannot give a one-way latency. Absolute
+source-to-row latency must be measured end to end with a shared time
+reference. The latency distribution of a steady-state run is only as good
+as the clock discipline in this section, so establish it first and record
+it.
 
 ### One authority: chrony and the system clock
 
-P4.8 retired the agent's GNSS steering. Every collector now correlates its
+The agent does not steer the clock from GNSS. Every collector correlates its
 monotonic capture timestamp against the current `CLOCK_REALTIME`, so a chrony
-slew is observed and there is no second in-process loop trying to correct the
-same clock. Clock health comes from `chronyc tracking` through the host
+slew is observed and no second in-process loop corrects the same clock.
+Clock health comes from `chronyc tracking` through the host
 collector as `sys.host.clock_offset_s`, `sys.host.clock_source`,
 `sys.host.clock_stratum` and `sys.host.clock_root_dispersion_s`.
 
-**Never discipline anything from `tools/bench_gps.py`.** The feeder is a
-position source, not a time source: `rmc_sentence` writes a fixed
-`000000.00` time field and a fixed date (`tools/_bench.py`), and feeding it
-to `gpsd` as a reference clock would be circular as well as wrong.
+**Never discipline anything from `tools/bench_gps.py`.** The feeder provides
+position only. `rmc_sentence` writes a fixed `000000.00` time field and a
+fixed date (`tools/_bench.py`), so it carries no usable time, and feeding it
+to `gpsd` as a reference clock would be wrong.
 
 ### Buildable preferred configuration: RP2040 GNSS receiver interface
 
@@ -203,8 +210,8 @@ sudo systemctl restart chrony
 chronyc sources -v
 ```
 
-Internet sources remain configured on both hosts; source selection and
-fallback are chrony's job. Do not add failover code and do not issue
+Internet sources remain configured on both hosts. chrony selects the source
+and handles fallback. Do not add failover code and do not issue
 `chronyc makestep` during pull/restore testing.
 
 ### Measure it, then record it
@@ -240,20 +247,19 @@ Pass both into every probe invocation for the run:
 --clock-source GPS
 ```
 
-**Reporting millisecond latency figures the clock discipline cannot support
-would be worse than reporting none.** If chrony has not converged, say so in
-`--note` and mark the latency section of the write-up as not measured.
+**Do not report millisecond latency figures that the clock discipline
+cannot support.** If chrony has not converged, say so in `--note` and mark
+the latency section of the write-up as not measured.
 
 ---
 
 ## 4. Wire counters
 
 `tools/link_probe.py` reads two named counters, `openlaps_leaf_out` and
-`openlaps_leaf_in`, and falls back to `/proc/net/dev` when it finds neither
-— recording which source it used in `wire_source`, because a run must never
-be silently less precise than it looks. The fallback is every byte on the
-interface rather than just the leafnode's, and `--summary` refuses to treat
-the two as equivalent, so load the counters.
+`openlaps_leaf_in`. If it finds neither, it falls back to `/proc/net/dev`,
+and it records which source it used in `wire_source`. The fallback counts
+every byte on the interface, not only the leafnode's, and `--summary` does
+not treat the two as equivalent, so load the counters.
 
 ```bash
 sudo nft -c -f deploy/nft/bench-vehicle.nft   # syntax check, changes nothing
@@ -267,15 +273,15 @@ sudo nft -f deploy/nft/bench-vehicle.nft      # vehicle SBC
 sudo nft -f deploy/nft/bench-pit.nft          # pit
 ```
 
-Both rulesets are counting-only — every chain policies `accept` and no rule
-takes a verdict — so loading one on a live bench cannot drop a packet. Each
-file documents its own port-to-direction mapping and why the two are
-mirrored; read the header before assuming they are interchangeable.
+Both rulesets only count: every chain has policy `accept` and no rule takes
+a verdict, so loading one on a live bench cannot drop a packet. Each file
+documents its port-to-direction mapping and why the two are mirrored. Read
+the header before assuming they are interchangeable.
 
-They are deliberately **not** persisted across a reboot. A bench ruleset
-that survives a reboot invisibly is one nobody remembers loading, and the
-first symptom is a framing-overhead ratio computed against counters that
-have been running since Tuesday. Loading them is a bring-up step.
+They are not persisted across a reboot, on purpose. A persisted ruleset
+would keep counting from a load that nobody remembers, and a
+framing-overhead ratio would then be computed against counters that started
+in an earlier session. Loading them is a bring-up step.
 
 Verify before measuring anything:
 
@@ -284,23 +290,28 @@ sudo nft -j list counters | python3 -m json.tool | head -40
 ```
 
 A reload zeroes the counters. `link_probe` treats a decrease as an unknown
-interval rather than a negative rate, so reloading mid-run costs one sample,
-not a run — but there is no reason to do it.
+interval, not as a negative rate, so a reload mid-run costs one sample.
+There is no reason to do it.
+
+The leaf counters match TCP port `7422` only. Live frames (UDP `7423`) are
+not counted. With the link tunnel enabled, the leafnode bytes cross the
+link inside QUIC on UDP `7424`, so these counters do not measure what the
+tunnel puts on the wire. The rulesets have not been extended for either.
 
 ---
 
 ## 5. Signal sources: choose a mode and record it
 
-The bench reproduces the modelled signal mix without a car, injected *below*
-the agent at the socketCAN and serial boundaries (locked decision 4).
+The bench reproduces the modelled signal mix without a car. Signals are
+injected below the agent, at the socketCAN and serial boundaries.
 
-**The car and the bench are one profile.** `profiles/example-club-racer/` is
-the car; `tools/bench-hardware.yaml` is a host-wiring overlay on top of it
-(ADR 0010) that moves two transports and says the receiver is absent, and
-nothing else. That is what makes a bench bandwidth figure a figure *about the
-car*: the catalog, the DBCs and the wire encodings are not a copy that has to
-be kept in step, they are the same files read twice. The overlay's own
-comments carry the reasoning for each of its three lines.
+**The car and the bench use one profile.** `profiles/example-club-racer/` is
+the car. `tools/bench-hardware.yaml` is a host-wiring overlay on top of it
+(ADR 0010) that moves two transports and declares the receiver absent, and
+changes nothing else. A bench bandwidth figure is therefore a figure for
+the car: the catalog, the DBCs and the wire encodings are the same files,
+not a copy that must be kept in step. The overlay's comments give the
+reason for each of its three lines.
 
 | Mode | CAN interface | How | Gives up | Use when |
 | --- | --- | --- | --- | --- |
@@ -308,35 +319,35 @@ comments carry the reasoning for each of its three lines.
 | **Virtual** | `vcan0` | `OPENLAPS_HARDWARE=tools/bench-hardware.yaml` | real arbitration, the USB adapter | the IMU is not |
 
 Physical mode still needs an overlay, because **GPS is synthetic in both
-modes** (below) and the serial half of the overlay is what makes it so.
-Deleting the `buses:` block is the whole edit: an overlay overrides only what
+modes** (below) and the serial half of the overlay provides that.
+Deleting the `buses:` block is the only edit: an overlay overrides only what
 it names, so `can0` falls back to the profile's own `interface: can0`.
 
-**The trap in physical mode:** classic CAN needs at least one other node to
-assert the ACK slot. With nothing else on the bus the adapter goes
-error-passive and then bus-off, which presents as a driver or permissions
-fault and is neither. Power the IMU.
+**In physical mode, power the IMU.** Classic CAN needs at least one other
+node to assert the ACK slot. With nothing else on the bus the adapter goes
+error-passive and then bus-off. This looks like a driver or permissions
+fault and is neither.
 
 `can-utils` is installed on the SBC and `canplayer` replays the checked-in
 captures into either interface.
 
 GPS is synthetic in **both** modes. Indoors the UM980 reports a void fix and
 the NMEA decoder drops any RMC whose status is not `A`, so a bench with a
-real receiver and no sky view produces *no* GPS stream — silently, while
-every other source looks healthy. That is ~250 samples/s missing, and a
-bandwidth figure without it is wrong in the direction that flatters the
-result. Run `tools/bench_gps.py`.
+real receiver and no sky view produces no GPS stream. Nothing reports an
+error, and every other source looks healthy. About 250 samples/s are then
+missing, and the bandwidth figure is too low. Run `tools/bench_gps.py`.
 
 Record the mode, the profile path and its registry content hash in the
 manifest (`--signal-source`, `--profile`). Two runs in different modes are
-not comparable and the manifest is what stops them being compared.
+not comparable, and the manifest is the record that shows which mode a run
+used.
 
 Manifests from runs before 2026-09-09 name a profile that no longer exists:
 an `example-club-racer-bench` directory that was a byte-for-byte copy of the
 example profile carrying the three lines the overlay carries now. Those
-manifests are left as written, because they record what actually ran. Compare
-against their registry content hash rather than their path — the hash is
-unchanged, since the catalog never differed in the first place.
+manifests are left as written, because they record what ran. Compare
+against their registry content hash, not their path. The hash is unchanged
+because the catalog was identical.
 
 ---
 
@@ -347,7 +358,7 @@ guides are the base procedure. These are the bench-specific deltas.
 
 ### Vehicle SBC
 
-1. **Clean slate** if this is not the first run of a series — §8, and do it
+1. **Clean slate** if this is not the first run of a series (§8). Do it
    before anything starts producing.
 
 2. **GPS feeder first**, before the agent, so the symlink exists when the
@@ -357,8 +368,8 @@ guides are the base procedure. These are the bench-specific deltas.
    uv run tools/bench_gps.py --loop
    ```
 
-3. **CAN load.** Both fixtures are needed — they are different parts of the
-   bus and `canplayer` takes one file per invocation. Two shells, or two
+3. **CAN load.** Both fixtures are needed. They are different parts of the
+   bus and `canplayer` takes one file per invocation. Use two shells, or two
    backgrounded processes:
 
    ```bash
@@ -370,7 +381,7 @@ guides are the base procedure. These are the bench-specific deltas.
    ```
 
    The fixtures are 45,861 frames / 30.0 s and 1,255 frames / 4.99 s. `-l i`
-   loops. **The loop seam is a timestamp discontinuity** — harmless for
+   loops. **The loop seam is a timestamp discontinuity.** It does not affect
    offered load, but per-signal rates must not be read across one.
 
 4. **nats-server**, then **the agent**. In the foreground, because of the
@@ -384,54 +395,56 @@ guides are the base procedure. These are the bench-specific deltas.
    uv run openlaps-agent
    ```
 
-   `OPENLAPS_TICK_MS` is the run variable. P4.3 wants one series at `20`
-   (the deployed value, `example.env:44`) and one at `10`.
+   `OPENLAPS_TICK_MS` is the run variable. The steady-state measurement
+   requires one series at `20` (the deployed value in `example.env`) and
+   one at `10`.
 
 ### Pit
 
-`docker compose -f deploy/pit-compose.yaml up -d` — unchanged from the pit
-installation guide. The only bench-specific note is the one the bench
-profile's README raises: because the bench profile keeps
-`vehicle.id: example-club-racer` but has its **own** `.registry-state.json`
-beside it, a pit that has already seen the real profile's generations will
+`docker compose -f deploy/pit-compose.yaml up -d`, unchanged from the pit
+installation guide. There is one bench-specific note. The bench keeps
+`vehicle.id: example-club-racer` but has its **own** `.registry-state.json`,
+so a pit that has already seen the real profile's generations will
 reject bench batches with `unknown_seq_batches` until it rescans the catalog
-subject. The writer recovers on its own, and §8's clean slate avoids the
-situation entirely. It is listed here because otherwise the first bench run
-looks broken.
+subject. The writer recovers without intervention, and §8's clean slate
+avoids the situation. It is listed here because otherwise the first bench
+run appears broken.
 
 ---
 
 ## 7. Verify before you measure
 
-In this order. Each one that fails invalidates every number after it.
+In this order. A check that fails invalidates every number after it.
 
-**The mix is right.** This is the gate, and it is not optional — a bench
-that has silently lost GPS or the IMU still produces a perfectly plausible
-bandwidth figure, of the wrong signal set:
+**The mix is right.** This check is required. A bench that has lost GPS or
+the IMU still produces a plausible bandwidth figure, for the wrong signal
+set:
 
 ```bash
 uv run tools/bench_check.py
 ```
 
-Its defaults *are* the bench rig — the example profile plus
-`tools/bench-hardware.yaml` — so a bare run checks the mode this runbook
-ships with. `--profile` and `--hardware` override either half.
+Its defaults are the bench rig (the example profile plus
+`tools/bench-hardware.yaml`), so a bare run checks the mode this runbook
+describes. `--profile` and `--hardware` override either half.
 
 It also prints the bench's predicted mix against `LINK_BUDGET.md` §2's
-modelled 4,262 samples/s, and **the two do not agree** — the bench offers
-~3,000/s, about 71%. That gap is a modelling gap, not a wiring fault; the
-tool's own `--predict` output has the per-class breakdown.
-Reconciling it is P4.3's signal-mix ground truth. Until then, read a bench
-bandwidth figure as measuring ~71% of the load §3 predicts, and **say so in
-the write-up** rather than letting a reader infer otherwise.
+modelled 4,262 samples/s. **The two do not agree**: the bench offers
+~3,000/s, about 71%. The gap is in the model, not in the wiring. The tool's
+`--predict` output has the per-class breakdown. Reconciling the two is part
+of the steady-state measurement. Until that is done, read a bench bandwidth
+figure as measuring ~71% of the load §3 predicts, and **say so in the
+write-up**.
 
-**Every hop is up.** `deploy/README.md` → "Verify each hop", unchanged:
-`leafs` is 1 at both ends, `TELE_VEHICLE` is climbing toward `TELE`,
-`tools/decode.py` resolves real channel names at the pit, rows are landing
-in `v_samples_named`, all four `/health` endpoints answer.
+**Every hop is up.** [Verify the stack](operations/verification.md),
+unchanged: `leafs` is 1 at both ends, `TELE_VEHICLE` is climbing toward
+`TELE`, `tools/decode.py` resolves real channel names at the pit, rows are
+landing in `v_samples_named`, all four `/health` endpoints answer. With the
+link tunnel enabled, `leafs` is still 1 at both ends, because the leafnode
+connects through the tunnel.
 
-**The health counters that invalidate a run are zero.** Any of these
-non-zero means the run measured a degraded system rather than the system:
+**The health counters that invalidate a run are zero.** If any of these is
+non-zero, the run measured a degraded system:
 
 | Counter | Where |
 | --- | --- |
@@ -448,9 +461,9 @@ measured one.
 
 ## 8. Clean slate between runs
 
-**A half-purged run silently mixes two conditions, and the resulting numbers
-are unattributable rather than merely wrong.** Do all of it, in this order,
-with nothing producing.
+**A partly purged run mixes two conditions, and its numbers cannot be
+attributed to either.** Do all of it, in this order, with nothing
+producing.
 
 Stop the agent, `canplayer` and `bench_gps` first. Leave both nats-servers
 and the pit stack running.
@@ -468,14 +481,14 @@ nats --server nats://127.0.0.1:4222 stream purge TELE_VEHICLE -f  # pit
 > **Purge keeps the sequence counter climbing; delete-and-recreate restarts
 > it at 1.** `ingest_cursor` holds the last stream sequence written, and the
 > writer skips anything at or below it (`src/pit/ingest_writer/writer.py`).
-> A recreated `TELE_VEHICLE` plus a surviving cursor at seq 500,000 means
-> the writer discards **everything** until the new stream climbs past it —
-> a run that looks healthy at every hop and lands no rows. The same applies
+> With a recreated `TELE_VEHICLE` and a surviving cursor at seq 500,000,
+> the writer discards **everything** until the new stream climbs past it.
+> Such a run looks healthy at every hop and lands no rows. The same applies
 > to `docker compose down -v` on the *vehicle* while the pit keeps its
-> database. If you do recreate a stream, step 3 is mandatory, not optional.
+> database. If you do recreate a stream, step 3 is mandatory.
 
-**2. Drop the durable consumer**, so it rebuilds from the (now empty) stream
-start rather than from a stale ack floor:
+**2. Drop the durable consumer**, so that it rebuilds from the (now empty)
+stream start and not from a stale ack floor:
 
 ```bash
 nats --server nats://127.0.0.1:4222 consumer rm TELE_VEHICLE ingest-writer -f
@@ -494,11 +507,11 @@ COMMIT;
 SQL
 ```
 
-**4. Leave `.registry-state.json` alone.** The generation counter is
-supposed to climb across runs; resetting it re-registers a *new* channel set
-under an *old* generation number, and `channel_map` is keyed on
-`(vehicle_id, registry_seq, wire_id)` — the pit would then hold two meanings
-for one key. If you genuinely want a fresh sequence, delete the pit's
+**4. Leave `.registry-state.json` alone.** The generation counter is meant
+to climb across runs. Resetting it re-registers a new channel set under an
+old generation number, and `channel_map` is keyed on
+`(vehicle_id, registry_seq, wire_id)`, so the pit would then hold two
+meanings for one key. If you do want a fresh sequence, delete the pit's
 registry rows in the same operation as step 3 (`DELETE FROM
 channel_registry WHERE vehicle_id = 'example-club-racer'` cascades to
 `channel_map`) and say why in the manifest notes.
@@ -524,7 +537,7 @@ nats --server nats://127.0.0.1:4222 stream report
 
 ## 9. Running the probes
 
-One per host, started within a few seconds of each other — `--merge` aligns
+One per host, started within a few seconds of each other. `--merge` aligns
 on timestamp with a tolerance, so they do not need to share a phase.
 
 **Vehicle:**
@@ -540,11 +553,11 @@ uv run tools/link_probe.py --role vehicle \
   --clock-method "chrony, both hosts to 192.168.12.1" \
   --clock-offset-ms 0.42 --clock-source system \
   --duration 2100 \
-  --note "P4.3 steady state, tick 20 ms"
+  --note "steady state, tick 20 ms"
 ```
 
-**Pit** — same clock and radio arguments, its own router, and no
-`--tick-ms`/`--profile` (they are vehicle facts and belong on the vehicle's
+**Pit**: same clock and radio arguments, its own router, and no
+`--tick-ms`/`--profile` (they are vehicle facts and belong in the vehicle's
 manifest):
 
 ```bash
@@ -555,15 +568,15 @@ uv run tools/link_probe.py --role pit \
   --clock-method "chrony, both hosts to 192.168.12.1" \
   --clock-offset-ms 0.42 --clock-source system \
   --duration 2100 \
-  --note "P4.3 steady state, tick 20 ms"
+  --note "steady state, tick 20 ms"
 ```
 
 Each writes `<out>.manifest.json` beside its CSV. `runs/` is a local
-directory — raw CSVs are not checked in (§10).
+directory. Raw CSVs are not checked in (§10).
 
 **Start the probes before the load and stop them after it.** A run that
 begins mid-stream has no baseline sample to difference the first interval
-against, and the first row of a run carries no derived values at all.
+against, and the first row of a run carries no derived values.
 
 **Merge and summarise afterwards**, on either host:
 
@@ -578,23 +591,24 @@ uv run tools/link_probe.py --summary runs/2026-08-04-steady-t20-merged.csv --tic
 
 `--summary` prints per-series mean / p50 / p95 / max plus the comparison
 against `LINK_BUDGET.md` §3's modelled 544.4 kbit/s at 20 ms and 552.8 at
-10 ms. `sourcing_backlog` — the vehicle's `TELE` `last_seq` minus the pit's
-`TELE_VEHICLE` `last_seq` — is the single most informative column in a
-dropout run and the series whose failure to return to zero defines P4.5's
-cliff.
+10 ms. `sourcing_backlog` (the vehicle's `TELE` `last_seq` minus the pit's
+`TELE_VEHICLE` `last_seq`) is the most informative column in a dropout run.
+In a range run, the point at which it stops returning to zero is the range
+limit.
 
-**An unreachable endpoint is a null and a reason, never a zero.** If a
-column is null for part of a run, read `reasons` before concluding anything
-about it: "the link carried nothing" and "we could not ask" are different
-measurements, and conflating them is how a dropout gets reported as idle.
+**An unreachable endpoint is recorded as a null and a reason, never as a
+zero.** If a column is null for part of a run, read `reasons` before
+concluding anything about it. "The link carried nothing" and "the probe
+could not ask" are different measurements. Treating them as the same
+reports a dropout as an idle link.
 
 ---
 
 ## 10. Artefacts
 
 `docs/bench/` holds the checked-in half of a run. Raw per-sample CSVs are
-not checked in — they are large, they are local, and the manifest records
-their absolute path (`.gitignore` carries the rule).
+not checked in: they are large and local, and the manifest records their
+absolute path (`.gitignore` carries the rule).
 
 **One directory per run series**, for anything with probe output:
 
@@ -609,13 +623,13 @@ docs/bench/<date>-<what>/           # e.g. 2026-08-04-steady-state
 ```
 
 A package that produces a single write-up and no probe output keeps the flat
-`<name>.md` + `<name>.manifest.json` pair instead — P4.6's timing parity is
-the existing example, and it stays where it is.
+`<name>.md` + `<name>.manifest.json` pair instead. The timing parity report
+is the existing example.
 
-`notes.md` is not optional and not a tidy summary. Deviations from this
+`notes.md` is required, and it is not a summary. Deviations from this
 runbook, anything the operator noticed, and anything that went wrong belong
-in it verbatim. P4.6's manifest records a docker daemon restart mid-run and
-a first run discarded for an encoder bug; that is the standard.
+in it verbatim. For example, the timing parity manifest records a docker
+daemon restart mid-run and a first run discarded for an encoder bug.
 
 ---
 
@@ -637,9 +651,9 @@ reclaiming the disk. They are the only copy.
 
 ## 12. Acceptance: is the bench an instrument yet?
 
-The test is not that a run completes. It is that **two consecutive baseline
-runs agree** — same mode, same tick, same radio configuration, clean slate
-between them, §7's mix check green for both.
+A completed run is not sufficient. The test is that **two consecutive
+baseline runs agree**: same mode, same tick, same radio configuration, clean
+slate between them, §7's mix check green for both.
 
 Compare, from `--summary` on each:
 
@@ -651,25 +665,24 @@ Compare, from `--summary` on each:
 | `framing_overhead` mean | ±5% |
 | `sourcing_backlog` p95 | both ≈ 0 on a healthy link |
 
-The wider tolerance on `reverse_ratio` is deliberate: it is a small number
+The wider tolerance on `reverse_ratio` is intended. It is a small number
 divided by a large one, and the reverse channel carries RTCM only when
-ntrip-client has an upstream, which is a per-run condition rather than a
+ntrip-client has an upstream, which is a condition of the run and not a
 property of the link. Record whether RTK was running.
 
-**If two baselines do not agree within these, the bench is not yet an
-instrument and no result from it means anything.** Find the difference
-before running P4.3 — the usual causes are an incomplete clean slate, a
-`canplayer` that died and was not noticed, and counters left loaded from a
-previous session.
+**If two baselines do not agree within these tolerances, no result from the
+bench can be used.** Find the difference before running the steady-state
+series. The usual causes are an incomplete clean slate, a `canplayer` that
+died and was not noticed, and counters left loaded from a previous session.
 
-# Endurance alert firing drill (P6.12, P7.1)
+# Endurance alert firing drill
 
 The rules exercised here are rendered from
 `profiles/example-club-racer/alarms.yaml` by `tools/gen_alert_rules.py`
 (`docs/CATALOG.md` → `alarms.yaml` schema).  Change a limit there, re-run the
 generator, and commit both files together; `tests/test_gen_alert_rules.py`
 fails when the provisioning file is stale.  The thresholds in the table
-below are the *rendered* values in catalog units -- temperatures are Kelvin
+below are the *rendered* values in catalog units: temperatures are Kelvin
 because the ECU reports Kelvin, even though `alarms.yaml` declares them in
 Celsius.
 
@@ -681,8 +694,8 @@ notifier (`http://notifier:8086/grafana-alerts`, the compose service name)
 and requires no external account.  The notifier records every alert in the
 `alert_events` table (`SELECT * FROM v_alert_events ORDER BY time DESC`),
 shows it on the annunciator with a tone, and repeats it until someone
-acknowledges -- so the annunciator, not a log, is the read-back for what
-fired during a session and who saw it.  A failed delivery does not prevent
+acknowledges.  The annunciator is therefore where to check what fired
+during a session and who saw it.  A failed delivery does not prevent
 Grafana showing the rule as Firing.
 
 Before any rule is exercised, confirm the path itself is alive: the
@@ -733,20 +746,19 @@ SELECT now(), channel_key, '{"type":"lap_completed","pit_status":"track"}' FROM 
 
 Exercise one rule at a time, wait for its configured `for` period plus two
 10-second evaluation intervals (Grafana's base interval, which 12.4.9
-refuses to lower -- see the comment in `deploy/pit-compose.yaml`), verify
+refuses to lower; see the comment in `deploy/pit-compose.yaml`), verify
 **Firing**, then write the reset value and verify **Normal**.  Every
 continuous rule carries a recovery threshold: a value between the firing
 and clear thresholds must leave a Firing rule Firing, and must leave a
 Normal rule Normal.  Temperatures below are Kelvin, not Celsius.
 
-**Latency budget (P7.1).**  With `oil-pressure-low` reset, note the wall
+**Latency budget.**  With `oil-pressure-low` reset, note the wall
 clock, `CALL bench_alert_sample('car.oil_pressure', 150);` (RPM already at
 4000), and note the time the annunciator shows it (or the `time` column of
 the `alert_events` row).
 The budget is under 10 s for a critical alarm.  Through Grafana the path is
-3 s `for` plus up to 10 s of evaluation plus 0 s `group_wait`: 3-13 s, over
-budget in the worst case, which is why the watch service (P7.5) evaluates
-critical limits at sample rate and posts to the notifier directly.  Record
+3 s `for` plus up to 10 s of evaluation plus 0 s `group_wait`: 3-13 s, which
+is over budget in the worst case.  Record
 the measurement below each time the Grafana pin or the path changes.
 
 | Date | Grafana | Path | Crossing to notification | Notes |
@@ -783,7 +795,7 @@ restore `"track"`, `UPDATE sessions SET status = 'ended' WHERE session_id =
 stay Normal: that is the overnight case.  The `publish-lag-high` and
 `can-bus-stalled` pipeline rules deliberately remain active in both.
 
-### Envelope findings (P7.5)
+### Envelope findings
 
 `watch-critical` and `watch-warning` are generated from the profile and select
 open findings of their respective severity. Follow [the watch firing and clean
@@ -795,9 +807,9 @@ samples must close the findings and resolve the rules. The short engine-start
 fixture alone cannot learn these on-track baselines. Check `/health` on 8090
 and both `v_watch_*` views before attributing a non-firing rule to a healthy car.
 
-The P7.6 kinds -- per-lap drift, the driveline and wheel-speed ratios, the
-trigger-error counter and the whole-car model -- fire through the same two
-rules. Their demonstrated firings are the synthetic drives in
-`tests/test_watch_monitors.py` until P7.7's scenario suite gives each one a
-replayable fault against the live stack; the drift and ratio kinds need laps
-and gears the engine-start fixture does not have.
+The other monitor kinds (per-lap drift, the driveline and wheel-speed
+ratios, the trigger-error counter and the whole-car model) fire through the
+same two rules. Their demonstrated firings are the synthetic drives in
+`tests/test_watch_monitors.py`. There is not yet a replayable fault for
+each one against the live stack. The drift and ratio kinds need laps
+and gears that the engine-start fixture does not have.

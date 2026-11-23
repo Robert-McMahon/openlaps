@@ -1,15 +1,15 @@
 # Catalog schema
 
-This document defines the two config files that make a car a "profile" in
+This document defines the two config files that make up a car's profile in
 openlaps: `vehicle.yaml` (what hardware exists and how to talk to it) and
-`catalog.yaml` (what the signals from that hardware *mean*, named so apps
-never need to know about buses, DBCs, or wire formats). Together they are
-the entire difference between one car and another -- everything upstream
+`catalog.yaml` (what the signals from that hardware mean, named so that apps
+do not need to know about buses, DBCs, or wire formats). These files hold
+everything that differs between one car and another. The rest of the system
 (collectors, the vehicle agent, the timing engine, dashboards, exports)
 is generic and reads only canonical channel names.
 
-`profiles/example-club-racer/` is a complete, real example: a single 1 Mbps
-CAN bus carrying a Haltech Elite ECU, a Haltech PD16A power-distribution
+`profiles/example-club-racer/` is a complete example from a real car: a
+single 1 Mbps CAN bus carrying a Haltech Elite ECU, a Haltech PD16A power-distribution
 module, a Haltech WB1 wideband controller and an FDI DETA10A IMU, plus a
 UM980 GNSS receiver on serial0. Read it alongside this document.
 
@@ -17,8 +17,8 @@ UM980 GNSS receiver on serial0. Read it alongside this document.
 
 Declares the physical transports on the car: what buses and serial ports
 exist, which DBCs and drivers are attached to them, and whether host
-metrics are collected. It says nothing about what any signal *means* --
-that is `catalog.yaml`'s job.
+metrics are collected. It does not say what any signal means; `catalog.yaml`
+does that.
 
 ```yaml
 vehicle:
@@ -45,9 +45,9 @@ serial:
         configure_on_start: <bool>  # apply rate/sentences via receiver commands at startup
       # Drivers that support RTK may also accept RTCM correction bytes
       # written back over core NATS on subject `rtcm.<vehicle>` (published
-      # by the pit-side ntrip-client) and forward them straight to the
-      # receiver -- this is automatic once a capable driver is attached to
-      # a serial source; it is not something this file configures per se.
+      # by the pit-side ntrip-client) and forward them to the receiver.
+      # This happens automatically when a capable driver is attached to
+      # a serial source. This file does not configure it.
 
 host:
   enabled: <bool>              # collect host/system metrics (cpu, mem, disk, net) as sys.* channels
@@ -58,14 +58,14 @@ host:
 
 ### `interface`, `port` and `host.temperatures` belong to the board, not the car
 
-Three things above describe the SBC rather than the vehicle: `interface` is a
+Three settings above describe the SBC and not the vehicle: `interface` is a
 socketCAN device name, `port` is a path under `/dev`, and `host.temperatures`
-names the thermal sensors the kernel happens to expose. Move the same car to
-a different SBC and every DBC, channel and policy is unchanged while those
-are not.
+names the thermal sensors the kernel exposes. If the same car moves to
+a different SBC, every DBC, channel and policy is unchanged and these three
+settings change.
 
-They are still written here, because a profile has to be complete on its own.
-But they can be overlaid per board without touching this file, by a
+They are written here because a profile must be complete on its own.
+They can also be overridden per board without editing this file, by a
 `hardware.yaml` under `deploy/targets/` selected with `OPENLAPS_HARDWARE`
 (ADR 0010):
 
@@ -79,34 +79,35 @@ host:
   temperatures: { cpu: soc_thermal.0 }
 ```
 
-The catalog maps temperatures through the aliases (`from: "host:temp.cpu"`),
-never through a sensor name, so a channel like `sys.host.temp_cpu_package`
-is the same channel on every board. The raw `host:temp.<chip>.<label>` refs
-are emitted too, for a profile that wants a specific sensor and accepts that
-it is tied to one board. When an alias names a sensor the host does not
+The catalog maps temperatures through the aliases (`from: "host:temp.cpu"`)
+and never through a sensor name, so a channel such as
+`sys.host.temp_cpu_package` is the same channel on every board. The raw
+`host:temp.<chip>.<label>` refs are emitted too. A profile can map one to
+use a specific sensor, and is then tied to that board. When an alias names a sensor the host does not
 have, the agent logs the board's actual sensor names once and emits nothing
 for that alias.
 
-The overlay addresses transports by the `name` above -- the same identifier
-catalog `from:` refs resolve against -- and fails at load if it names a
+The overlay addresses transports by the `name` above (the same identifier
+that catalog `from:` refs use) and fails at load if it names a
 transport this file does not define. Besides `interface`, `bitrate`, `port`
-and `baud` it may set two things that are about the host rather than the car:
+and `baud` it may set two things that concern the host and not the car:
 
-- `buses.<name>.link` (`fd`, `dbitrate`) -- arguments `tools/can_up.py` hands
-  to `ip link`, for a controller that will not come up without them.
-- `serial.<name>.driver.configure_on_start` -- "is a real receiver on the
-  other end of this port?". `tools/bench-hardware.yaml` sets it false because
-  the bench rig's `serial0` is a pty. Nothing else in a driver block is
-  overridable: `rate_hz`, `sentences`, `pps` and `timing_output` describe the
+- `buses.<name>.link` (`fd`, `dbitrate`): arguments that `tools/can_up.py`
+  passes to `ip link`, for a controller that does not come up without them.
+- `serial.<name>.driver.configure_on_start`: whether a real receiver is
+  connected to this port. `tools/bench-hardware.yaml` sets it false because
+  the bench rig's `serial0` is a pty. Nothing else in a driver block can be
+  overridden: `rate_hz`, `sentences`, `pps` and `timing_output` describe the
   receiver the car carries and belong here.
 
 `deploy/targets/README.md` is the operator document.
 
-Buses and serial sources are generic transports: they decode to
-*source-native* signals (`MESSAGE.SIGNAL` for CAN, `SENTENCE.field` for
-serial) and carry no domain meaning. A GPS receiver moving from serial to
-CAN, or a second CAN bus being added, is a `vehicle.yaml` + `catalog.yaml`
-edit -- no code changes, no consumer changes. See the worked example below.
+Buses and serial sources are generic transports. They decode to
+source-native signals (`MESSAGE.SIGNAL` for CAN, `SENTENCE.field` for
+serial) and carry no domain meaning. Moving a GPS receiver from serial to
+CAN, or adding a second CAN bus, requires an edit to `vehicle.yaml` and
+`catalog.yaml`. It requires no change to code or to any consumer. See the
+worked example below.
 
 ## `catalog.yaml` schema
 
@@ -148,27 +149,26 @@ apps:
 See [Track setup](TRACK_SETUP.md) for preparing the KML timing lines and
 optional JSON metadata selected by `apps.lap_timing.track`.
 
-`rbe` governs what reaches the durable JetStream stream and Timescale. It
-does not affect the timing engine, which taps the sample stream **pre-RBE**
-so lap timing never sees decimated position data (see the vehicle agent
-design spec for the tap architecture).
+`rbe` controls what reaches the durable JetStream stream and Timescale. It
+does not affect the timing engine, which reads the sample stream **before
+the RBE filter**, so lap timing always receives every position sample (see
+`AGENT_DESIGN.md`).
 
-Nothing here configures the pit's live gauge panels. Which channels are
-republished to MQTT for live viewing, and at what rate, is **pit-side
-configuration** owned by the `live-decoder` service — the garage changing
-what it watches must never mean editing the file that describes the car.
-The catalog once carried a `live_hz` decimation hint for that purpose; it
-was never consumed and has been removed.
+The catalog does not configure the pit's live gauge panels. Which channels
+are republished to MQTT for live viewing, and at what rate, is **pit-side
+configuration** owned by the `live-decoder` service. The pit can change
+what it views without editing the file that describes the car. The catalog
+has no live-rate setting.
 
 ## `alarms.yaml` schema
 
 Alarm limits for the car, rendered into Grafana alert rules by
-`tools/gen_alert_rules.py` (docs/plan/PHASE7.md P7.1, ADR 0011). They live
-in the profile because they are facts about the car -- what oil pressure
-*this* engine needs at *this* RPM -- and because the catalog beside them is
-what gives each limit its unit. The rendered provisioning file under
-`deploy/pit-config/grafana/provisioning/alerting/` is output; a test fails
-when it is stale.
+`tools/gen_alert_rules.py` (ADR 0011). They are in the profile because
+they are facts about the car (eg the oil pressure this engine needs at a
+given RPM) and because the catalog in the same profile gives each limit its
+unit. The rendered provisioning file under
+`deploy/pit-config/grafana/provisioning/alerting/` is generated output; a
+test fails when it is stale.
 
 ```yaml
 group: <string>                  # rendered file and rule-group name
@@ -195,51 +195,51 @@ alarms:
 
 **Units are declared, converted, and checked.** The generator reads the
 channel's `units` from `catalog.yaml` and converts the declared limit into
-it -- `110 °C` on a channel the catalog reports in `K` renders as `383.15`,
-with both spellings written into the query as a comment. Temperature and
-pressure families convert; spelling aliases (`V`/`Volts`, `degC`/`°C`)
-reconcile; anything else must match the catalog exactly or the generator
-refuses. A channel outside the catalog (`sys.*`, `lap.*`, `timing.*`) must
-still declare `units` and is never converted. An alarm with no `units` is
-an error, not a default, because that is the mistake that once put a
-Celsius limit on a Kelvin channel.
+it. For example, `110 °C` on a channel the catalog reports in `K` renders as
+`383.15`, with both values written into the query as a comment. Temperature
+and pressure units are converted. Spelling aliases (`V`/`Volts`,
+`degC`/`°C`) are treated as equal. Any other unit must match the catalog
+exactly or the generator refuses. A channel outside the catalog (`sys.*`,
+`lap.*`, `timing.*`) must still declare `units` and is never converted. An
+alarm with no `units` is an error. There is no default, because a missing
+unit can put a Celsius limit on a Kelvin channel.
 
-**`resting` is the value the rule sees when it should not be judging.** An
+**`resting` is the value the rule evaluates when it is gated off.** An
 `on_track` alarm evaluates as `resting` while the last `lap.event` says the
-car is in the pits, and when no sample exists yet; it must sit on the
-non-firing side of the threshold. A refuelling stop looks exactly like a
-CAN failure -- the ECU is powered down while the logger keeps publishing --
-so every car-channel alarm is gated, and `live-feed-stale` is the one alarm
-whose whole job is to notice the difference while the car is on track.
+car is in the pits, and when no sample exists yet. `resting` must be on the
+non-firing side of the threshold. A refuelling stop produces the same data
+as a CAN failure (the ECU is powered down while the logger keeps
+publishing), so every car-channel alarm is gated. `live-feed-stale` is the
+alarm that detects a real loss of data while the car is on track.
 
 ## Wire encoding (`encode:`)
 
 Every channel's samples are encoded as one of four protobuf value arms:
 `double` (8-byte, the default), `float` (4-byte single-precision), `uint`
-(unsigned varint) or `int` (signed varint). `encode:` is how a catalog
-author opts a channel out of the `double` default and into a cheaper
-wire representation — this is the primary bandwidth lever in the system,
-worth **-24% to -26%** offered load applied broadly (see
-[`docs/LINK_BUDGET.md`](LINK_BUDGET.md) §7 for the measurement).
-Every pit decoder (`tools/decode.py`, and every P3 pit service that
-decodes `SampleBatch`) must honour a channel's declared `encode` — it is
-not optional metadata, it changes which oneof arm is populated on the
-wire and, for `uint`/`int`, what transform recovers the physical value.
+(unsigned varint) or `int` (signed varint). `encode:` lets a catalog
+author replace the `double` default for a channel with a smaller wire
+representation. It is the setting with the largest effect on bandwidth:
+applied broadly it reduced offered load by **24% to 26%** (see
+[`docs/LINK_BUDGET.md`](LINK_BUDGET.md) section 6 for the measurement).
+Every pit decoder (`tools/decode.py`, and every pit service that
+decodes `SampleBatch`) must apply a channel's declared `encode`. It
+changes which oneof arm is populated on the wire and, for `uint`/`int`,
+which transform recovers the physical value.
 
-- `type: double` — the default; no need to write this explicitly.
-- `type: float` — single-precision float. Good for real-valued channels
-  (temperatures, pressures, voltages) whose physical precision never
-  approaches single-float resolution.
-- `type: uint` / `type: int` — a varint, as few as 1-2 bytes for
-  small-magnitude values. Good for naturally-integer channels (counters,
+- `type: double`: the default. It does not need to be written.
+- `type: float`: single-precision float. Suitable for real-valued channels
+  (temperatures, pressures, voltages) whose physical precision is well
+  below single-float resolution.
+- `type: uint` / `type: int`: a varint, as few as 1-2 bytes for
+  small-magnitude values. Suitable for integer channels (counters,
   raw RPM), and, combined with `scale`/`offset`, for fractional physical
-  quantities that don't need double's dynamic range.
+  quantities that do not need the dynamic range of a double.
 
-`scale` and `offset` are **only valid when `type` is `uint` or `int`** —
-the catalog loader (`EncodeConfig` in `src/core/config.py`) rejects them
-on `double`/`float` channels, and rejects `encode:` outright on `bool`/
-`string` channels (those have no fixed-point representation to speak of).
-A `scale` of `0` (the default) means "unscaled": the wire value *is* the
+`scale` and `offset` are **only valid when `type` is `uint` or `int`**.
+The catalog loader (`EncodeConfig` in `src/core/config.py`) rejects them
+on `double`/`float` channels, and rejects `encode:` on `bool`/
+`string` channels (which have no fixed-point representation).
+A `scale` of `0` (the default) means "unscaled": the wire value is the
 physical value. A non-zero `scale` activates the fixed-point convention
 `docs/WIRE_FORMAT.md` defines at the wire level:
 
@@ -260,120 +260,122 @@ channels:
 ```
 
 A reading of 300.0 K encodes as `wire_value = round((300.0 - 0) / 0.1) =
-3000` — a value that fits a 1-2 byte varint instead of an 8-byte double —
-and decodes back to `3000 * 0.1 + 0 = 300.0 K`, preserving 0.1 K
-precision.
+3000`, which fits a 1-2 byte varint instead of an 8-byte double. It
+decodes back to `3000 * 0.1 + 0 = 300.0 K`, with 0.1 K precision.
 
 ## Canonical naming convention
 
 **Flat `car.*` namespace, snake_case, one level.** Every on-vehicle
-sensor/actuator reading -- engine, chassis dynamics, wheels, fuel,
-electrics, whatever -- is a single `car.<name>` channel. There is no
+sensor/actuator reading (engine, chassis dynamics, wheels, fuel,
+electrics and so on) is a single `car.<name>` channel. There is no
 domain sub-taxonomy (no `engine.*`, `chassis.*`, `wheels.*`, `fuel.*`,
-`electrics.*`). This was a deliberate simplification (see ADR 0004's
-2026-07-27 amendment): a domain taxonomy invites pointless categorization
-debates -- does throttle position belong to `engine.*` or `chassis.*`? does
-a wheel-speed-derived vehicle speed belong to `wheels.*` or `engine.*`? --
-that have no correct answer and no bearing on how any consumer actually
-uses the channel. Consumers match on the full channel name or a glob; they
-don't need or benefit from a domain prefix to group by.
+`electrics.*`). The reason is in ADR 0004's 2026-07-27 amendment: a domain
+taxonomy raises classification questions that have no correct answer and
+do not affect how a consumer uses the channel (eg whether throttle
+position belongs to `engine.*` or `chassis.*`, or whether a vehicle speed
+derived from wheel speed belongs to `wheels.*` or `engine.*`). Consumers
+match on the full channel name or a glob and do not need a domain prefix
+to group by.
 
-Reserved namespaces, unchanged and outside `car.*`:
+Reserved namespaces outside `car.*`:
 
 | Namespace | Covers |
 |---|---|
 | `car.*` | Every on-vehicle sensor/actuator reading: ECU engine/drivetrain state, IMU/dynamics, wheel speeds, fuel system, electrics, power-distribution/keypad device health. Flat, one level, snake_case. |
 | `position.*` | GNSS: lat, lon, speed, heading, fix quality; altitude, satellites and HDOP (GGA); 1-sigma error (GST) |
-| `sys.*` | Host metrics and vehicle-agent health (queue depths, dropped-sample counters, link status) -- not populated via `catalog.yaml`; these are internal agent/host channels, not mapped source signals |
-| `lap.*`, `timing.*` | **Reserved, derived.** Produced by the timing engine from `apps.lap_timing`'s output (lap/sector events, `delta_best`, `predicted_lap`, distance, `lap_elapsed`). Never appear as a `from:` target in `catalog.yaml` -- they are channels the timing engine *writes*, re-entering the sample bus like any other channel. |
+| `sys.*` | Host metrics and vehicle-agent health (queue depths, dropped-sample counters, link status). `sys.host.*` channels are mapped in `catalog.yaml` from `host:` refs; `sys.agent.*` channels are internal to the agent and are not mapped source signals |
+| `lap.*`, `timing.*` | **Reserved, derived.** Produced by the timing engine from `apps.lap_timing`'s output (lap/sector events, `delta_best`, `predicted_lap`, distance, `lap_elapsed`). Never appear as a `from:` target in `catalog.yaml`. The timing engine writes them, and they enter the sample stream like any other channel. |
 | `fused.*` | **Reserved, derived.** IMU/GNSS fusion output from `apps.fusion` (position, speed, attitude, sideslip, body-frame acceleration, grade, status). See [Sensor fusion](FUSION.md). |
 
 Pit-owned namespaces, which are not vehicle channels at all (ADR 0011):
 
 | Namespace | Covers |
 |---|---|
-| `watch.*` | Anomaly-monitor scores and findings computed at the pit from received telemetry (`docs/plan/PHASE7.md`). |
-| `strategy.*` | Fuel, stop-plan, driver-time and race-forecast numbers computed at the pit. |
+| `watch.*` | Anomaly-monitor scores and findings computed at the pit from received telemetry (`WATCH.md`). |
+| `strategy.*` | Fuel, stop-plan and driver-time numbers computed at the pit. |
 | `field.*` | The other cars: standings, laps, passings and flag state ingested from a timing provider. |
 
 These never appear in a catalog, never carry a `from:`, and never cross the
-radio: a pit service may read any vehicle channel but may publish only
-under a pit-owned namespace, so a derived number can always be told from a
-received one by its name alone. The two `timing.*_pit` channels the pit-side
-timing extrapolator publishes predate this rule and are the only
-vehicle-namespace names a pit service will ever emit.
+link. A pit service may read any vehicle channel but may publish only
+under a pit-owned namespace, so the name of a channel shows whether its
+value was derived at the pit or received from the vehicle. The exception is
+the two `timing.*_pit` channels published by the pit-side timing
+extrapolator. They are older than this rule and are the only
+vehicle-namespace names a pit service publishes.
 
-Where the bare, flattened name would be ambiguous on its own, keep the
-former domain word as part of the name instead of the channel name itself:
+Where the flat name would be ambiguous on its own, a domain word is kept as
+part of the name:
 `car.engine_demand`, `car.engine_limiting_active`,
-`car.engine_protection_severity`, `car.gearbox_oil_temp`. Where it wouldn't
-be ambiguous, drop it: `engine.rpm` -> `car.rpm`, `chassis.accel_x` ->
-`car.accel_x`. Per-corner wheel-speed channels keep an explicit `wheel_`
-infix because the bare name (`car.speed_fl`) would be indistinguishable
+`car.engine_protection_severity`, `car.gearbox_oil_temp`. Where it would
+not be ambiguous, there is no domain word: `car.rpm`, `car.accel_x`.
+Per-corner wheel-speed channels keep an explicit `wheel_`
+infix because the bare name (`car.speed_fl`) could not be distinguished
 from a GPS-derived speed: `car.wheel_speed_fl`, `_fr`, `_rl`, `_rr`.
 
 **Name the measurement, not the wire.** Canonical names describe physical
-meaning, not wiring. This mainly bites on generic PDM (power-distribution
-module) I/O: a PD16A analog input (`AVI1`) or output driver (`HCO8_3`) has
-no fixed meaning -- it reports whatever sensor or load happens to be wired
-to that pin on *this* car. A different build of the same car (or a
+meaning and not wiring. This matters most for generic PDM
+(power-distribution module) I/O. A PD16A analog input (`AVI1`) or output
+driver (`HCO8_3`) has no fixed meaning: it reports whichever sensor or load
+is wired to that pin on this car. A different build of the same car (or a
 different car using the same PD16A) could have `AVI1` wired to a fuel
 surge-tank level sender, a brake-bias potentiometer, or nothing at all.
-Mapping `car.avi1_v` in the example catalog would document a wiring
-decision, not a measurement -- so the example catalog leaves these
-unmapped and documents the pattern with a commented template instead (see
-`profiles/example-club-racer/catalog.yaml`, PDM/keypad section):
+A channel named `car.avi1_v` would record a wiring decision and not a
+measurement. The example catalog therefore names each PDM pin after what
+is wired to it on this car, and does not map a pin that has nothing
+assigned (see `profiles/example-club-racer/catalog.yaml`, PDM/keypad
+section). For example:
 
 ```yaml
-# car.fuel_surge_tank_level: { from: "can0:haltech2.PD16A_AVI_VOLTAGES.PD16A_AVI_1_VOLTAGE", units: "V" }
+car.fuel_level_volts: { from: "can0:haltech2.PD16A_AVI_VOLTAGES.PD16A_AVI_4_VOLTAGE", units: "V", rbe: { deadband: 0.05, min_interval: 100ms, max_interval: 5s } }
+car.lift_pump_current: { from: "can0:haltech2.PD16A_OUTPUT_STATUS.PD16A_HCO8_8_CURRENT", units: "A" }
 ```
 
-Device-health diagnostics are the exception: a PD16A's own temperature,
-battery voltage, and total current describe the module itself, not
-whatever is wired to it, so they're meaningful in any build and stay
-mapped as `car.pd16_temp`-style names (`car.pd16_cpu_temp`,
-`car.pd16_battery_v`, `car.pd16_total_current`, etc). Generic device
-signals like the CAN keypad's buttons are likewise always meaningful
-regardless of car-specific wiring and stay mapped (`car.keypad_button_1`,
-...).
+A profile for a different car must replace these names and refs with its
+own wiring.
 
-Judgement calls worth a second look (flagged for review, not blocking):
+Device-health diagnostics are different. A PD16A's own temperature,
+battery voltage, and total current describe the module itself and not
+what is wired to it, so they are meaningful in any build and are
+mapped under `car.pd16_*` names (`car.pd16_cpu_temp`,
+`car.pd16_battery_v`, `car.pd16_total_current`, etc). The CAN keypad's
+buttons are named by function in the same way as the PDM pins
+(`car.wiper_button`, `car.start_button`); one button keeps its number
+(`car.keypad_button_5`).
+
+Naming decisions that were judgement calls:
 
 - **`car.driveshaft_rpm`, `car.trip_distance_m`, `car.vehicle_speed`**:
-  ECU-calculated (not raw wheel-sensor) values; previously grouped under
-  `wheels.*`, now just flat `car.*` names with no domain marker since the
-  bare names aren't ambiguous.
+  ECU-calculated values (not raw wheel-sensor values). They are flat
+  `car.*` names with no domain word because the bare names are not
+  ambiguous.
 - **`car.ambient_air_temp`, `car.fuel_temp`, `car.gearbox_oil_temp`**:
-  previously kept under `engine.*` (matching how the Haltech DBC groups its
-  own temperature messages) even though the physical medium (ambient air,
-  fuel, gearbox oil) isn't strictly "engine". Flattening removes the
-  question entirely; `car.gearbox_oil_temp` keeps its full descriptive name
-  since bare `car.gearbox_temp` would collide conceptually with nothing
-  else here but reads better fully spelled out.
-- **`car.fuel_pressure`, `car.fuel_temp` vs. `car.fuel_level`,
-  `car.fuel_flow_rate`, ...**: previously split across `engine.*` (the
-  ECU-reported pressure/temp signals) and `fuel.*` (level, flow,
-  consumption, trim) -- an inconsistency the old convention's own
-  judgement-call notes flagged. Flattening incidentally resolves it: all
-  fuel-system channels are now consistently `car.fuel_*`.
+  the Haltech DBC groups these with its engine temperature messages,
+  although the physical medium (ambient air, fuel, gearbox oil) is not
+  strictly the engine. The flat namespace avoids that question.
+  `car.gearbox_oil_temp` keeps its full descriptive name because it reads
+  more clearly than `car.gearbox_temp`.
+- **`car.fuel_pressure`, `car.fuel_temp`, `car.fuel_level`,
+  `car.fuel_flow_rate`, ...**: all fuel-system channels are named
+  `car.fuel_*`, whether the ECU reports them with its engine signals
+  (pressure, temperature) or its fuel signals (level, flow, consumption,
+  trim).
 - **`car.pd16_hco25_12_temp_status`, `car.pd16_hco25_34_temp_status`**:
   these come from the `PD16A_DIAGNOSTICS` message (per-driver-pair thermal
-  status), not `PD16A_OUTPUT_STATUS`, so -- unlike the per-output
-  current/status/load channels -- they describe PD16A hardware health, not
-  wiring. Kept mapped alongside the other PD16 diagnostics rather than
-  removed to the wiring-dependent template.
+  status) and not from `PD16A_OUTPUT_STATUS`. Unlike the per-output
+  current and load channels, they describe PD16A hardware health and not
+  wiring. They are mapped with the other PD16 diagnostics.
 - **`car.trigger_counter`, `car.trigger_error_count`,
-  `car.trigger_sync_level`**: kept bare (no `engine_` prefix) on the
-  judgement that "trigger" unambiguously reads as the ignition/crank
-  trigger system in this context; flagging in case a future channel
-  (e.g. a lap/sector "trigger") would collide.
+  `car.trigger_sync_level`**: these have no `engine_` prefix, on the
+  judgement that "trigger" here clearly means the ignition/crank
+  trigger system. A future channel (eg a lap or sector "trigger") could
+  collide with them.
 
 ## Worked example: adding a second CAN bus carrying GPS
 
 Say GPS moves from `serial0` (NMEA over UART) to a second CAN bus,
-`can1`, decoded via a new `gps.dbc`. Only the profile changes; the timing
-engine, dashboards, and exports all keep reading `position.*` and are
-untouched.
+`can1`, decoded via a new `gps.dbc`. Only the profile changes. The timing
+engine, dashboards, and exports all keep reading `position.*` and do not
+change.
 
 **`vehicle.yaml` diff:**
 
@@ -427,34 +429,35 @@ untouched.
 +  position.fix_quality: { from: "can1:gps.GPS_STATUS.FIX_TYPE", type: string }
 ```
 
-`position.*` is a reserved namespace, not `car.*`, so this example is
-unaffected by the flat-`car.*` renaming -- it illustrates the same point
-either way: only the `from:` refs change when a source moves buses or
-transports.
+Only the `from:` refs change when a source moves to another bus or
+transport.
 
-`apps.lap_timing` (`position: position.*`, `track: Wanneroo`) is untouched --
-it never referenced a bus or decoder, only canonical names. Every consumer
-downstream of the catalog mapper is equally unaffected.
+`apps.lap_timing` (`position: position.*`, `track: Wanneroo`) does not
+change, because it refers only to canonical names and never to a bus or
+decoder. The same is true of every consumer downstream of the catalog
+mapper.
 
-## Coverage: legacy `signals_config.yaml` -> canonical channels
+## Example profile coverage: DBC signals -> canonical channels
 
-Every `include_signals` entry from the legacy configuration, expanded against the four DBCs
-(`haltech-ecu.dbc`, `haltech-multiplexed.dbc`, `haltech-wideband.dbc`,
-`fdi-imu.dbc`) and mapped to its canonical channel(s) in
-`profiles/example-club-racer/catalog.yaml`. Wildcard entries (e.g.
-`WHEEL_SPEED_*`, `PD16A_HCO*_VOLTAGE`) are expanded to every signal name
-actually present in the DBCs, honoring the old config's `exclude_signals`
-list (`IMU_*_SYNC`, `PD16A_*_CFG_*`, `PD16A_*_IN_*`).
+This table lists the CAN signals from the four DBCs (`haltech-ecu.dbc`,
+`haltech-multiplexed.dbc`, `haltech-wideband.dbc`, `fdi-imu.dbc`) that
+`profiles/example-club-racer/catalog.yaml` maps, and the canonical channel
+each one maps to. A `*` stands for every matching signal that the catalog
+maps. The catalog file is the source; this table repeats it by signal name
+for lookup.
 
-**101 old include-list entries -> 116 canonical `car.*` channels, 86
-entries mapped, 14 unmapped by design (wiring-dependent PDM I/O), 1
-unmapped (stale)** (see notes below). The 2026-07-27 flat-`car.*` renaming
-also collapsed the PDM per-output current/status/load and AVI/SPI analog
-input entries from mapped channels to the commented wiring-dependent
-template in `catalog.yaml` -- see "name the measurement, not the wire"
-above.
+The table covers all **145 `car.*` channels**. The `position.*` channels
+(serial GNSS) and `sys.host.*` channels (host collector) are not CAN
+signals and are not listed.
 
-| Old `signals_config.yaml` entry | Canonical channel(s) |
+The PDM and keypad rows (`PD16A_AVI_*`, `PD16A_SPI_*`, `PD16A_HBO_*`,
+`PD16A_HCO*`, `KEYPAD_BUTTON_*`) depend on this car's wiring (see "Name the
+measurement, not the wire" above). The catalog does not map the PD16A
+per-output pin state, retry count and voltage signals, the input state
+signals other than `PD16A_SPI_4_STATE`, or the configuration (`_CFG_`) and
+`_IN_` signals.
+
+| DBC signal | Canonical channel(s) |
 |---|---|
 | `ENGINE_SPEED` | `car.rpm` |
 | `MANIFOLD_PRESSURE` | `car.map` |
@@ -468,7 +471,6 @@ above.
 | `AIR_TEMPERATURE` | `car.air_temp` |
 | `FUEL_TEMPERATURE` | `car.fuel_temp` |
 | `OIL_TEMPERATURE` | `car.oil_temp` |
-| `GEARBOX_TEMPERATURE` | **unmapped** -- no signal with this name in any DBC (see note below) |
 | `WHEEL_SPEED_*` | `car.wheel_speed_fl`, `car.wheel_speed_fr`, `car.wheel_speed_rl`, `car.wheel_speed_rr` |
 | `ENGINE_LIMITING_ACTIVE` | `car.engine_limiting_active` |
 | `BOOST_CONTROL_OUTPUT` | `car.boost_control_output` |
@@ -481,7 +483,7 @@ above.
 | `TRIGGER_SYSTEM_ERROR_COUNT` | `car.trigger_error_count` |
 | `AMBIENT_AIR_TEMPERATURE` | `car.ambient_air_temp` |
 | `FUEL_LEVEL` | `car.fuel_level` |
-| `BRAKE_PEDAL_SWITCH` | `car.brake_pedal_switch_ecu` (`car.brake_pedal_switch` is the PDM's 100 Hz input state) |
+| `BRAKE_PEDAL_SWITCH` | `car.brake_pedal_switch_ecu` (the ECU's copy; `car.brake_pedal_switch` is the PDM's 100 Hz input state, `PD16A_SPI_4_STATE`) |
 | `CLUTCH_SWITCH` | `car.clutch_switch` |
 | `OIL_PRESSURE_LIGHT` | `car.oil_pressure_light` |
 | `TRACTION_CONTROL_ENABLED` | `car.tc_enabled` |
@@ -541,30 +543,12 @@ above.
 | `PD16A_MAIN_RAIL_TEMP` | `car.pd16_main_rail_temp` |
 | `PD16A_THERMISTOR_*_TEMP` | `car.pd16_thermistor_1_temp`, `car.pd16_thermistor_2_temp`, `car.pd16_thermistor_3_temp` |
 | `PD16A_*_TEMP_STATUS` | `car.pd16_hco25_12_temp_status`, `car.pd16_hco25_34_temp_status`, `car.pd16_main_rail_temp_status`, `car.pd16_tvs_temp_status` |
-| `PD16A_*_PIN_STATE` | **unmapped by design** -- wiring-dependent, name when assigned (per-output pin state on `PD16A_OUTPUT_STATUS`; see the commented template in `catalog.yaml`) |
-| `PD16A_*_RETRY_COUNT` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_HCO*_VOLTAGE` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_HCO*_CURRENT` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_HCO*_LOAD` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_HBO_*_VOLTAGE` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_HBO_*_HS_CURRENT` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_HBO_*_LOAD` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_AVI_*_STATE` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_AVI_*_VOLTAGE` | **unmapped by design** -- wiring-dependent, name when assigned (previously the six `rbe`-policed live analog voltage channels; the policy is documented in the `catalog.yaml` template comment for reuse when mapped) |
-| `PD16A_SPI_3_STATE` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_SPI_4_STATE` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_SPI_3_VOLTAGE` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `PD16A_SPI_4_VOLTAGE` | **unmapped by design** -- wiring-dependent, name when assigned |
-| `KEYPAD_BUTTON_*` | `car.keypad_button_1`, `car.keypad_button_2`, `car.keypad_button_3`, `car.keypad_button_4`, `car.keypad_button_5`, `car.keypad_button_6`, `car.keypad_button_7`, `car.keypad_button_8`, `car.keypad_button_9`, `car.keypad_button_10`, `car.keypad_button_11`, `car.keypad_button_12`, `car.keypad_button_13`, `car.keypad_button_14`, `car.keypad_button_15` |
+| `PD16A_AVI_*_VOLTAGE` | `car.transmission_oil_temp_volts`, `car.indicator_switch_volts`, `car.fuel_level_volts` (inputs 2 to 4; input 1 is not mapped) |
+| `PD16A_SPI_*_VOLTAGE` | `car.surge_tank_switch`, `car.brake_pressure_front_volts`, `car.clutch_switch_input`, `car.brake_switch_input` (inputs 1 to 4) |
+| `PD16A_SPI_4_STATE` | `car.brake_pedal_switch` |
+| `PD16A_HBO_*_HS_CURRENT` | `car.power_steering_pump_1_current`, `car.power_steering_pump_2_current` |
+| `PD16A_HCO8_*_CURRENT` | `car.starter_relay_current`, `car.ecu_inj_wideband_supply_current`, `car.head_light_current`, `car.brake_light_current`, `car.wiper_current`, `car.water_injection_pump_current`, `car.fuel_pump_changeover_current`, `car.lift_pump_current`, `car.heater_fan_current`, `car.cam_scavenge_pump_current` (outputs 1 to 10) |
+| `PD16A_HCO25_*_HS_CURRENT` | `car.gearbox_pump_current`, `car.thermo_fan_1_current`, `car.ign_coils_current`, `car.fuel_pump_current` (outputs 1 to 4) |
+| `PD16A_*_LOAD` | `car.power_steering_pump_1_load` (HBO 1), `car.thermo_fan_1_load` (HCO25 2), `car.fuel_pump_load` (HCO25 4), `car.lift_pump_load` (HCO8 8), `car.cam_scavenge_pump_load` (HCO8 10); the other outputs' loads are not mapped |
+| `KEYPAD_BUTTON_*` | `car.wiper_button`, `car.head_light_button`, `car.fuel_pump_changeover_button`, `car.boost_button`, `car.keypad_button_5`, `car.dim_light_button`, `car.pit_speed_limit_button`, `car.thermo_fan_1_overide_button`, `car.hazard_light_button`, `car.rotational_idle_button`, `car.start_button`, `car.heater_fan_overide_button`, `car.gearbox_pump_overide_button`, `car.engine_protection_ack_button`, `car.fuel_pump_overide_button` (buttons 1 to 15) |
 | `KEYPAD_NMT_STATE` | `car.keypad_nmt_state` |
-
-**Note on `GEARBOX_TEMPERATURE`:** no DBC signal has this exact name --
-`TEMPERATURE2` (message `BO_ 993` in `haltech-ecu.dbc`) defines
-`GEARBOX_OIL_TEMPERATURE`, not `GEARBOX_TEMPERATURE`. The old
-`signals_config.yaml` includes both names (one under a `# TEMPERATURE2`
-comment, one later under `# ECU channels confirmed present...`); the
-second (`GEARBOX_OIL_TEMPERATURE`) matches a real signal and is already
-covered above as `car.gearbox_oil_temp`. `GEARBOX_TEMPERATURE` itself
-is almost certainly a stale typo/duplicate in the old config that never
-matched anything at runtime -- flagging for the owner to confirm rather
-than silently dropping it.

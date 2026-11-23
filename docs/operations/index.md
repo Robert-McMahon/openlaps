@@ -1,12 +1,12 @@
 # Deployment overview
 
-openlaps has two independently managed stacks joined by one NATS leafnode.
+openlaps has two separately managed stacks joined by one NATS leafnode.
 
 | | Vehicle | Pit |
 | --- | --- | --- |
-| Primary config | `deploy/vehicle-compose.yaml` | `deploy/pit-compose.yaml` |
+| Primary config | `deploy/vehicle-compose.yaml`, or systemd units on some targets | `deploy/pit-compose.yaml` |
 | Durable stream | `TELE` | `TELE_VEHICLE`, sourced from the vehicle |
-| Main services | NATS, agent, optional go2rtc | NATS, TimescaleDB, MQTT, Grafana and ten application services |
+| Main services | NATS, agent, optional go2rtc, optional `openlaps-link` | NATS, TimescaleDB, MQTT, Grafana and ten application services, optional `link` |
 | Operator surface | service logs and NATS monitoring | Grafana, session control and notifier |
 
 ## Deployment sequence
@@ -21,9 +21,22 @@ openlaps has two independently managed stacks joined by one NATS leafnode.
 
 ## Network direction
 
-The pit dials the vehicle's leafnode listener at `:7422`. The vehicle must be
-reachable from the pit radio network. Video, when enabled, is a separate direct
-pit-to-vehicle connection on go2rtc ports.
+The pit starts every connection, so the vehicle must be reachable from the
+pit over at least one IP path.
+
+| Port on the vehicle | Use | Needed |
+| --- | --- | --- |
+| TCP 7422 | NATS leafnode | Always, unless the link tunnel is used |
+| UDP 7423 | Live frames | With `OPENLAPS_LIVE_SOURCE=direct`, unless they go through the tunnel |
+| UDP 7424 | Link tunnel | With the `link` profile |
+| go2rtc ports | Video | With the `video` profile |
+
+The path can be a radio network (eg HaLow), an overlay network such as
+Tailscale over HaLow and Starlink, or both. Where several addresses reach
+the vehicle, list them: the tunnel and the live frames each accept more than
+one. [Architecture](../ARCHITECTURE.md#the-vehicle-to-pit-link) describes how
+each part chooses a path. `tools/car_link.sh` on the pit host shows the path
+Tailscale is using and can force Starlink only.
 
 ## Configuration rules
 

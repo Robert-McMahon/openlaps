@@ -41,6 +41,21 @@ Set the pit remote URL with the same value:
 NATS_LEAFNODE_URL=tls://leaf:<generated value>@<vehicle-host>:7422
 ```
 
+## Link tunnel and live frames
+
+The link tunnel (`openlaps-link`) authenticates both ends with the same
+files: the vehicle presents the server certificate and the pit the client
+certificate, each verified against the CA. On a vehicle that runs the tunnel
+as a systemd service, copy the server certificate, its key and the CA to
+`/etc/openlaps/tls` ([Vehicle installation](vehicle.md)). The name in
+`OPENLAPS_LINK_SERVER_NAME` must be in the vehicle certificate's subject
+alternative names.
+
+Live frames sent outside the tunnel are signed, not encrypted. Set the same
+`OPENLAPS_LIVE_KEY` on both hosts (`openssl rand -hex 32`). The signature
+stops another host on the network from faking or redirecting the gauges; it
+does not hide the values.
+
 ## Client listeners
 
 The checked-in client listeners do not require authentication. Vehicle NATS

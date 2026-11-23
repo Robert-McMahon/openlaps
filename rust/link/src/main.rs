@@ -47,8 +47,6 @@ const KEEP_ALIVE: Duration = Duration::from_secs(2);
 const DATAGRAM_SEND_BUFFER: usize = 4 * 1024;
 const STATS_EVERY: Duration = Duration::from_secs(30);
 const STREAM_MARKER: u8 = 1;
-/// A new tunnel must hold this long before the stream is moved into it.
-const TUNNEL_SETTLE: Duration = Duration::from_secs(5);
 
 struct Args {
     mode: String,
@@ -59,8 +57,6 @@ struct Args {
     listen: SocketAddr,
     /// pit: the car's QUIC addresses, tried together; first to answer wins.
     car: Vec<String>,
-    /// pit: the car's leafnode listener, for when there is no tunnel.
-    direct: Vec<String>,
     /// pit: the name the car's certificate must carry.
     server_name: String,
     /// car: where the leafnode listener is. pit: where NATS dials us.
@@ -88,7 +84,6 @@ fn parse_args() -> Result<Args> {
         ca: PathBuf::new(),
         listen: "0.0.0.0:7424".parse()?,
         car: Vec::new(),
-        direct: Vec::new(),
         server_name: String::new(),
         tcp: if car_side {
             "127.0.0.1:7422"
@@ -119,12 +114,6 @@ fn parse_args() -> Result<Args> {
             "--ca" => args.ca = value.into(),
             "--listen" => args.listen = value.parse().context("--listen")?,
             "--car" => args.car.extend(
-                value
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty()),
-            ),
-            "--direct" => args.direct.extend(
                 value
                     .split(',')
                     .map(|s| s.trim().to_string())
@@ -367,19 +356,13 @@ async fn run_pit(args: Args) -> Result<()> {
             .with_context(|| format!("udp {}", args.udp))?,
     );
     println!(
-        "pit: stream on tcp {}, live on udp {}, car at {:?}, direct {:?}",
-        args.tcp, args.udp, args.car, args.direct
+        "pit: stream on tcp {}, live on udp {}, car at {:?}",
+        args.tcp, args.udp, args.car
     );
 
     let (tunnel_tx, tunnel) = tokio::sync::watch::channel(None::<Connection>);
-    let direct_streams = Arc::new(std::sync::Mutex::new(Vec::<tokio::task::AbortHandle>::new()));
     let live_peer = Arc::new(std::sync::Mutex::new(None::<SocketAddr>));
-    tokio::spawn(accept_streams(
-        listener,
-        tunnel.clone(),
-        args.direct.clone(),
-        direct_streams.clone(),
-    ));
+    tokio::spawn(accept_streams(listener, tunnel.clone()));
     tokio::spawn(forward_live(udp.clone(), tunnel.clone(), live_peer.clone()));
     tokio::spawn(watch_network());
 
@@ -400,7 +383,6 @@ async fn run_pit(args: Args) -> Result<()> {
         println!("pit: connected to the car at {}", conn.remote_address());
         let _ = tunnel_tx.send(Some(conn.clone()));
         let reporter = tokio::spawn(report(conn.clone(), "pit"));
-        let mover = tokio::spawn(move_into_tunnel(conn.clone(), direct_streams.clone()));
         let reason = loop {
             match conn.read_datagram().await {
                 Ok(data) => {
@@ -415,84 +397,35 @@ async fn run_pit(args: Args) -> Result<()> {
         };
         let _ = tunnel_tx.send(None);
         reporter.abort();
-        mover.abort();
         conn.close(VarInt::from_u32(0), b"");
         println!("pit: car connection lost: {reason}");
     }
 }
 
-/// Once a new tunnel has held for a few seconds, end the stream connections
-/// that were passed straight to the car while there was none. NATS redials
-/// at once and lands in the tunnel.
-async fn move_into_tunnel(
-    conn: Connection,
-    direct_streams: Arc<std::sync::Mutex<Vec<tokio::task::AbortHandle>>>,
-) {
-    tokio::time::sleep(TUNNEL_SETTLE).await;
-    if conn.close_reason().is_some() {
-        return;
-    }
-    let moved: Vec<_> = direct_streams.lock().unwrap().drain(..).collect();
-    let live = moved.iter().filter(|task| !task.is_finished()).count();
-    for task in moved {
-        task.abort();
-    }
-    if live > 0 {
-        println!("pit: moving {live} direct stream connection(s) into the tunnel");
-    }
-}
-
-/// Every TCP connection to the local stream port goes into the tunnel when
-/// there is one and straight to the car when there is not, so the stream
-/// keeps flowing to a car that has no tunnel, and never depends on which of
-/// NATS and this program started first.
-async fn accept_streams(
-    listener: TcpListener,
-    tunnel: Tunnel,
-    direct: Vec<String>,
-    direct_streams: Arc<std::sync::Mutex<Vec<tokio::task::AbortHandle>>>,
-) {
+/// Every TCP connection to the local stream port is carried in the tunnel.
+/// While there is no tunnel the connection is closed at once: there is no
+/// other way to the car from here, and NATS redials every second, so it is
+/// in the tunnel within a second of there being one. That also means it
+/// does not matter which of NATS and this program started first.
+async fn accept_streams(listener: TcpListener, tunnel: Tunnel) {
     loop {
         let Ok((local, _)) = listener.accept().await else {
             tokio::time::sleep(Duration::from_millis(100)).await;
             continue;
         };
-        let conn = tunnel.borrow().clone();
-        match conn {
-            Some(conn) => {
-                tokio::spawn(async move {
-                    if let Ok((mut send, recv)) = conn.open_bi().await {
-                        // A QUIC stream does not exist for the far end
-                        // until something is written to it, and on a
-                        // leafnode connection the car speaks first.
-                        if send.write_all(&[STREAM_MARKER]).await.is_ok() {
-                            splice(send, recv, local).await;
-                        }
-                    }
-                });
+        let Some(conn) = tunnel.borrow().clone() else {
+            continue; // dropping `local` closes it
+        };
+        tokio::spawn(async move {
+            if let Ok((mut send, recv)) = conn.open_bi().await {
+                // A QUIC stream does not exist for the far end until
+                // something is written to it, and on a leafnode connection
+                // the car speaks first.
+                if send.write_all(&[STREAM_MARKER]).await.is_ok() {
+                    splice(send, recv, local).await;
+                }
             }
-            None => {
-                let direct = direct.clone();
-                let task = tokio::spawn(async move {
-                    for target in &direct {
-                        let attempt = tokio::time::timeout(
-                            Duration::from_secs(3),
-                            TcpStream::connect(target),
-                        );
-                        if let Ok(Ok(mut remote)) = attempt.await {
-                            let mut local = local;
-                            let _ = remote.set_nodelay(true);
-                            let _ = local.set_nodelay(true);
-                            let _ = tokio::io::copy_bidirectional(&mut local, &mut remote).await;
-                            return;
-                        }
-                    }
-                });
-                let mut streams = direct_streams.lock().unwrap();
-                streams.retain(|task| !task.is_finished());
-                streams.push(task.abort_handle());
-            }
-        }
+        });
     }
 }
 

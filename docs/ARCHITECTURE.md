@@ -225,6 +225,7 @@ flowchart LR
     sends a channel only while a dashboard is showing it, and sends almost
     nothing when no dashboard is open. If no frames arrive for 30 s the
     live-decoder shows the pit's sourced copy until they return.
+
 - **timing-extrapolator** publishes running lap and sector clocks for the
   pit wall between the vehicle's timing events.
 - **session-control** publishes driver, stint and session state on

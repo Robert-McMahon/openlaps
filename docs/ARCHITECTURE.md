@@ -1,314 +1,376 @@
 # openlaps architecture
 
-openlaps is a racing telemetry platform split across two hosts: a **vehicle**
-node that collects, times, and durably stores telemetry, and a **pit** node
-that receives the stream over a constrained wireless link, lands it in a
-time-series database, and serves live and historical dashboards. Everything
-specific to one car — buses, DBC files, sensors, channel names, tracks — lives
-in a configuration *profile* (see `CATALOG.md`); the platform code is generic.
+openlaps is a racing telemetry system that runs on two hosts. The **vehicle**
+host collects sensor data, computes lap timing, and stores everything in a
+durable local stream. The **pit** host receives that stream over a wireless
+link, writes it to a time-series database, and serves live and historical
+dashboards.
 
-Design goals, in priority order:
-
-1. **Survive a bad link.** The vehicle↔pit radio (e.g. 802.11ah HaLow) is
-   half-duplex, long-range, and sometimes awful. Data must never be lost to a
-   dropout; the pit view must heal itself when the link returns.
-2. **The car is config.** Adding a CAN bus, moving GPS from a serial receiver
-   onto a bus, or renaming a sensor is a profile edit — no consumer (dashboard,
-   timing, export) changes.
-3. **Bandwidth is a budget, not a hope.** The wire format is binary, batched,
-   and carries no repeated name strings; per-channel report-by-exception
-   trims what crosses the link.
-4. **Open source hygiene.** No credentials in the repo, ever; deployments
-   inject secrets via environment. The example profile is documentation.
+Everything specific to one car (buses, DBC files, sensors, channel names,
+tracks) is in a configuration *profile* (see `CATALOG.md`). The code is the
+same for every car.
 
 ## System overview
 
 ```mermaid
 flowchart LR
-  subgraph vehicle [Vehicle node]
-    CAN0[can collectors 0..n<br/>socketCAN + DBC decode] --> AGENT
-    SER0[serial collectors 0..n<br/>decoder: nmea, driver: um980] --> AGENT
-    HOST[host collector<br/>cpu, temps, disk] --> AGENT
-    AGENT[vehicle agent<br/>catalog map / RBE / batcher / timing] --> VNATS[(vehicle nats-server<br/>JetStream: TELE, CMD)]
-    VNATS -- "rtcm.vehicle, core NATS" --> SER0
+  subgraph vehicle [Vehicle host]
+    COL[collectors<br/>CAN, serial GNSS, host] --> AGENT[vehicle agent]
+    AGENT --> VNATS[(vehicle nats-server<br/>JetStream: TELE, CMD)]
   end
-  VNATS <-- "leafnode over radio, TLS<br/>TELE sourced to pit, CMD back" --> PNATS[(pit nats-server<br/>JetStream)]
-  subgraph pit [Pit node]
-    PNATS --> WRITER[ingest-writer] --> TSDB[(TimescaleDB)]
-    PNATS --> LIVE[live-decoder] --> MQ[mosquitto, websockets] --> GLIVE[Grafana live panels]
-    TSDB --> GSQL[Grafana SQL dashboards]
-    SC[session-control] --> PNATS
-    NTRIP[ntrip-client] --> PNATS
-    PNATS -.-> WATCH[watch, strategy<br/>Phase 7] -.-> TSDB
-    FEED[timing-feed] -- "field_* tables" --> TSDB
-    GSQL -- "alerts" --> NOTIF[notifier] --> NTFY[ntfy, phones]
+  subgraph pit [Pit host]
+    PNATS[(pit nats-server<br/>JetStream)] --> WRITER[ingest-writer] --> TSDB[(TimescaleDB)]
+    LIVE[live-decoder] --> MQ[mosquitto]
+    TSDB --> GRAF[Grafana]
+    MQ --> GRAF
+    CTRL[session-control<br/>ntrip-client] --> PNATS
   end
+  VNATS <-- "stream<br/>NATS leafnode" --> PNATS
+  AGENT -- "live frames<br/>UDP" --> LIVE
 ```
 
-One durable stream (`TELE`) on the vehicle is the system's source of truth.
-The pit's copy of `TELE` is a JetStream *sourced stream*: it pulls from the
-vehicle's stream by sequence number over a NATS leafnode connection, so after
-any interruption — a corner of the track with no RF, a dead radio, an
-overnight power-down — it resumes exactly where it left off. There is no
-separate synchronisation service and no diff-based backfill: catch-up *is*
-the transport.
+Data crosses from the vehicle to the pit in two ways:
 
-## Layered data model
+- **The stream** carries every sample. The vehicle stores it in a JetStream
+  stream named `TELE`. The pit holds a *sourced* copy: it pulls from the
+  vehicle's stream by sequence number over a NATS leafnode connection.
+  After any interruption the pit resumes from the last sequence it
+  received, so the database ends up complete without a separate
+  synchronisation step. The stream is always in order, which means it is
+  late whenever the link is slower than the data.
+- **Live frames** carry only the newest value of the channels a dashboard
+  is showing. They are UDP datagrams, sent when a value changes, and are
+  never queued or retried. They keep the gauges current while the stream
+  is behind.
 
-| Layer | Owns | Knows about |
+An optional **link tunnel** carries both inside one QUIC connection and
+sends live frames first. See [The vehicle-to-pit link](#the-vehicle-to-pit-link).
+
+## Layers
+
+| Layer | Does | Knows about |
 | --- | --- | --- |
-| **Collectors** | Transport + decode: socketCAN frames → DBC signals, serial bytes → NMEA fields, host stats | Nothing about racing. A collector emits `Sample{source_ref, t, value}` where `source_ref` is `bus:device.MESSAGE.SIGNAL` |
-| **Channel catalog** | Meaning: maps source refs to canonical channels (`car.rpm`, `position.lat`, `car.accel_x`) with units, types, and link policies | The profile YAML. Integer channel IDs come from here (via the `ChannelRegistry`) |
-| **Apps & consumers** | Lap timing, dashboards, exports | Canonical channel names only — never a bus, DBC, or wire detail |
+| **Collectors** | Read a transport and decode it: socketCAN frames to DBC signals, serial bytes to NMEA fields, host statistics | The transport only. A collector emits `Sample{source_ref, t, value}`, where `source_ref` is `bus:device.MESSAGE.SIGNAL` |
+| **Channel catalog** | Maps each source ref to a named channel (`car.rpm`, `position.lat`, `car.accel_x`) with units, type and link policy | The profile YAML. Integer channel IDs are assigned here, through the `ChannelRegistry` |
+| **Apps and consumers** | Lap timing, sensor fusion, dashboards, exports | Channel names only |
 
-This is the load-bearing indirection: the timing engine subscribes to
-`position.*` and does not care whether fixes come from a serial GNSS receiver
-or a CAN frame. Swapping hardware is a catalog edit (`CATALOG.md` has the
-worked example).
+Because consumers see only channel names, the hardware behind a channel can
+change without changing any consumer. The timing engine subscribes to
+`position.*` whether fixes come from a serial GNSS receiver or from a CAN
+frame. Moving a signal to different hardware is a catalog edit (`CATALOG.md`
+has a worked example).
 
-Derived data re-enters the same pipeline: the timing engine's outputs (lap and
-sector events, delta-vs-best, predicted lap, distance) are published as
-`lap.*` / `timing.*` channels and flow to the pit like any sensor channel.
+Derived data goes back through the same pipeline. Lap and sector events,
+delta to best lap, predicted lap, distance, and the fused navigation
+solution are published as `lap.*`, `timing.*` and `fused.*` channels and
+reach the pit like any sensor channel.
 
 ## Vehicle agent data flow
 
 ```mermaid
 flowchart TB
-  C1[can0..n threads] --> Q[bounded sample queues<br/>drop-oldest + drop counters]
+  C1[can0..n threads] --> Q[bounded sample queues<br/>drop oldest, count drops]
   C2[serial0..n threads] --> Q
   C3[host thread] --> Q
   Q --> MAP[catalog mapper<br/>source_ref to channel_id]
-  MAP --> TAP[timing engine tap<br/>pre-RBE position channels]
-  TAP --> DERIVED[derived channels re-enter<br/>lap.* timing.*]
+  MAP --> TAP[timing and fusion<br/>read full-rate data]
+  TAP --> DERIVED[derived channels<br/>lap.* timing.* fused.*]
   DERIVED --> MAP
-  MAP --> RBE[RBE / rate-cap filter<br/>deadband, min and max interval]
-  RBE --> BATCH[batcher, 10 to 20 ms tick<br/>protobuf SampleBatch]
+  MAP --> RBE[report-by-exception filter<br/>deadband, min and max interval]
+  RBE --> BATCH[batcher<br/>protobuf SampleBatch per tick]
   BATCH --> JS[JetStream publish<br/>tele.vehicle.source-class]
+  BATCH --> LIVE[live sampler, 10 Hz<br/>watched channels, changed values]
+  LIVE --> UDP[UDP live frames to the pit]
 ```
 
-Behaviours that matter (full spec in `AGENT_DESIGN.md`):
+The full specification is in `AGENT_DESIGN.md`. The main points:
 
-- **Timestamps** — each `SampleBatch` carries a wall-clock and a monotonic
-  epoch; samples carry microsecond offsets. True capture time survives
-  batching, and cross-host latency is measurable.
-- **RBE is a link policy, not a data policy** — the timing engine taps the
-  stream *before* report-by-exception filtering, so timing always sees
-  full-rate position data. Every RBE channel has a `max_interval` heartbeat
-  so downstream fill-forward is bounded.
-- **Backpressure by shedding, visibly** — every queue is bounded and
-  drop-oldest; drop counters are themselves channels (`sys.agent.*`), so
-  overload shows up on a dashboard instead of in a log nobody reads.
-- **Local durability** — the agent publishes to a NATS server on the same
-  host. The only loss window is a hard crash between capture and local ack.
+- **Timestamps.** Each `SampleBatch` carries a wall-clock and a monotonic
+  epoch, and each sample carries a microsecond offset from it. The capture
+  time of every sample is preserved through batching.
+- **Report-by-exception (RBE) applies to the link, not to the apps.** The
+  timing engine and the fusion filter read the data before the RBE filter,
+  so they always see every sample. Each RBE channel has a `max_interval`
+  after which its value is sent even if unchanged, so a consumer never has
+  to carry a value forward for longer than that.
+- **Overload drops the oldest data and counts it.** Every queue is bounded.
+  The drop counters are channels themselves (`sys.agent.*`), so overload
+  appears on a dashboard.
+- **Local durability.** The agent publishes to a NATS server on the same
+  host. Data can be lost only if the host crashes between capture and the
+  local acknowledgement.
+- **Live sampling happens at the vehicle.** The agent keeps the newest
+  value of each channel the pit has asked for and sends the changed ones
+  ten times a second. The pit decides which channels; the vehicle holds no
+  list of its own.
 
 ## Wire format
 
-Defined in `WIRE_FORMAT.md` + `proto/telemetry.proto`. In one paragraph:
-channels are registered once in a `ChannelRegistry` message (id → name, units,
-type, source ref); data rides in `SampleBatch` messages — one per 10–20 ms
-tick per source class — containing `{channel_id, t_offset, value}` triples.
-No topic-per-signal, no repeated JSON keys, no name strings on the hot path.
-Against the predecessor system's per-signal JSON-over-MQTT this is roughly an
-order of magnitude less wire traffic at identical data rates, which is what
-lets full-rate telemetry (including 100 Hz IMU) fit a 2 MHz HaLow channel
-with headroom for video.
+Defined in `WIRE_FORMAT.md` and `proto/telemetry.proto`.
+
+Channels are registered once in a `ChannelRegistry` message (id to name,
+units, type, source ref). Data travels in `SampleBatch` messages, one per
+tick per source class, each holding `{channel_id, t_offset, value}`
+entries. Channel names are never repeated in the data. `LINK_BUDGET.md`
+has the measured bandwidth.
+
+## The vehicle-to-pit link
+
+The link is any IP path between the two hosts. The pit starts every
+connection, so the vehicle needs no knowledge of the pit's address and the
+pit can be behind NAT.
+
+### Paths
+
+openlaps does not depend on a particular radio. It has been run over:
+
+- an 802.11ah (HaLow) radio network, as a plain local network;
+- Starlink, through a Tailscale overlay network;
+- both at once, with Tailscale choosing HaLow when it works and Starlink
+  when it does not.
+
+A cellular modem would be used the same way as Starlink: as another
+internet path under the overlay. This has not been tested.
+
+Each part of the link handles more than one path:
+
+| Part | With several paths |
+| --- | --- |
+| Overlay network (Tailscale) | Gives the vehicle one address and moves between the underlying paths itself. Nothing in openlaps sees the change |
+| Link tunnel | Dials every configured vehicle address at once and uses the first that answers. Redials when the path in use has been silent for 8 s |
+| Live frames | The pit asks on a preferred address, and on the backup addresses only while the preferred one has delivered nothing for 3 s |
+| Leafnode, without the tunnel | Tries its configured URLs in order each time it reconnects |
+
+An overlay network is optional. On a single local network each part is
+given one address.
+
+`tools/car_link.sh` on the pit host shows which path is in use and can
+force Starlink only. The car camera is deliberately limited to Starlink so
+that video never uses HaLow capacity (`deploy/video-tunnel/README.md`).
+
+### Link tunnel
+
+Sent as two separate flows, the stream and the live frames share the
+radio's queue. When the stream is catching up it fills that queue, and
+live frames wait behind it.
+
+`openlaps-link` (`rust/link`) runs at both ends and puts both flows in one
+QUIC connection:
+
+```mermaid
+flowchart LR
+  subgraph pit [Pit host]
+    PN[nats-server leafnode] -- "TCP, local" --> LP[openlaps-link]
+    LD[live-decoder] -- "UDP, local" --> LP
+  end
+  LP <-- "one QUIC connection, UDP 7424<br/>datagrams: live frames, sent first<br/>stream: leafnode bytes" --> LC
+  subgraph vehicle [Vehicle host]
+    LC[openlaps-link] -- "TCP, local" --> VN[nats-server leafnode]
+    LC -- "UDP, local" --> AG[agent live port]
+  end
+```
+
+- Live frames travel as QUIC datagrams. They are sent before stream data
+  and dropped if they cannot be sent.
+- The leafnode connection travels as a QUIC stream. Its TCP connection
+  ends at the local `openlaps-link` on each host, so no TCP crosses the
+  radio.
+- The tunnel limits the stream's rate by measured delay. It holds the
+  queue it adds to the path at about 150 ms, so a live frame waits no
+  longer than that whatever the link's capacity.
+- Both ends authenticate with the leafnode's certificates.
+- When the tunnel is enabled it is the only route for the stream. While
+  the tunnel is down the leafnode retries once a second, and the pit
+  catches up from the vehicle's stream when it returns.
+
+The tunnel is enabled with the `link` profile of the pit stack and the
+`openlaps-link` service on the vehicle. Without it, the leafnode connects
+to the vehicle directly and live frames travel as plain UDP. Details and
+bench measurements: `WIRE_FORMAT.md`, sections "Live link" and "Link
+tunnel".
 
 ## Pit data flow
 
 ```mermaid
 flowchart LR
-  SRC[(pit TELE<br/>sourced stream)] --> W[ingest-writer<br/>durable consumer]
-  W -- "batched COPY" --> DB[(TimescaleDB<br/>samples hypertable +<br/>sessions, stints, laps)]
-  SRC --> L[live-decoder<br/>registry-aware]
-  L -- "selected channels as JSON" --> M[mosquitto ws] --> G1[Grafana live gauges]
-  DB --> G2[Grafana SQL dashboards]
-  NC[ntrip-client] -- "rtcm.vehicle, core NATS" --> LEAF[leafnode to vehicle]
-  S[session-control] -- "cmd.vehicle.session" --> LEAF
-  PM[pit-monitor] -- "chrony, psutil, /health, :8222" --> DB
-  SRC -.-> WT[watch<br/>Phase 7] -. "watch_* tables, watch.* live" .-> DB
-  DB -- "views, per lap" --> ST[strategy] -- "strategy_state, strategy.* live" --> DB
-  TF[timing-feed] -- "field_* tables, our car reconciled" --> DB
-  G2 -- "alert webhook" --> NF[notifier] -- "annunciator" --> PH[pit wall]
-  NF -- "ntfy on the pit LAN, Discord" --> PHONES[phones]
+  SRC[(pit copy of TELE<br/>sourced stream)] --> W[ingest-writer] -- "batched COPY" --> DB[(TimescaleDB)]
+  DB -- "SQL" --> G[Grafana]
+  CAR[vehicle agent] -- "live frames" --> L[live-decoder]
+  L -- "channel selection" --> CAR
+  SRC -- "registries,<br/>fallback data" --> L
+  L -- "JSON" --> M[mosquitto]
+  M -- "subscriber state" --> L
+  SRC --> TE[timing-extrapolator] --> M
+  M -- "live values" --> G
 ```
 
-- **ingest-writer** is a durable JetStream consumer: decode batch → resolve
-  registry → batched `COPY` into the `samples` hypertable; lap/sector events
-  additionally materialise rows in the relational `laps` table. Target
-  source-to-row latency: under 500 ms when the link is healthy.
-- **live-decoder** republishes a configured subset of channels as plain JSON
-  over a small local MQTT broker (websockets) for Grafana's live gauge
-  panels. This is the only MQTT left in the system, it never crosses the
-  radio, and it is disposable — replacing it with Grafana Live push would
-  touch nothing else. Its consumer can sit on the pit's sourced copy
-  (`OPENLAPS_LIVE_SOURCE=pit`, strictly in order, so gauges replay a
-  dropout's backlog before reaching "now") or on the vehicle's own stream
-  through the leafnode (`vehicle`: gauges show current values the moment
-  the link returns while the sourced copy catches up, for the price of
-  each batch crossing the radio twice while the link is healthy), or on the
-  **live link** (`direct`): small UDP frames the car sends beside the
-  stream, holding only the selected channels and only when they change.
-  A late frame is dropped rather than queued, so the gauges stay current
-  while a slow radio backs the stream up, for a few kbit/s instead of a
-  second copy of everything. See `docs/WIRE_FORMAT.md` → Live link. An
-  optional **link tunnel** (`openlaps-link`, one QUIC connection between
-  pit and car) carries those frames ahead of the leafnode stream and keeps
-  the stream from queueing on the radio in front of them.
-- **session-control** publishes driver/stint/session state on `cmd.<vehicle>.*`
-  (replicated to the vehicle over the same leafnode); the agent stamps active
-  session identity onto derived channels so every lap is attributable.
-- **ntrip-client** runs at the pit because that's where the internet is:
-  RTK correction bytes flow vehicle-ward on core NATS (`rtcm.<vehicle>`),
-  deliberately fire-and-forget — a stale correction is a useless correction.
-  GNSS credentials never exist on the vehicle.
-- **pit-monitor** polls the pit's own chrony, host resources, ntrip-client
-  `/health` and NATS monitoring port, and writes them to the `pit_metrics`
-  table (`docs/PIT_SCHEMA.md`). It is the one pit service that reads nothing
-  off the wire and publishes nothing: the vehicle's equivalents arrive as
-  ordinary telemetry through the catalog, but the pit has no catalog and no
-  agent, and three of these four sources existed only in an HTTP endpoint
-  that shows *now* with no history behind it. It runs on the host network
-  namespace so `chronyc` reaches chronyd and psutil sees the real machine.
-  NATS is scraped only at the pit's own `:8222` — `/leafz` reports the
-  leafnode's remote, so the pit learns the state of both ends without
-  needing the vehicle reachable for monitoring.
+### Core services
 
-The pit-derived services follow ADR 0011: each derives data rather than
-carrying it, writes its own tables in the pit-monitor pattern, and publishes
-live values only under a pit-owned namespace (`watch.*`, `strategy.*`,
-`field.*`). The dashed lines indicate derived flow, not future work.
+- **ingest-writer** is a durable JetStream consumer. It decodes each batch,
+  resolves channel IDs against the registry, and writes rows to the
+  `samples` hypertable with batched `COPY`. Lap and sector events also
+  become rows in the `laps` table.
+- **live-decoder** runs at the pit and publishes channel values as JSON to
+  a local MQTT broker (mosquitto), which Grafana's live panels subscribe
+  to. MQTT is used only here and never crosses the link. Where the values
+  come from is set by `OPENLAPS_LIVE_SOURCE`:
 
-- **watch** (landed, P7.5–P7.6) consumes the sourced stream like the
-  timing extrapolator does and scores anomaly monitors — envelopes,
-  per-lap drift by CUSUM, physical ratios per gear and per wheel, a
-  monotonic counter's rate, and a whole-car ridge-regression residual
-  model that ranks the channels in its finding — writing scores and
-  findings to `watch_*` tables and publishing live scores for the
-  reliability dashboard. Findings become alerts through the same Grafana
-  rules as every threshold; `docs/WATCH.md` is the reference.
-- **strategy** (landed, P7.9) runs per lap off the read surface: it polls
-  the views for a new crossing, a plan revision or an open stop, and on
-  each computes fuel remaining by the P6.3 model with its re-base
-  confidence, burn with bounds, the pit window, the stop plan against the
-  operator's race plan, driver-time compliance, the target lap and the
-  refuel clock. Every evaluation is a `strategy_state` row; the warnings
-  are `strategy.*` findings alerted by the same generated rules as every
-  threshold; the radio numbers go out retained under `strategy.*` on the
-  pit-local broker. `fuel.json` reads its views rather than computing in a
-  panel. The race forecast joins it once field data exists (P7.11).
-- **timing-feed** (landed, P7.10) ingests the other cars from a timing
-  provider into the `field_*` tables: the Natsoft TCP feed first (the
-  public endpoint, or the timekeepers' local feed at a LAN address, same
-  client), a capture file replayed, a browser relay's snapshots at
-  `POST /ingest/snapshot`, or a Timing71 service's standalone messages at
-  `WS /ingest/t71` -- one schema whichever filled it. Every live document
-  is captured so a session leaves its own replay fixture. It reconciles
-  our own car -- the race plan's number -- against `v_laps`: a lap-count
-  disagreement is a `field.lap_count` finding that says whose count is
-  higher, and our main-line passings against our crossings measure the
-  vehicle clock against the timekeepers'.
-- **notifier** (landed, P7.2–P7.3) is Grafana's only contact point. It
-  records every alert in the `alert_events` ledger, serves the annunciator
-  at `:8086` (sound, acknowledge buttons, a heartbeat that proves the path
-  is alive), repeats unacknowledged critical alerts, and fans out by
-  severity to phones through the stack's own `ntfy` server on `:8087` --
-  a push over the pit wifi with no internet at all, carrying an
-  Acknowledge button -- and to Discord when there is internet, with a
-  retry queue for when there is not.
+    | Value | Source | Behaviour on a slow or interrupted link |
+    | --- | --- | --- |
+    | `pit` (default) | The pit's sourced copy of the stream | Gauges replay the backlog in order and are late until it has crossed |
+    | `vehicle` | The vehicle's stream, read through the leafnode | Gauges are current once the link returns. Every batch crosses the link twice |
+    | `direct` | Live frames from the vehicle | Gauges stay current. A late frame is dropped, not queued |
+
+    In `direct` mode the selection of channels is made at the pit and the
+    sampling is done at the vehicle. The live-decoder asks the broker which
+    channels have a subscriber and requests only those, so the vehicle
+    sends a channel only while a dashboard is showing it, and sends almost
+    nothing when no dashboard is open. If no frames arrive for 30 s the
+    live-decoder shows the pit's sourced copy until they return.
+- **timing-extrapolator** publishes running lap and sector clocks for the
+  pit wall between the vehicle's timing events.
+- **session-control** publishes driver, stint and session state on
+  `cmd.<vehicle>.*`, which reaches the vehicle over the leafnode. The agent
+  attaches the active session to derived channels so that every lap is
+  attributed to a session and driver.
+- **ntrip-client** runs at the pit because the pit has the internet
+  connection. RTK correction bytes go to the vehicle on core NATS
+  (`rtcm.<vehicle>`) without persistence, because an old correction has no
+  value. The NTRIP credentials are never on the vehicle.
+- **pit-monitor** records the state of the pit itself: chrony, host
+  resources, the ntrip-client's `/health`, and the NATS monitoring port.
+  It writes to the `pit_metrics` table (`PIT_SCHEMA.md`). It reads nothing
+  from the stream and publishes nothing. It runs in the host network
+  namespace so that it can reach chronyd and see the real machine. The
+  NATS endpoint `/leafz` on the pit reports the leafnode's remote end, so
+  the state of both ends is recorded without contacting the vehicle.
+
+### Derived services
+
+These services compute data instead of carrying it (ADR 0011). Each writes
+its own tables and publishes live values only under its own namespace
+(`watch.*`, `strategy.*`, `field.*`).
+
+```mermaid
+flowchart LR
+  SRC[(pit copy of TELE)] --> WT[watch] -- "watch_* tables" --> DB[(TimescaleDB)]
+  DB -- "views, per lap" --> ST[strategy] -- "strategy_state" --> DB
+  TF[timing-feed] -- "field_* tables" --> DB
+  DB --> AR[Grafana alert rules] -- "webhook" --> NF[notifier]
+  NF --> OUT[annunciator page<br/>ntfy, Discord]
+```
+
+- **watch** reads the sourced stream and scores anomaly monitors: fixed
+  envelopes, per-lap drift, physical ratios per gear and per wheel, the
+  rate of a counter, and a whole-car regression model that ranks the
+  channels contributing to a finding. Scores and findings go to the
+  `watch_*` tables and to the reliability dashboard. Findings raise alerts
+  through the same Grafana rules as thresholds. Reference: `WATCH.md`.
+- **strategy** runs once per lap from the database views. It computes fuel
+  remaining and burn rate with bounds, the pit window, the stop plan
+  against the operator's race plan, driver-time compliance, the target lap
+  and the refuel clock. Each evaluation is a `strategy_state` row. Its
+  warnings are `strategy.*` findings, alerted by the same rules. It does
+  not yet forecast the race against the rest of the field.
+- **timing-feed** reads the other cars from a timing provider into the
+  `field_*` tables. Sources are the Natsoft TCP feed, a replayed capture
+  file, snapshots posted by a browser relay, or messages from a Timing71
+  service; all fill the same schema. Every live document is saved so a
+  session can be replayed. It also compares our own car's lap count with
+  the timekeepers' and raises a `field.lap_count` finding when they
+  differ.
+- **notifier** is the only contact point Grafana alerts are sent to. It
+  records every alert in the `alert_events` table, serves the annunciator
+  page (sound, acknowledge buttons, a heartbeat), repeats unacknowledged
+  critical alerts, and forwards by severity to phones through the stack's
+  own `ntfy` server and to Discord. `ntfy` works on the pit network with
+  no internet connection; Discord messages are queued until there is one.
 
 ## Link dropout and recovery
 
 ```mermaid
 sequenceDiagram
   participant V as vehicle TELE (JetStream)
-  participant L as leafnode link
+  participant L as link
   participant P as pit TELE (sourced stream)
   participant W as ingest-writer
-  Note over V,W: healthy: batches flow at tick rate, pit lag ≈ 0
+  Note over V,W: healthy: batches arrive as they are produced
   V->>P: batch seq 1041..1042
   P->>W: deliver, COPY to DB
-  Note over L: link drops (RF shadow, crash, overnight)
-  V->>V: keeps appending seq 1043..8800<br/>(file store, retention-capped)
-  Note over P: live gauges go stale — visibly, via rising sys.agent.publish_lag_ms
-  Note over L: link returns (or car rolls into garage wifi)
+  Note over L: link drops
+  V->>V: keeps appending seq 1043..8800<br/>(file store, capped by retention)
+  Note over P: the database receives nothing
+  Note over L: link returns
   P->>V: resume sourcing from seq 1043
   V-->>P: replay 1043..8800 at link speed
-  P->>W: writer drains in order, DB heals — no gaps, no duplicates
-  Note over V,W: no operator action, no sync service, no diff scan
+  P->>W: writer receives them in order: no gaps, no duplicates
 ```
 
-`sys.agent.publish_lag_ms` is vehicle-side telemetry — it measures the
-agent's own unacked-publish age and arrives over the radio like any other
-channel, so it goes stale (not zero) the instant the link drops, which is
-exactly the visible symptom a pit operator watches for. Pit-side ingest
-lag — how far behind the DB write path is once batches *do* arrive at the
-pit — is a separate, pit-local health concern owned by ingest-writer
-(P3.2)'s `/health` endpoint, not a telemetry channel that crosses the
-radio.
+No operator action is needed. Recovery is the same whether the gap was a
+few seconds on one part of the track or the vehicle being powered off
+overnight, as long as the data is still within the vehicle stream's
+retention limit.
 
-That `/health` lag figure is **relative, not absolute**: the vehicle's and
-the pit's monotonic clocks share no epoch, so `batch_epoch_mono_ns` cannot
-yield a true one-way latency (`WIRE_FORMAT.md` → Timestamp scheme). What it
-reports is how far transit has degraded from the best recently observed —
-~0 when the link is healthy, climbing the moment the pit falls behind —
-alongside a naive wall-clock `wall_lag_ms` that is only as trustworthy as
-the vehicle's GPS-disciplined clock. Anything wanting absolute source-to-row
-latency has to measure it end to end with a shared time reference, which is
-Phase 4's bench work, not something this endpoint can answer.
+**A slow link behaves like a short dropout.** If the vehicle produces more
+than the link can carry, the stream falls behind and nothing is discarded.
+The database is complete once the stream catches up. What the live panels
+show meanwhile depends on the live source (see the table above): with
+`direct` they stay current, with `pit` they fall behind with the stream.
+The amount of data per channel is set by `rate_cap` and `rbe` in the
+catalog.
 
-Overload behaves the same way as outage: if offered load exceeds link
-capacity on a bad-RF day, the pit stream lags rather than dropping. Live
-dashboards fall behind (and say so); history is complete once the stream
-catches up. The manual relief valve is per-channel `rate_cap`/`rbe` in the
-catalog — a config push, not a code change.
+**How lag is observed.**
 
-## What replaced what
-
-The predecessor system accreted overlapping data
-paths. openlaps replaces them with explicit vehicle, transport, storage and
-derived-service boundaries:
-
-| Before | After | Why it could be deleted |
-| --- | --- | --- |
-| 3 × mosquitto (vehicle, pit, bridge) | 2 × nats-server + 1 small pit-local mosquitto | The bridge's topic-forwarding job *is* leafnode + sourced stream |
-| 2 × telegraf (topic→measurement shaping) | ingest-writer | The catalog already names everything; no per-topic parsing config to maintain in duplicate |
-| 2 × InfluxDB kept consistent by a sync service | 1 × TimescaleDB | Vehicle durability is the JetStream file store; there is no second database to reconcile |
-| data-sync-service (diff-based gap backfill) | — | Sourced streams resume by sequence number; recovery is transport-native |
-| per-signal JSON topics (~850 msg/s) | protobuf SampleBatch ticks | ~10× wire reduction; name strings live in the registry, not the hot path |
-| GPS "processor" (serial + NTRIP + NMEA + timing + publish in one class) | serial collector + catalog + timing app | Each concern is a layer; GPS-over-CAN becomes a config edit |
-| psmqtt host monitoring | host collector | One fewer sidecar and broker dependency; host metrics are ordinary channels |
+- `sys.agent.publish_lag_ms` is measured on the vehicle: the age of the
+  agent's oldest unacknowledged publish to its local server. It reaches
+  the pit as an ordinary channel, so during a dropout its value at the pit
+  stops updating.
+- The ingest-writer's `/health` endpoint reports how far the pit's write
+  path is behind. This figure is relative. The vehicle's and the pit's
+  monotonic clocks have no common epoch, so the endpoint reports how much
+  transit time has grown from the best recently observed: about zero on a
+  healthy link, rising when the pit falls behind. It also reports
+  `wall_lag_ms` from wall-clock time, which is only as accurate as the
+  vehicle's clock (`WIRE_FORMAT.md`, Timestamp scheme).
 
 ## Deployment
 
-Two compose stacks (`deploy/vehicle-compose.yaml`, `deploy/pit-compose.yaml`).
-The pit initiates the leafnode connection (works behind NAT/WSL2; the vehicle
-never needs inbound reachability from the pit LAN). All credentials — NATS
-creds files, TLS material, database and dashboard passwords, NTRIP account —
-arrive via environment/mounted files documented in `example.env`; none exist
-in this repository.
+The pit runs as one Compose stack (`deploy/pit-compose.yaml`). The vehicle
+runs either as a Compose stack (`deploy/vehicle-compose.yaml`) or as
+systemd services with NATS in a container, depending on the board
+(`operations/vehicle.md`).
 
-The two servers run **distinct JetStream domains** (`veh`, `pit`), which is
-what makes cross-server JetStream addressing possible over the leafnode: the
-pit sources the vehicle's `TELE` into its own `TELE_VEHICLE`, and
-session-control publishes into the vehicle's domain from a connection to its
-own local server. `deploy/README.md` is the operational reference — bring-up
-order, how to verify each hop, and the one thing to get right about the
-sourced stream.
+All credentials (NATS credentials, TLS material, database and dashboard
+passwords, the NTRIP account, the live-frame key) are supplied through
+environment variables or mounted files documented in `example.env`. None
+are in the repository.
 
-The pit stack includes `notifier`, `watch`, `strategy`, `timing-feed` and an
-`ntfy` server, each pinned and health-checked like the services above. `ntfy`
-lets an Android phone on the pit wifi receive a push without internet access.
+The two NATS servers run **separate JetStream domains** (`veh` and `pit`).
+This is what allows one server to address the other's streams over the
+leafnode: the pit sources the vehicle's `TELE` into its own `TELE_VEHICLE`,
+and session-control publishes into the vehicle's domain through its local
+server. `deploy/README.md` is the operational reference: start-up order and
+how to verify each hop.
+
+Optional parts, each enabled by a Compose profile or a systemd unit:
+
+| Part | Purpose | Reference |
+| --- | --- | --- |
+| Link tunnel (`link`) | Live frames ahead of the stream on a shared link | `WIRE_FORMAT.md`, Link tunnel |
+| Video (`video`) | Car camera through go2rtc, relayed to the pit network | `deploy/video-tunnel/README.md` |
+| Remote ECU tuning (`ecu`) | The car's ECU USB port presented to a tuning PC at the pit | `operations/remote-ecu.md` |
 
 ## Document map
 
-- `WIRE_FORMAT.md` — subjects, streams, protobuf schema, registry lifecycle, timestamps
-- `AGENT_DESIGN.md` — vehicle agent threading, queues, RBE semantics, failure modes
-- `CATALOG.md` — profile schema (`vehicle.yaml`, `catalog.yaml`), naming convention, worked examples
-- `PIT_SCHEMA.md` — the pit database: tables, registry resolution, chunking/compression, stable views
-- `LINK_BUDGET.md` — measured bandwidth model vs. radio capacity
-- `../deploy/README.md` — the two stacks, the leafnode topology, bring-up and verification
-- `operations/index.md` — current deployment and verification guides
-- `status.md` — implemented capability and outstanding validation
-- `WATCH.md` — watch configuration and monitor behaviour
-- `RAW_CAPTURE.md` — local raw-input capture
-- `adr/` — decision records with alternatives considered
+- `WIRE_FORMAT.md`: subjects, streams, protobuf schema, registry lifecycle, timestamps, live link, link tunnel
+- `AGENT_DESIGN.md`: vehicle agent threads, queues, RBE behaviour, failure modes
+- `CATALOG.md`: profile schema (`vehicle.yaml`, `catalog.yaml`), naming convention, worked examples
+- `FUSION.md`: the IMU and GNSS navigation filter
+- `PIT_SCHEMA.md`: the pit database: tables, registry resolution, compression, views
+- `LINK_BUDGET.md`: measured bandwidth against radio capacity
+- `../deploy/README.md`: the two stacks, the leafnode topology, start-up and verification
+- `operations/index.md`: deployment and verification guides
+- `status.md`: what is implemented and what is still to be validated
+- `WATCH.md`: watch configuration and monitor behaviour
+- `RAW_CAPTURE.md`: local capture of raw inputs
+- `adr/`: decision records with the alternatives considered

@@ -71,7 +71,47 @@ For an event with no uplink, start the [pit image registry](registry.md) and
 fill it while the pit is still online; every image the stack needs, and the
 openlaps image the vehicles pull, then comes from the pit.
 
-## 4. Operator surfaces
+## 4. Live frames and the link tunnel (optional)
+
+By default the live gauges read the pit's copy of the stream
+(`OPENLAPS_LIVE_SOURCE=pit`), which is late whenever the link is slow.
+[Architecture](../ARCHITECTURE.md#core-services) compares the three sources.
+
+To take live frames from the vehicle, enable them on the
+[vehicle](vehicle.md) and set in the pit's `deploy/.env`:
+
+```text
+OPENLAPS_LIVE_SOURCE=direct
+OPENLAPS_LIVE_CAR_ADDRS=<vehicle address>[,<second address>]
+OPENLAPS_LIVE_KEY=<the vehicle's OPENLAPS_LIVE_KEY>
+```
+
+The first address is preferred; the others are used only while it delivers
+nothing. The vehicle is asked only for channels that a dashboard is
+showing. This relies on `log_dest topic` and `log_type subscribe` in
+`deploy/mosquitto/mosquitto.conf`. After restarting mosquitto, restart
+Grafana as well, or its live panels hold no subscriptions and stay empty.
+
+To also send live frames ahead of the stream in one connection, install the
+tunnel on the [vehicle](vehicle.md) and set:
+
+```text
+COMPOSE_PROFILES=link
+NATS_VEHICLE_EXTRA_HOST=<name in the leaf URL>:127.0.0.1
+OPENLAPS_LINK_CAR_ADDRS=<vehicle address>:7424[,<second address>:7424]
+OPENLAPS_LINK_SERVER_NAME=<name in the vehicle's certificate>
+OPENLAPS_LIVE_CAR_ADDRS=nats:7423,<vehicle address>
+NATS_PING_MAX=30
+```
+
+Leave `NATS_LEAFNODE_URL_ALT` unset. With the tunnel enabled it is the only
+route for the stream: while it is down the leafnode retries once a second.
+The `link` service shares the NATS container's network, so after NATS is
+recreated run `docker compose -f deploy/pit-compose.yaml up -d link` too.
+`example.env` and the comment on the `link` service in
+`deploy/pit-compose.yaml` describe each setting.
+
+## 5. Operator surfaces
 
 | Surface | URL |
 | --- | --- |

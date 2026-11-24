@@ -3,9 +3,9 @@
 openlaps detects laps, sectors, and pit movements by intersecting consecutive
 GNSS positions with named lines in a KML file. A track definition consists of:
 
-- `<TrackName>.kml` — start/finish, sector, and pit lines;
-- optional `<TrackName>.json` — track length and mini-sector count; and
-- `apps.lap_timing.track` in the profile catalog — the KML filename without
+- `<TrackName>.kml`: start/finish, sector, and pit lines;
+- optional `<TrackName>.json`: track length and mini-sector count; and
+- `apps.lap_timing.track` in the profile catalog: the KML filename without
   `.kml`.
 
 The example at
@@ -37,7 +37,7 @@ profile's `tracks` directory is loaded at startup.
 
 ## Draw the lines
 
-Google Earth Pro is a convenient editor:
+Google Earth Pro can be used as the editor:
 
 1. Navigate to the circuit and create a folder for the track.
 2. For each timing point, choose **Add → Path**.
@@ -48,9 +48,9 @@ Google Earth Pro is a convenient editor:
 6. Save the folder as **KML**, not KMZ, and place it in the profile's `tracks`
    directory.
 
-Google Earth's style and camera metadata are harmless. Each timing placemark
-must ultimately contain a KML 2.2 `LineString` with at least two coordinates.
-openlaps uses only the first two, so use exactly two points for clarity.
+Google Earth's style and camera metadata are ignored. Each timing placemark
+must contain a KML 2.2 `LineString` with at least two coordinates.
+openlaps uses only the first two, so use exactly two points.
 Coordinates use KML order: `longitude,latitude,altitude`.
 
 ## Naming rules
@@ -96,8 +96,8 @@ Line placement determines whether a crossing can be detected reliably:
 - Draw lines approximately perpendicular to vehicle travel. A shallow crossing
   is more sensitive to GNSS noise and produces a less stable interpolated time.
 - Place sector boundaries in sequential lap order and away from nearby pieces
-  of track that could cross the same infinite-looking visual corridor. Only
-  the finite two-point segment is active.
+  of track that the line would reach if it were extended. Only the segment
+  between the two points is active.
 - Do not place two lap timing lines so close that one pair of consecutive GNSS
   fixes could cross both. The engine accepts at most one lap timing point per
   GNSS segment.

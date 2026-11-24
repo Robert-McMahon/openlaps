@@ -21,6 +21,16 @@ nats --server nats://127.0.0.1:4222 stream report
 The pit should report one leafnode. `TELE_VEHICLE` should exist, declare no
 subjects, and advance toward the vehicle's `TELE` sequence.
 
+With the link tunnel enabled, the leafnode's `ip` in `/leafz` is `127.0.0.1`
+(the tunnel's local port). Any other address means the leafnode is outside
+the tunnel. The tunnel logs the path it connected over and a line of
+statistics every 30 s:
+
+```bash
+docker compose -f deploy/pit-compose.yaml logs --since 2m link
+journalctl -u openlaps-link --since -2min   # on the vehicle
+```
+
 ## Application health
 
 ```bash
@@ -68,6 +78,19 @@ docker compose -f deploy/pit-compose.yaml exec timescaledb \
 ```bash
 mosquitto_sub -h 127.0.0.1 -p 1883 -t 'openlaps/#' -v
 ```
+
+With `OPENLAPS_LIVE_SOURCE=direct`, the live-decoder's health endpoint shows
+where the gauges are coming from:
+
+```bash
+curl -fsS http://127.0.0.1:8082/health
+```
+
+`live_frames` should rise while a dashboard with live panels is open.
+`live_fallback` should be `false`; `true` means no frames have arrived and
+the gauges are reading the pit's copy of the stream. `live_selected` is the
+number of channels being asked for, and `live_idle` the number left out
+because nothing is showing them.
 
 Confirm both Grafana data sources are healthy and dashboards show current data.
 Provisioned dashboards query stable database views and use MQTT only for live

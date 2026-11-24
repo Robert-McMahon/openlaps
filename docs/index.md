@@ -1,9 +1,9 @@
 # openlaps
 
-Open-source telemetry for club-level motorsport. openlaps collects CAN, GNSS,
-and host data in the vehicle, carries it over a loss-tolerant NATS JetStream
-link, and serves live and historical pit-wall views from TimescaleDB and
-Grafana.
+Open-source telemetry for club-level motorsport. openlaps collects CAN, GNSS
+and host data in the vehicle, sends it to the pit over a NATS JetStream link
+that recovers from dropouts, and serves live and historical pit-wall views
+from TimescaleDB and Grafana.
 
 [Get started](getting-started/index.md){ .md-button .md-button--primary }
 [View the architecture](ARCHITECTURE.md){ .md-button }
@@ -13,7 +13,10 @@ Grafana.
 - Collects multiple SocketCAN buses, serial GNSS and host health data.
 - Maps hardware-specific signals onto a stable channel catalog.
 - Calculates laps, sectors and timing deltas in the vehicle.
-- Buffers telemetry locally and resumes transfer after radio dropouts.
+- Stores telemetry on the vehicle and resumes transfer after radio dropouts.
+- Keeps live gauges current on a slow link by sending the watched channels
+  separately from the full stream.
+- Works over one network or several (eg HaLow radio and Starlink).
 - Stores named samples, laps, sessions, strategy and field timing at the pit.
 - Serves provisioned Grafana dashboards, alerts and phone notifications.
 
@@ -24,6 +27,7 @@ flowchart LR
   Inputs[CAN · GNSS · host] --> Agent[Vehicle agent]
   Agent --> VehicleNATS[(Vehicle JetStream)]
   VehicleNATS <-->|TLS leafnode| PitNATS[(Pit JetStream)]
+  Agent -->|live frames, UDP| Services
   PitNATS --> Services[Pit services]
   Services --> DB[(TimescaleDB)]
   Services --> MQTT[Live MQTT]
@@ -31,8 +35,10 @@ flowchart LR
   MQTT --> Grafana
 ```
 
-The vehicle owns the durable telemetry stream. The pit sources it by sequence,
-so a temporary link failure delays data instead of discarding it.
+The vehicle holds the durable telemetry stream. The pit copies it by sequence
+number, so a temporary link failure delays data instead of discarding it.
+Live frames carry only the channels a dashboard is showing, so gauges stay
+current while the stream is behind.
 
 ## Choose a path
 
@@ -49,6 +55,7 @@ so a temporary link failure delays data instead of discarding it.
 
 ## Documentation policy
 
-Current behavior belongs in concepts, configuration, operations and reference.
-ADRs explain why decisions were made. Dated bench reports record evidence.
-Phase plans are historical and are not specifications for the current system.
+Current behavior is described in the concepts, configuration, operations and
+reference pages. ADRs explain why decisions were made. Dated bench reports
+record evidence. The historical plans are not specifications for the current
+system.

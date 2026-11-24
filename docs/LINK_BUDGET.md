@@ -1,68 +1,62 @@
-# Link budget: vehicle → pit
+# Link budget: vehicle to pit
 
 ## 1. What this answers
 
-Does full-rate telemetry — every CAN signal, 50 Hz GPS, and **100 Hz IMU**
-with no decimation — fit over a HaLow radio link, and with how much margin?
-And if it ever doesn't, what are the levers to claw margin back without
-redesigning the wire format?
+Does the full-rate telemetry stream (every CAN signal, 50 Hz GPS and 100 Hz
+IMU, with no decimation) fit over a HaLow radio link, and with how much
+margin? If it stops fitting, what can be changed without redesigning the
+wire format?
 
-This is a static analysis, not a live model: it runs
-[`tools/size_batch.py`](https://github.com/Robert-McMahon/openlaps/blob/main/tools/size_batch.py) against a measured signal mix
-and reports the resulting bitrate, then checks that against the HaLow PHY
-rate table. It replaces an earlier hand-calculated model with real serialized
-protobuf messages instead of interactive what-if sliders — the openlaps wire format
-(`ChannelRegistry` / `SampleBatch`, see [`WIRE_FORMAT.md`](WIRE_FORMAT.md)
-and [`proto/telemetry.proto`](https://github.com/Robert-McMahon/openlaps/blob/main/proto/telemetry.proto)) is simple and small
-enough that one worked example, re-run when the signal mix changes, is more
-useful than a slider panel.
+This is a static analysis. It runs
+[`tools/size_batch.py`](https://github.com/Robert-McMahon/openlaps/blob/main/tools/size_batch.py)
+against a measured signal mix, reports the resulting bit rate, and compares
+it with the HaLow PHY rate table. The tool builds real serialized protobuf
+messages in the openlaps wire format (`ChannelRegistry` and `SampleBatch`,
+see [`WIRE_FORMAT.md`](WIRE_FORMAT.md) and
+[`proto/telemetry.proto`](https://github.com/Robert-McMahon/openlaps/blob/main/proto/telemetry.proto)).
+Re-run it when the signal mix changes.
 
-**Headline result:** the full-rate stream, including 100 Hz IMU that never
-crossed the old link at all, offers **~0.57 Mbit/s** — about **4.3× smaller**
-than the predecessor's measured **~2.4 Mbit/s** JSON-over-MQTT baseline —
-and clears the smallest HaLow channel/MCS combination worth considering
-(2 MHz MCS4) with **~3.4× headroom**, leaving room to share the radio with a
-video stream.
+**Result:** the modelled full-rate stream is about **0.57 Mbit/s** of
+protobuf payload with a small framing allowance. On that basis it fits the
+smallest HaLow channel and MCS combination worth considering (2 MHz MCS4)
+with about **3.4×** headroom.
+
+**Read section 7 before relying on this figure.** A bench measurement on
+2026-11-22 found that the bytes actually sent per batch are about three
+times the payload, because of protocol overhead the model does not
+include.
 
 ## 2. Method
 
-`tools/size_batch.py` builds one real `SampleBatch` protobuf message (using
-the generated Python bindings from `proto/telemetry.proto`) sized to a full
-batching tick, and measures `len(batch.SerializeToString())` directly — no
-hand-rolled tag/varint arithmetic. The signal mix modelled:
+`tools/size_batch.py` builds one `SampleBatch` protobuf message, using the
+generated Python bindings from `proto/telemetry.proto`, sized to a full
+batching tick. It measures `len(batch.SerializeToString())` directly. The
+signal mix modelled:
 
 - **CAN**, from measured per-message frame rates in
-  [`tests/fixtures/mqtt_payload_stats.json`](https://github.com/Robert-McMahon/openlaps/blob/main/tests/fixtures/mqtt_payload_stats.json)
-  (the same stats file WP4's round-trip tests use): **36 messages, ~853
-  frames/s, ~2,962 signal updates/s**. Each signal update becomes one
-  `DOUBLE` `Sample`. This is the measured donor car's real signal mix —
-  the example profile — not a hypothetical.
+  [`tests/fixtures/mqtt_payload_stats.json`](https://github.com/Robert-McMahon/openlaps/blob/main/tests/fixtures/mqtt_payload_stats.json):
+  **36 messages, ~853 frames/s, ~2,962 signal updates/s**. Each signal
+  update becomes one `DOUBLE` `Sample`. This is the measured signal mix of
+  the car the example profile describes.
 - **GPS**, modelled at 50 Hz, 6 doubles per fix (lat, lon, speed, heading,
-  plus two status doubles).
-- **IMU**, modelled at 100 Hz, 10 doubles per frame — full rate, not the old
-  stack's 10 Hz decimated `imu/live` copy.
+  and two status values).
+- **IMU**, modelled at 100 Hz, 10 doubles per frame.
 
-Every sample in the tool is a `DOUBLE` (`Sample.d`), which is the
-worst-case (largest) value encoding of the four the proto supports
-(`DOUBLE`/`INT64`/`BOOL`/`STRING`), so these figures are conservative for
-channels that could instead be `INT64` or `BOOL`.
+Every sample in the tool is a `DOUBLE` (`Sample.d`), the largest of the
+value encodings the proto supports, so the figures are conservative for
+channels that could be `INT64` or `BOOL`.
 
-On top of the raw protobuf bytes, the tool adds a **~20 B/msg** NATS framing
-estimate (subject string `tele.<vehicle>.<source-class>` plus protocol
-framing) — a conservative planning figure, not a byte-exact measurement,
-per the tool's own comment.
+On top of the protobuf bytes the tool adds an estimated **~20 B per
+message** for NATS framing (the subject `tele.<vehicle>.<source-class>`
+plus protocol framing). This is a planning estimate, not a measurement.
 
-**Not modelled by the tool, noted here as a caveat:** TCP/IP + 802.11 MAC
-framing underneath NATS. Using the predecessor notebook's own header
-assumptions (52 B IP+TCP, 36 B 802.11 MAC+LLC+FCS = 88 B/segment, and one
-segment per batch since every batch here is well under the 1,460 B MSS),
-this adds roughly **6–13%** on top of the NATS-framed figures below (~13%
-at the smaller 10 ms batches, ~6% at 20 ms — the overhead is fixed per
-segment, so it shrinks as a fraction as batches get bigger). This is the
-inverse of the old per-signal JSON stream, where ~150 B messages meant
-framing was often a *third or more* of the wire bytes: openlaps batches are
-large enough (0.6–1.3 kB) that this framing genuinely is "a few %", not the
-dominant cost the old design had to fight.
+**Not modelled by the tool:** TCP/IP and 802.11 MAC framing under NATS.
+Assuming 52 B of IP and TCP headers and 36 B of 802.11 MAC, LLC and FCS
+(88 B per segment), and one segment per batch (every batch here is well
+under the 1,460 B MSS), this adds about **6 to 13%** to the figures below:
+about 13% at 10 ms batches and 6% at 20 ms. The overhead is fixed per
+segment, so it is a smaller fraction of a larger batch. JetStream headers,
+acknowledgements and TLS are also not modelled; see section 7.
 
 Reproduce with:
 
@@ -71,40 +65,39 @@ uv run python tools/size_batch.py --tick-ms 10
 uv run python tools/size_batch.py --tick-ms 20
 ```
 
-(both against the default stats file, `tests/fixtures/mqtt_payload_stats.json`).
+Both use the default stats file, `tests/fixtures/mqtt_payload_stats.json`.
 
-## 3. Results: 10 ms vs 20 ms tick
+## 3. Results: 10 ms and 20 ms tick
 
-Actual tool output, both ticks, default stats file:
+Tool output for both ticks with the default stats file:
 
 | Tick | Samples/s | Batches/s | Mean batch bytes (protobuf only) | Framed batch bytes (+20 B NATS) | Offered load |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | 10 ms | 4,262 | 100 | 703 B | 723 B | **578.4 kbit/s** |
 | 20 ms | 4,262 | 50 | 1,390 B | 1,410 B | **564.0 kbit/s** |
 
-Samples/s is identical between ticks (same signal mix, same 1-second
-window); what changes is how many times per second the fixed ~20 B
-per-batch header (protobuf batch header: `registry_seq` + two `fixed64`
-epoch fields, ~20 B on its own) and the ~20 B NATS framing estimate get
-paid. Both ticks land in the same ballpark — see §7 for why tick length is
-a weak lever here.
+The number of samples per second is the same for both ticks. What changes
+is how many times per second the fixed per-batch costs are paid: about
+20 B of protobuf batch header (`registry_seq` and two `fixed64` epoch
+fields) and the 20 B NATS framing estimate. Section 6 explains why tick
+length has little effect.
 
 ## 4. RBE in the shipped profile
 
 The channel catalog supports per-channel report-by-exception (deadband,
-`min_interval`, `max_interval` heartbeat — see `WIRE_FORMAT.md` and the
+`min_interval`, `max_interval`; see `WIRE_FORMAT.md` and the
 catalog schema). `profiles/example-club-racer/catalog.yaml` ships policies on
 76 of its 145 channels; its header comment explains each one. They fall in
 two kinds:
 
-- **Lossless** — `{deadband: 0, max_interval: 5s}` on every bool, enum,
+- **Lossless**: `{deadband: 0, max_interval: 5s}` on every bool, enum,
   status word, keypad button and monotonic counter (fuel used, trip
   distance). Report-on-change drops only a value identical to the last one
   sent, so every edge and counter step still goes out. The PDM brake switch
   uses the same rule with a 200 ms heartbeat. `car.trigger_counter`, which
   steps on every frame, is rate-limited to 5 Hz instead; a 16-bit count
   cannot wrap in 200 ms, so a reader can still recover every increment.
-- **Lossy, below the noise floor** — the ~100 Hz PD16 input voltages
+- **Lossy, below the noise floor**: the ~100 Hz PD16 input voltages
   (0.05 V, at most 10 Hz) and the slow pressures, angles, duties and pump
   current (2 kPa, 0.5°, 0.5 %, 0.2 A, at most 20 Hz). Each deadband sits
   well under every alarm and watch threshold on the same channel.
@@ -125,17 +118,17 @@ green, 280 s). CAN-sourced rows only; GNSS and fused channels are extra:
 So RBE now removes about half of all CAN samples. The lossless tier cuts
 about 110 rows/s more, with no information lost. Each discrete channel drops
 from 3.6–19.5 rows/s to its 0.2 rows/s heartbeat. `car.fuel_total_used` drops
-from 7.5 to 2.5–4 rows/s at race pace, because it really does step that
-often. What remains is overwhelmingly signal: the IMU is ~750 rows/s (six
+from 7.5 to 2.5–4 rows/s at race pace, because the counter does step that
+often. Most of what remains is data that changes on every sample: the IMU is ~750 rows/s (six
 100 Hz axes and three 50 Hz Euler angles), the 36–38 Hz engine channels
 another ~550, and the unpoliced PD16 output currents and loads ~100. More
 RBE there would mean deadbanding data the timing, fusion and watch layers
-actually use, which is the trade the next section's levers are for.
+actually use, which is the trade-off described in section 6.
 
-At the ~16 B marginal cost of a `DOUBLE` sample (§2, and the check below),
+At the ~16 B marginal cost of a `DOUBLE` sample (section 2, and the check below),
 the 1,450 rows/s RBE removes are worth roughly 23 kB/s ≈ **185 kbit/s** of
 offered load on track. A bench at idle does better because fewer channels
-move, so treat a bench number as a ceiling, not a budget.
+move, so a bench figure overstates the saving on track.
 
 To rerun it: load the profile with `tools/_bench.py:load_catalog`, decode the
 capture with `CanCollector.replay`, and count `RbeFilter.accept` per channel.
@@ -145,19 +138,19 @@ header-plus-samples measures 703 B − 20 B header ≈ 683 B for 43 samples =
 15.9 B/sample, computed directly from the generated bindings the same way
 `size_batch.py` does.)*
 
-## 5. Verdict vs. the HaLow PHY table
+## 5. Comparison with the HaLow PHY table
 
-Required PHY rate at the standard **0.5 airtime-efficiency** planning
-figure (802.11ah ACKs, backoff, retries, beacons — reused from the
-predecessor notebook), using the slightly heavier 10 ms figure
-(578.4 kbit/s) as the conservative case:
+The required PHY rate is the offered load divided by an airtime efficiency
+of **0.5**, a common planning figure for 802.11ah that allows for ACKs,
+backoff, retries and beacons. Using the heavier 10 ms figure
+(578.4 kbit/s):
 
 ```
 required_phy = offered / airtime_efficiency = 0.578 Mbit/s / 0.5 ≈ 1.2 Mbit/s
 ```
 
 Against the HaLow PHY rate table (802.11ah, 1 spatial stream, long guard
-interval — reused from the predecessor notebook's `HALOW_PHY_MBPS` table):
+interval):
 
 | Channel · MCS | PHY rate | Required (1.2 Mbit/s) | Fits? | Headroom |
 | --- | ---: | ---: | :--: | ---: |
@@ -172,128 +165,108 @@ interval — reused from the predecessor notebook's `HALOW_PHY_MBPS` table):
 | 8 MHz · MCS4 | 17.55 Mbps | 1.2 Mbit/s | ✓ | 15.2× |
 | 8 MHz · MCS7 | 29.25 Mbps | 1.2 Mbit/s | ✓ | 25.3× |
 
-**Verdict:** the full-rate stream fits **2 MHz MCS4** (3.90 Mbps PHY) with
-**~3.4× headroom**, and even the narrower **1 MHz MCS4** (1.80 Mbps) works,
-with ~1.6× headroom. Folding in the TCP/IP+802.11 framing caveat from §2
-(worst case ~13% at 10 ms batches) nudges required PHY to ~1.3 Mbit/s,
-which does not change either verdict — 2 MHz MCS4 headroom drops to ~3.0×,
-still comfortable.
+**Result:** the modelled stream fits **2 MHz MCS4** (3.90 Mbps PHY) with
+about **3.4×** headroom, and fits **1 MHz MCS4** (1.80 Mbps) with about
+1.6×. Adding the TCP/IP and 802.11 framing from section 2 (13% at worst)
+raises the required PHY rate to about 1.3 Mbit/s and reduces the 2 MHz
+MCS4 headroom to about 3.0×.
 
-At 2 MHz MCS4, usable goodput (PHY × airtime efficiency) is 3.90 × 0.5 =
-1.95 Mbit/s; against ~0.57 Mbit/s of telemetry that leaves roughly
-**1.4 Mbit/s** free — enough headroom for a video stream in the ~1–2 Mbit/s
-class sharing the same link. On 4 MHz MCS4 (usable 4.05 Mbit/s) the
-telemetry+video budget is even more comfortable.
+At 2 MHz MCS4 the usable rate (PHY rate × airtime efficiency) is
+3.90 × 0.5 = 1.95 Mbit/s. Against 0.57 Mbit/s of modelled telemetry that
+leaves about 1.4 Mbit/s. The car camera does not use this capacity: video
+is restricted to the Starlink path (`deploy/video-tunnel/README.md`).
 
-## 6. Comparison vs. the predecessor
+## 6. Ways to reduce the load
 
-| | Offered load | Fits 2 MHz MCS4 (3.90 Mbps)? |
-| --- | ---: | :--: |
-| Predecessor (JSON-over-MQTT, per-signal topics, `docs/mqtt_bandwidth.py` "as configured today") | ~2.4 Mbit/s | ✗ — required PHY ~4.8 Mbit/s |
-| openlaps (protobuf `SampleBatch` over NATS, this document, 20 ms tick) | ~0.564 Mbit/s | ✓ — ~3.4× headroom |
+None of these is needed to fit 2 MHz MCS4 on the modelled figures. They
+are listed roughly in order of effort.
 
-That is a **~4.3×** reduction (2.4 / 0.564 ≈ 4.3) at **full data rate with
-zero decimation** — and the new figure *includes* 100 Hz IMU, which the old
-bridge topic list excluded entirely (`telemetry/imu/data` never crossed the
-link; only a 10 Hz decimated `imu/live` copy did). The old design's problem
-was never the signal values themselves — the predecessor notebook measured
-actual payload bytes at only ~5% of the wire for the per-signal JSON
-stream — it was one MQTT+TCP+MAC framing cost paid per signal, per
-message. Batching many samples into one `SampleBatch` per tick (protobuf,
-integer channel IDs instead of repeated name strings) amortizes that fixed
-cost across dozens of samples instead of one.
-
-## 7. Levers if we ever need more margin
-
-None of these are needed to fit 2 MHz MCS4 today (§5); listed in rough
-order of effort, for if a future signal mix (more CAN buses, higher rates)
-erodes the margin.
-
-- **`float32`/`UINT`-with-`scale` values — shipped, per-channel catalog
-  levers.** As of the `format_version`/compact-encoding schema update,
+- **`float32` and scaled `UINT` values (available now, per channel).**
   `Sample.value` offers `float` (4 B, `ValueType.FLOAT`) and a varint
-  `uint64` (`ValueType.UINT`, as low as 1-2 B for small-magnitude values)
-  alongside the original `double` (8 B) — see
-  [`WIRE_FORMAT.md`](WIRE_FORMAT.md) "Value encoding" for the wire
-  mechanics and the `scale`/`offset` fixed-point convention that lets a
-  `UINT` channel carry a fractional physical value (e.g. coolant temp in
-  Kelvin at `scale: 0.1`). These aren't hypothetical any more — they're
-  levers a catalog author reaches for per-channel today via the catalog's
-  `encode:` setting (see [`docs/CATALOG.md`](CATALOG.md)); the default for
-  an unconfigured channel is still `double`, unchanged.
+  `uint64` (`ValueType.UINT`, 1 to 2 B for small values) as well as
+  `double` (8 B). [`WIRE_FORMAT.md`](WIRE_FORMAT.md), "Value encoding",
+  describes the encoding and the `scale`/`offset` convention that lets a
+  `UINT` channel carry a fractional physical value (eg coolant temperature
+  in kelvin at `scale: 0.1`). A catalog author selects these per channel
+  with the `encode:` setting ([`CATALOG.md`](CATALOG.md)). The default for
+  a channel with no setting is `double`.
 
   Measured with `tools/size_batch.py --wire-profile {double,float32,mixed}`
-  (`mixed` = float32 for analog channels, `UINT` for the naturally-integer
-  slice, ~10% of samples — see the tool's docstring), NATS-framed offered
-  load against this document's default signal mix:
+  (`mixed` is float32 for analog channels and `UINT` for the integer
+  channels, about 10% of samples; see the tool's docstring). NATS-framed
+  offered load for this document's signal mix:
 
   | Tick | `double` (baseline) | `float32` | `mixed` |
   | --- | ---: | ---: | ---: |
   | 10 ms | 578.4 kbit/s | 440.8 kbit/s (**−23.8%**) | 430.4 kbit/s (**−25.6%**) |
   | 20 ms | 564.0 kbit/s | 428.0 kbit/s (**−24.1%**) | 419.6 kbit/s (**−25.6%**) |
 
-  In line with the earlier estimate (~25% from halving the value field on
-  channels that don't need double's range), and confirms `mixed` buys only
-  a couple more points over plain `float32` for this signal mix, since most
-  of today's catalog is analog/real-valued rather than naturally-integer.
-- **Columnar payload — reserved as `format_version 2`, not yet
-  implemented.** Right now every sample pays a submessage tag+length plus
-  its own `channel_id` and `t_offset_us` fields. `SampleBatch` reserves
-  field numbers 10-15 (see `proto/telemetry.proto` and `WIRE_FORMAT.md`'s
-  "Future: columnar payload (format_version 2)" section) for a future
-  payload shape — one packed array of values and one packed array of
-  offsets per channel, `channel_id` written once — that removes this
-  per-sample framing entirely. It only pays off at the longer, degraded-
-  link tick lengths (100+ ms) where a channel contributes many samples to
-  one batch; at the 10-20 ms ticks modelled in this document, most
-  channels contribute ≤1 sample per batch, so there's nothing to amortize
-  yet. Estimated **~40% further** reduction on top of the float32/mixed
-  numbers above, at those longer ticks. This is a wire-format-breaking
-  change (a new payload shape gated behind `format_version`), so it
-  remains a "if we actually need it" lever, not a first-choice one — the
-  schema is future-proofed for it, nothing more.
-- **Per-channel rate caps / RBE in the catalog.** Config-only, no code or
-  wire-format change. §4 has what the profile ships and what it measured:
-  every lossless policy is already applied. What is left is lossy, so it
-  trades live fidelity for bandwidth per channel. The cheapest candidates are
-  the PD16 output currents and loads and the slow temperatures, not the
-  fast-changing engine/chassis signals.
-- **Longer ticks — marginal, and here's why.** §3 shows 10 ms → 20 ms only
-  moves offered load from 578.4 to 564.0 kbit/s, a **2.5%** change, because
-  the only tick-dependent cost is the fixed ~20 B/batch header (protobuf) +
-  ~20 B/batch (NATS framing) being paid 100×/s instead of 50×/s — at most
-  ~2,000 B/s of a ~72,000 B/s stream. Going longer than 20 ms buys almost
-  nothing further on bandwidth while directly adding to live-feed latency
-  (tick length is the batching-latency floor per `WIRE_FORMAT.md`), so it's
-  not a lever worth reaching for here.
+  `mixed` saves only about two points more than `float32` for this signal
+  mix, because most of the catalog is analog.
+- **Columnar payload (reserved as `format_version 2`, not implemented).**
+  At present every sample has its own submessage tag and length,
+  `channel_id` and `t_offset_us`. `SampleBatch` reserves field numbers
+  10 to 15 (see `proto/telemetry.proto` and `WIRE_FORMAT.md`, "Future:
+  columnar payload (format_version 2)") for a payload with one packed
+  array of values and one of offsets per channel, with `channel_id`
+  written once. It helps only at longer ticks (100 ms and above), where a
+  channel contributes many samples to one batch. At 10 to 20 ms most
+  channels contribute one sample or none per batch. The estimated saving
+  at the longer ticks is about 40% on top of the figures above. It is a
+  breaking change to the wire format.
+- **Per-channel rate caps and RBE in the catalog.** This needs only a
+  configuration change. Section 4 describes what the example profile does
+  and what was measured. Every lossless policy is already applied, so any
+  further policy is lossy and reduces live fidelity for that channel. The
+  cheapest candidates are the PD16 output currents and loads and the slow
+  temperatures.
+- **Longer ticks (little effect).** Section 3 shows that going from 10 ms
+  to 20 ms changes the offered load from 578.4 to 564.0 kbit/s, or
+  **2.5%**. The only cost that depends on the tick is the fixed per-batch
+  header and framing, about 2,000 B/s of a 72,000 B/s stream. A tick
+  longer than 20 ms saves almost nothing more and adds directly to the
+  delay of the stream, because the tick is the minimum batching delay
+  (`WIRE_FORMAT.md`).
+- **Leafnode compression.** The NATS leafnode compresses with S2
+  (`s2_auto`, on by default at both ends). It is off below about 10 ms
+  round-trip time and at its strongest setting on a slow link. On the
+  bench (2026-11-22) a backlogged link that stayed connected carried
+  about eight times more messages per bit once the strongest setting was
+  in use.
 
-## 8. Caveats
+## 7. Caveats
 
-- **Rates come from a 30 s garage capture spanning a real engine start**,
-  not a track session (`tests/fixtures/mqtt_payload_stats.json`, sourced
-  from the ~30.0 s CAN candump fixture and a ~4.99 s IMU candump). The
-  Haltech ECU broadcast rates are device-configured and measured identical
-  engine-off vs. running, but the PD16A's status messages are not:
-  `PD16A_OUTPUT_STATUS` and `PD16A_DIAGNOSTICS` roughly **double** their
-  rate once the engine runs (38→67 Hz and 10→20 Hz vs. the earlier key-on
-  capture), which is why these figures moved when the fixture gained an
-  engine start. A full-session track capture has still not been measured —
-  re-measure before treating any of this as commissioned.
-- **Airtime efficiency (0.5) is the softest input.** It's a standard
-  planning figure for a clean link; range, interference and retries at a
-  real track push it lower, and required PHY rate scales inversely with
-  it. Section 5's headroom numbers should be read as "headroom at a clean
-  link", not a guarantee under worse RF conditions.
-- **QoS/acknowledgement pattern is materially different from the old
-  stack, and unverified on real hardware.** The predecessor's MQTT bridge
-  used per-message QoS 1 PUBACKs — a small but real per-message reverse-
-  channel cost, explicitly modelled in `docs/mqtt_bandwidth.py`. openlaps'
-  pit `nats-server` instead **sources** the vehicle's `TELE` stream as a
-  durable, resumable pull-based batch replication (see `WIRE_FORMAT.md`'s
-  "JetStream stream definitions") — the reverse-channel chatter pattern
-  (consumer acks, sourcing flow control) is structurally different, not
-  just smaller, and has not been bench-measured over real HaLow. Treat the
-  numbers in this document as the *forward* (vehicle → pit) offered load
-  only, and bench-measure the full round-trip behaviour on real hardware
-  before treating any of this as commissioned — this is Phase 4's garage
-  bench test, not a paper exercise.
+- **Measured bytes on the wire are about three times the payload.** On
+  the bench on 2026-11-22 (vehicle board to pit host over a LAN, GNSS and
+  derived channels only, 110 messages/s, 13 kB/s of payload), each batch
+  of about 120 B cost about 390 B on the wire: 106 kbit/s of payload
+  became 350 kbit/s. The difference is the JetStream acknowledgement
+  subject, the `Nats-Msg-Id` header, TLS records and TCP/IP headers,
+  which the model's 20 B allowance does not cover. The overhead is per
+  message, so its share is smaller for the larger batches of a full CAN
+  load, but that has not been measured. With
+  `OPENLAPS_LIVE_SOURCE=vehicle` every batch crosses the link twice
+  (684 kbit/s in the same test).
+- **Live frames are small by comparison.** With the `direct` live source,
+  97 selected channels of a replayed race CAN capture cost about
+  20 kbit/s, and about 0.6 kbit/s when no dashboard is open
+  (`WIRE_FORMAT.md`, "Live link").
+- **The rates come from a 30 s garage capture that includes an engine
+  start**, not a track session (`tests/fixtures/mqtt_payload_stats.json`,
+  from a 30.0 s CAN candump and a 4.99 s IMU candump). The Haltech ECU's
+  broadcast rates are set in the device and were measured the same with
+  the engine off and running. The PD16A's status messages are not:
+  `PD16A_OUTPUT_STATUS` and `PD16A_DIAGNOSTICS` about double their rate
+  once the engine runs (38 to 67 Hz and 10 to 20 Hz). Section 4 has
+  on-track row rates, but the bit rate of a full track session has not
+  been measured.
+- **The airtime efficiency of 0.5 is the least certain input.** It is a
+  planning figure for a clean link. Range, interference and retries at a
+  track reduce it, and the required PHY rate rises in inverse proportion.
+  The headroom in section 5 is headroom on a clean link.
+- **Traffic from pit to vehicle is not modelled.** The pit sources the
+  vehicle's `TELE` stream (`WIRE_FORMAT.md`, "JetStream stream
+  definitions"), which produces consumer acknowledgements and flow
+  control messages in the reverse direction. The figures here are the
+  vehicle-to-pit load only. The full exchange has not been measured over
+  a HaLow radio.

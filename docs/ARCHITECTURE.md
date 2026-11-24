@@ -51,19 +51,19 @@ sends live frames first. See [The vehicle-to-pit link](#the-vehicle-to-pit-link)
 | Layer | Does | Knows about |
 | --- | --- | --- |
 | **Collectors** | Read a transport and decode it: socketCAN frames to DBC signals, serial bytes to NMEA fields, host statistics | The transport only. A collector emits `Sample{source_ref, t, value}`, where `source_ref` is `bus:device.MESSAGE.SIGNAL` |
-| **Channel catalog** | Maps each source ref to a named channel (`car.rpm`, `position.lat`, `car.accel_x`) with units, type and link policy | The profile YAML. Integer channel IDs are assigned here, through the `ChannelRegistry` |
+| **Channel catalog** | Maps each source ref to a named channel (eg. `car.rpm`, `position.lat`, `car.accel_x`) with units, type and link policy | The profile YAML. Integer channel IDs are assigned here, through the `ChannelRegistry` |
 | **Apps and consumers** | Lap timing, sensor fusion, dashboards, exports | Channel names only |
 
 Because consumers see only channel names, the hardware behind a channel can
-change without changing any consumer. The timing engine subscribes to
-`position.*` whether fixes come from a serial GNSS receiver or from a CAN
-frame. Moving a signal to different hardware is a catalog edit (`CATALOG.md`
+change without changing any consumer. For example, the timing engine subscribes to
+`position.*` so it doesn't matter whether fixes come from a serial GNSS receiver or from a CAN
+frame. Moving a signal to different hardware requires a catalog edit (`CATALOG.md`
 has a worked example).
 
-Derived data goes back through the same pipeline. Lap and sector events,
+Derived data such as lap and sector events,
 delta to best lap, predicted lap, distance, and the fused navigation
 solution are published as `lap.*`, `timing.*` and `fused.*` channels and
-reach the pit like any sensor channel.
+reach the pit like any other sensor channel.
 
 ## Vehicle agent data flow
 
@@ -85,9 +85,7 @@ flowchart TB
 
 The full specification is in `AGENT_DESIGN.md`. The main points:
 
-- **Timestamps.** Each `SampleBatch` carries a wall-clock and a monotonic
-  epoch, and each sample carries a microsecond offset from it. The capture
-  time of every sample is preserved through batching.
+- **Timestamps.** Each `SampleBatch` carries the UTC time of the batch, and each sample carries a microsecond offset from it, so the capture time of every sample is preserved through batching. The batch also carries a reading of the vehicle's monotonic clock (a counter that is never adjusted), so elapsed time on the vehicle can be measured even if the UTC clock is corrected (eg if GPS gets a fix on startup).
 - **Report-by-exception (RBE) applies to the link, not to the apps.** The
   timing engine and the fusion filter read the data before the RBE filter,
   so they always see every sample. Each RBE channel has a `max_interval`
@@ -227,6 +225,7 @@ flowchart LR
     sends a channel only while a dashboard is showing it, and sends almost
     nothing when no dashboard is open. If no frames arrive for 30 s the
     live-decoder shows the pit's sourced copy until they return.
+
 - **timing-extrapolator** publishes running lap and sector clocks for the
   pit wall between the vehicle's timing events.
 - **session-control** publishes driver, stint and session state on
@@ -307,9 +306,8 @@ sequenceDiagram
 ```
 
 No operator action is needed. Recovery is the same whether the gap was a
-few seconds on one part of the track or the vehicle being powered off
-overnight, as long as the data is still within the vehicle stream's
-retention limit.
+few seconds of link dropout on one part of the track, or there was no link
+until the car returned to the pits.
 
 **A slow link behaves like a short dropout.** If the vehicle produces more
 than the link can carry, the stream falls behind and nothing is discarded.

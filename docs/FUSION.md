@@ -2,17 +2,17 @@
 
 The vehicle agent can fuse the IMU and GNSS into a single navigation
 solution: a 15-state error-state Kalman filter (an INS aided by GNSS). It
-runs in-agent on the pre-RBE tap, like lap timing, and emits `fused.*`
-derived channels at a configurable rate (default 50 Hz).
+runs inside the agent on the pre-RBE tap, like lap timing, and emits
+`fused.*` derived channels at a configurable rate (default 50 Hz).
 
-It exists for two jobs:
+It has two purposes:
 
-- **Vehicle dynamics.** Attitude that stays right through sustained
-  high-g corners, sideslip angle, gravity-free body-frame acceleration,
-  road grade and bias-corrected yaw rate. None of these are directly
-  measured by either sensor.
-- **Better position.** IMU-rate position that rides through short GNSS
-  dropouts, and that lap timing can use instead of raw fixes.
+- **Vehicle dynamics.** Attitude that stays correct through sustained
+  high-g corners, sideslip angle, body-frame acceleration with gravity
+  removed, road grade and bias-corrected yaw rate. Neither sensor
+  measures any of these directly.
+- **Better position.** Position at the IMU rate that continues through
+  short GNSS dropouts, and that lap timing can use instead of raw fixes.
 
 ## Model
 
@@ -35,7 +35,7 @@ generates synthetic drives with truth for testing and tuning.
   while parked; the parked gyro average seeds the gyro bias. Heading is not
   observable at rest, so the filter initialises on the first fix above
   `align_speed_kmh` (default 18) with heading from GNSS course. Heading
-  tightens to a fraction of a degree in the first corners. The status
+  error falls to a fraction of a degree in the first corners. The status
   channel reads `aligning` until then, and position passes through from
   the receiver meanwhile (see IMU failure below).
 - **Weighting.** Each fix is weighted by the receiver's own GST 1-sigma
@@ -54,28 +54,30 @@ generates synthetic drives with truth for testing and tuning.
 - **Outliers.** A fix failing a 99.9 % chi-square gate is dropped. If
   fixes keep disagreeing for more than a second (a real solution jump such
   as float to fixed), the filter re-anchors to them. Height (GGA) is gated
-  and re-anchored the same way: it is the only thing holding the inertial
-  vertical channel, which runs away within minutes if heights stay
-  rejected. If heights stop arriving for 2 s the vertical velocity is held
-  loosely at zero and `fused.alt` stops until they return.
-- **Outages.** Through a dropout the filter dead-reckons on the IMU alone
-  (status `dead_reckoning`). Past `max_outage_s` (default 10) it stops
-  reporting position and re-aligns when GNSS returns. There is
-  deliberately no "car goes where it points" constraint: it would erase
-  the sideslip this exists to measure.
+  and re-anchored the same way. Height is the only measurement that
+  constrains the inertial vertical channel, which diverges within minutes
+  if heights stay rejected. If heights stop arriving for 2 s the vertical
+  velocity is weakly constrained to zero and `fused.alt` stops until they
+  return.
+- **Outages.** During a dropout the filter dead-reckons on the IMU alone
+  (status `dead_reckoning`). After `max_outage_s` (default 10) it stops
+  reporting position and re-aligns when GNSS returns. The filter
+  deliberately has no constraint that the car travels in the direction it
+  points, because that constraint would remove the sideslip the filter is
+  meant to measure.
 - **IMU failure.** The IMU is treated as failed when its frames stop for
   more than 250 ms, when a reading is non-finite or beyond any automotive
   range (30 g, 1800 °/s), or when it repeats bit-identical readings for
   0.5 s while the car is moving (a frozen sensor or stuck CAN frames;
-  parked, a quiet sensor can legitimately repeat). The filter drops to
-  status `gnss_only`:
+  when parked, a quiet sensor can repeat readings without a fault). The
+  filter changes to status `gnss_only`:
     - `fused.lat`/`lon`/`alt`, `speed`, `course`, `pos_std` and `gnss_age`
       pass through from the receiver at the fix rate, projected forward by
       `latency_ms` and moved from the antenna to the IMU position using the
       last course seen above 2 m/s. Lap timing on `fused.*` keeps running.
     - Attitude-derived channels (roll, pitch, yaw, yaw rate, accelerations,
-      sideslip, grade, vertical velocity) stop, rather than freeze on
-      stale values.
+      sideslip, grade, vertical velocity) stop. They do not hold their
+      last values.
     - Once the IMU has been healthy for 1 s the filter re-aligns as at
       startup (status `aligning`, then the fix status).
 
@@ -97,8 +99,8 @@ generates synthetic drives with truth for testing and tuning.
 | `fused.pos_std` | m | Horizontal 1-sigma position uncertainty |
 | `fused.gnss_age` | s | Time since the last accepted fix |
 
-All are reported at the IMU's location. Translating to the CoG or rear
-axle is a lever-arm calculation a consumer can do from these channels.
+All are reported at the IMU's location. A consumer can translate them to
+the CoG or rear axle with a lever-arm calculation from these channels.
 
 ## Configuration
 
@@ -163,7 +165,7 @@ sentence_rates_hz: { GGA: 10, GST: 10 }
 4. **Mounting misalignment.** On a long straight at steady speed,
    `fused.slip_angle` should average zero. A consistent offset is yaw
    misalignment: put it in `mount_rpy_deg`.
-5. **Lap timing.** Once the above check out, switch
+5. **Lap timing.** Once the checks above pass, change
    `apps.lap_timing.position` from `position.*` to `fused.*`.
 
 ## Expected accuracy
@@ -183,18 +185,19 @@ at 100–165 km/h with corners up to 1.5 g (3.6° sideslip, 2.7° roll),
 | 5 s GNSS outage | < 0.3 m drift |
 | IMU failed (`gnss_only`) | < 0.25 m, receiver noise plus the lever arm without attitude |
 
-The real car will be worse than the simulator, mainly from vibration and
-unmodelled timing jitter. Treat these as a ceiling to tune towards.
+The real car will be less accurate than the simulator, mainly because of
+vibration and unmodelled timing jitter. These figures are the best case.
 
 ## Known limits and next steps
 
 - **Latency is a constant.** Read jitter is removed at the collector, but
   the receiver's fixed latency is still a configured number. It is weakly
-  observable from the data (along-track residual against speed); with a
-  PPS-disciplined clock it could be measured outright.
+  observable from the data (along-track residual against speed). With a
+  PPS-disciplined clock it could be measured directly.
 - **Real-time only.** A forward-backward (RTS) smoother over stored data
-  would improve post-session analysis, especially through outages.
+  would improve post-session analysis, especially through outages. It is
+  not implemented.
 - **The FDI's own attitude** (`car.roll`/`pitch`/`yaw`) is not used. It
   could seed alignment or serve as a cross-check.
-- **Outputs at the IMU.** CoG / rear-axle referenced channels are a natural
-  addition for vehicle-dynamics work.
+- **Outputs at the IMU.** Channels referenced to the CoG or rear axle are
+  not provided. They would be useful for vehicle-dynamics work.

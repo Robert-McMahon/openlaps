@@ -3,7 +3,7 @@
 Tune the car's ECU (a Haltech Elite in the example profile) from the pit. The
 ECU's USB port is exported by the vehicle SBC over USB/IP, crosses the HaLow
 link, is attached on the pit host, and is passed into a Windows guest where
-the vendor's tuning software (NSP) runs as if the cable were plugged in.
+the vendor's tuning software (eg. Haltech NSP) runs as if the cable were plugged in.
 
 ```text
 ECU ──USB──▶ vehicle SBC              pit host (Omarchy)
@@ -30,23 +30,11 @@ ECU ──USB──▶ vehicle SBC              pit host (Omarchy)
     A dropout during a firmware update can leave the ECU unable to boot. Do
     firmware updates on a cable at the car, with a stable supply.
 
-- **Calibration changes only, car stationary.** USB/IP turns every USB
-  transaction into a round trip over the radio. A write that stalls on a
-  dropout is at best a timeout in NSP and at worst a half-applied change on a
-  running engine. Arm remote access in the pit lane or the garage, not on
-  track.
-- **Check the category's regulations.** Many forbid changing engine settings
-  from the pit while the car is on circuit. This setup does not stop anyone
-  doing it; disarming the vehicle end does.
+- **Link latency** - ECU software connected by USB generally expects very low latency and may fail to connect at all over a high latency link such as satellite or cellular.
+- **Link stability** - If a link drops out momentarily, the ECU may not reconnect. Closing and reopening the ECU software may be required.
+- **Avoid major changes** - There is a risk that the program becomes corrupted and will need to be reloaded when hardwired to rectify. Changes that need an ecu restart should be avoided
 - **usbipd has no authentication.** Whoever connects first can attach the ECU
-  and write to it. The export is off until armed, and the nft rule limits
-  port 3240 to the pit's address. Keep both.
-- **While armed, the vehicle cannot use the ECU's USB port itself.** CAN
-  telemetry is unaffected.
-- **Bandwidth is not the concern; latency is.** NSP's traffic is small
-  against the ~1.4 Mbit/s of headroom in the [link budget](../LINK_BUDGET.md),
-  but NSP may time out on a link whose round trip spikes. Prove it on the
-  bench first (below).
+  and write to it.
 
 ## 1. Find the ECU's USB IDs
 

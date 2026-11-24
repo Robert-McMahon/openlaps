@@ -306,9 +306,8 @@ sequenceDiagram
 ```
 
 No operator action is needed. Recovery is the same whether the gap was a
-few seconds on one part of the track or the vehicle being powered off
-overnight, as long as the data is still within the vehicle stream's
-retention limit.
+few seconds of link dropout on one part of the track, or there was no link
+until the car returned to the pits.
 
 **A slow link behaves like a short dropout.** If the vehicle produces more
 than the link can carry, the stream falls behind and nothing is discarded.

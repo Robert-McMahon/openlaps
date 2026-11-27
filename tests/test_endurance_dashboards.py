@@ -352,8 +352,8 @@ def test_driver_dashboard_compares_a_lap_with_a_reference_by_distance() -> None:
     # linked between them.
     chart = next(panel for panel in panels if panel["type"] == "volkovlabs-echarts-panel")
     assert dashboard.get("graphTooltip", 0) == 0
-    traces, sections = (target["rawSql"] for target in chart["targets"])
-    assert [target["refId"] for target in chart["targets"]] == ["A", "B"]
+    traces, sections, positions = (target["rawSql"] for target in chart["targets"])
+    assert [target["refId"] for target in chart["targets"]] == ["A", "B", "C"]
     for column in ("Distance", "Speed", "Speed ref", "Pedal", "Brake", "Gear ref", "Time lost"):
         assert f'AS "{column}"' in traces, column
     assert "timing.distance" in traces
@@ -367,14 +367,31 @@ def test_driver_dashboard_compares_a_lap_with_a_reference_by_distance() -> None:
     code = (DASHBOARDS.parent / "panels" / "driver_chart.js").read_text(encoding="utf-8")
     assert chart["options"]["getOption"] == code
     assert chart["options"]["editorMode"] == "code"
-    assert "link: [{ xAxisIndex: 'all' }]" in code, "the crosshair must span every chart"
+    assert "link: [{ xAxisIndex: along }]" in code, "the crosshair must span every trace"
     assert "customValues: mids" in code, "the axis is labelled with section names"
+    # The map beside the traces draws both laps' lines from the receiver's
+    # positions, looked up by the same lap distance the traces use.
+    for column in ("Which", "Distance", "Lat", "Lon"):
+        assert f'AS "{column}"' in positions, column
+    for channel in ("timing.distance", "position.lat", "position.lon"):
+        assert channel in positions, channel
+    assert "OFFSET 0" in positions, "samples are read per lap, inside the lap's chunks"
+    # It follows the crosshair and the zoom, and gives its listeners back
+    # when the panel runs the code again.
+    for event in ("'updateAxisPointer'", "'datazoom'"):
+        assert f"listen(chart, {event}" in code, event
+    assert "version: 2, option, unsubscribe" in code
     # A chart this tall must not swallow the page scroll.
     assert "type: 'inside'" not in code
     gg = next(panel for panel in panels if panel["type"] == "xychart")
     # See the lap scatter: without it Grafana rewrites the options.
     assert float(gg["pluginVersion"].rsplit(".", 1)[0]) >= 11.1
-    assert gg["options"]["series"] == [{}]
+    # Each lap is its own named series, and both axes carry their own name,
+    # so the hover reads "Lateral g" and "Longitudinal g" under the lap.
+    assert gg["title"] == "g-g"
+    assert [series["name"]["fixed"] for series in gg["options"]["series"]] == ["Lap", "Reference"]
+    for target in gg["targets"]:
+        assert 'AS "Lateral g"' in target["rawSql"] and 'AS "Longitudinal g"' in target["rawSql"]
     corners = next(panel for panel in panels if panel["title"] == "Corner by corner")
     assert "v_track_sections" in corners["targets"][0]["rawSql"]
     # Sections are compared as fractions of the lap: the car's lap distance

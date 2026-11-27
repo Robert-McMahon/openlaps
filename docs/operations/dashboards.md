@@ -13,7 +13,7 @@ read-only. The repository is the source of truth; a browser edit is temporary.
 | `reliability.json` | Reliability | Slow trends: oil pressure per 1000 rpm, temperatures, knock, PDM currents |
 | `fuel.json` | Strategy | Fuel, laps to dry, pit window and stop plan from the strategy service |
 | `laps.json` | Session report | One session: laps, driver pace, pit stops, stints, driving time |
-| `driver.json` | Driver | Coaching: one lap against a reference lap by distance (speed, time lost, throttle, brake, gear, g-g) and corner by corner |
+| `driver.json` | Driver | Coaching: one lap against a reference lap by distance (speed, time lost, pedal, brake, gear, the line on a track map, g-g) and corner by corner |
 | `system.json` | System status | GNSS, clocks, agent publish path, ingest, NATS, hosts |
 
 ## Change a dashboard
@@ -55,9 +55,18 @@ docker compose -f deploy/pit-compose.yaml restart grafana
   lives in `deploy/pit-config/grafana/panels/driver_chart.js`; the panel's
   `options.getOption` is a copy of it, kept equal by a test, so edit the
   file and paste it into the dashboard JSON (or the reverse). The panel reads
-  two frames: `A`, one row per 10 m, and `B`, the track's sections from
-  `v_track_sections` (see "Lap sections" in `docs/TRACK_SETUP.md`); without
-  sections the axis reads metres.
+  three frames: `A`, one row per 10 m; `B`, the track's sections from
+  `v_track_sections` (see "Lap sections" in `docs/TRACK_SETUP.md`), without
+  which the axis reads metres; and `C`, `position.lat` and `position.lon`
+  against `timing.distance` every 40 ms of each lap.
+- Frame `C` draws a map of both laps' lines to the right of the traces. A
+  dot on each line marks the crosshair's distance, the readout gives how far
+  left or right of the reference the lap ran, and zooming the traces zooms
+  the map to the same stretch of track. Pointing at the map moves the
+  crosshair to that place. The lines are only as good as the receiver's fix:
+  with RTK fixed they are within a few centimetres, without it the gap
+  between two laps is mostly receiver error. A panel narrower than 900
+  pixels shows the traces without the map.
 - An XY chart panel must carry `"pluginVersion"` (11.1 or later). Without it
   Grafana takes the options for the old XY chart format and rewrites them on
   load, drawing "Err" or one series. Put units and axis limits in overrides

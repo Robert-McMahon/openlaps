@@ -386,7 +386,12 @@ def test_driver_dashboard_compares_a_lap_with_a_reference_by_distance() -> None:
     gg = next(panel for panel in panels if panel["type"] == "xychart")
     # See the lap scatter: without it Grafana rewrites the options.
     assert float(gg["pluginVersion"].rsplit(".", 1)[0]) >= 11.1
-    assert gg["options"]["series"] == [{}]
+    # Each lap is its own named series, and both axes carry their own name,
+    # so the hover reads "Lateral g" and "Longitudinal g" under the lap.
+    assert gg["title"] == "g-g"
+    assert [series["name"]["fixed"] for series in gg["options"]["series"]] == ["Lap", "Reference"]
+    for target in gg["targets"]:
+        assert 'AS "Lateral g"' in target["rawSql"] and 'AS "Longitudinal g"' in target["rawSql"]
     corners = next(panel for panel in panels if panel["title"] == "Corner by corner")
     assert "v_track_sections" in corners["targets"][0]["rawSql"]
     # Sections are compared as fractions of the lap: the car's lap distance

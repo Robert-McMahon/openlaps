@@ -272,7 +272,7 @@
     },
     {
       "id": 7,
-      "title": "Grip used (g-g)",
+      "title": "g-g",
       "type": "xychart",
       "pluginVersion": "12.4.9",
       "datasource": {
@@ -327,14 +327,10 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byRegexp",
-              "options": "/Lateral g/"
+              "id": "byName",
+              "options": "Lateral g"
             },
             "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
               {
                 "id": "custom.axisLabel",
                 "value": "Lateral g"
@@ -343,23 +339,8 @@
           },
           {
             "matcher": {
-              "id": "byRegexp",
-              "options": "/Reference/"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "orange"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "/^Lap$|Lap$/"
+              "id": "byFrameRefID",
+              "options": "A"
             },
             "properties": [
               {
@@ -370,13 +351,73 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
           }
         ]
       },
       "options": {
-        "mapping": "auto",
+        "mapping": "manual",
         "series": [
-          {}
+          {
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 0
+              }
+            },
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "Lateral g"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Longitudinal g"
+              }
+            },
+            "name": {
+              "fixed": "Lap"
+            }
+          },
+          {
+            "frame": {
+              "matcher": {
+                "id": "byIndex",
+                "options": 1
+              }
+            },
+            "x": {
+              "matcher": {
+                "id": "byName",
+                "options": "Lateral g"
+              }
+            },
+            "y": {
+              "matcher": {
+                "id": "byName",
+                "options": "Longitudinal g"
+              }
+            },
+            "name": {
+              "fixed": "Reference"
+            }
+          }
         ],
         "legend": {
           "showLegend": true,
@@ -400,7 +441,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_lat') AS lat, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_long') AS lon FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'fused.accel_lat', 'fused.accel_long') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT lat AS \"Lateral g\", lon AS \"Lap\" FROM pts WHERE which = 'Lap' AND lat IS NOT NULL AND lon IS NOT NULL ORDER BY t"
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_lat') AS lat, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_long') AS lon FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'fused.accel_lat', 'fused.accel_long') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT lat AS \"Lateral g\", lon AS \"Longitudinal g\" FROM pts WHERE which = 'Lap' AND lat IS NOT NULL AND lon IS NOT NULL ORDER BY t"
         },
         {
           "refId": "B",
@@ -411,7 +452,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_lat') AS lat, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_long') AS lon FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'fused.accel_lat', 'fused.accel_long') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT lat AS \"Lateral g\", lon AS \"Reference\" FROM pts WHERE which = 'Reference' AND lat IS NOT NULL AND lon IS NOT NULL ORDER BY t"
+          "rawSql": "WITH laps AS (SELECT lap_id, track_name, session_lap, driver, lap_start_at, crossed_at, lap_time_s, clean FROM v_session_laps WHERE vehicle_id = '$vehicle' AND session_id::text = '$session'), picked AS (SELECT 'Lap' AS which, * FROM laps WHERE lap_id::text = '$lap' UNION ALL SELECT 'Reference' AS which, * FROM laps WHERE lap_id::text = CASE WHEN '$lap_ref' = 'best' THEN (SELECT lap_id::text FROM laps WHERE clean ORDER BY lap_time_s LIMIT 1) ELSE '$lap_ref' END), grid AS (SELECT p.which, p.lap_start_at, v.* FROM picked p CROSS JOIN LATERAL (SELECT time_bucket('100 ms', s.time) AS t, avg(s.value) FILTER (WHERE s.channel = 'timing.distance') AS dist, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_lat') AS lat, avg(s.value) FILTER (WHERE s.channel = 'fused.accel_long') AS lon FROM v_samples_named s WHERE s.vehicle_id = '$vehicle' AND s.channel IN ('timing.distance', 'fused.accel_lat', 'fused.accel_long') AND s.time > p.lap_start_at - interval '30 seconds' AND s.time <= p.crossed_at GROUP BY 1 OFFSET 0) v), filled AS (SELECT * FROM grid), pts AS (SELECT * FROM filled WHERE t >= lap_start_at AND dist IS NOT NULL) SELECT lat AS \"Lateral g\", lon AS \"Longitudinal g\" FROM pts WHERE which = 'Reference' AND lat IS NOT NULL AND lon IS NOT NULL ORDER BY t"
         }
       ]
     },

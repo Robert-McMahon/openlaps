@@ -367,7 +367,7 @@ def test_driver_dashboard_compares_a_lap_with_a_reference_by_distance() -> None:
     code = (DASHBOARDS.parent / "panels" / "driver_chart.js").read_text(encoding="utf-8")
     assert chart["options"]["getOption"] == code
     assert chart["options"]["editorMode"] == "code"
-    assert "link: [{ xAxisIndex: all }]" in code, "the crosshair must span every trace"
+    assert "link: [{ xAxisIndex: along }]" in code, "the crosshair must span every trace"
     assert "customValues: mids" in code, "the axis is labelled with section names"
     # The map beside the traces draws both laps' lines from the receiver's
     # positions, looked up by the same lap distance the traces use.

@@ -114,7 +114,7 @@ const rows = [
   { name: 'Gear', unit: '', height: 10, digits: 0, min: 0, step: true, series: [['Gear', 'Lap', LAP], ['Gear ref', 'Reference', REF]] },
 ];
 
-const TOP = 4;      // % above the first chart, for the legend
+const TOP = 7;      // % above the first chart, for the legend and section names
 const GAP = 2.5;    // % between charts
 const BOTTOM = 11;  // % below the last chart, for section names and the zoom bar
 const scale = (100 - TOP - BOTTOM - GAP * (rows.length - 1)) / rows.reduce((sum, r) => sum + r.height, 0);
@@ -286,6 +286,18 @@ if (mapped) {
 setTimeout(() => context.panel.chart && context.panel.chart.dispatchAction({
   type: 'takeGlobalCursor', key: 'dataZoomSelect', dataZoomSelectActive: true,
 }), 300);
+// The section names again along the top of the first chart: one more axis on
+// that chart, which zooms and takes the crosshair with the others.
+const along = all.slice();
+if (mids.length) {
+  along.push(xAxis.length);
+  xAxis.push({
+    gridIndex: 0, type: 'value', position: 'top', min: 0, max: lapEnd,
+    axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false },
+    axisLabel: { show: true, color: text, fontSize: 11, hideOverlap: true, customValues: mids, formatter: (v) => sectionAt(v) },
+    axisPointer: { label: { show: false } },
+  });
+}
 const option = {
   animation: false,
   legend: {
@@ -293,7 +305,7 @@ const option = {
     textStyle: { color: text }, icon: 'roundRect', itemHeight: 3,
   },
   grid, xAxis, yAxis, series,
-  axisPointer: { link: [{ xAxisIndex: all }], lineStyle: { color: text, type: 'solid' } },
+  axisPointer: { link: [{ xAxisIndex: along }], lineStyle: { color: text, type: 'solid' } },
   tooltip: {
     trigger: 'axis', confine: true, transitionDuration: 0,
     backgroundColor: context.grafana.theme.colors.background.secondary,
@@ -321,12 +333,12 @@ const option = {
   toolbox: {
     right: mapped ? MAP + 2 + '%' : 20, top: 0, itemSize: 13, iconStyle: { borderColor: text },
     feature: {
-      dataZoom: { xAxisIndex: all, yAxisIndex: false, title: { zoom: 'Zoom to a stretch', back: 'Undo zoom' } },
+      dataZoom: { xAxisIndex: along, yAxisIndex: false, title: { zoom: 'Zoom to a stretch', back: 'Undo zoom' } },
       restore: { title: 'Whole lap' },
     },
   },
   dataZoom: [
-    { type: 'slider', xAxisIndex: all, filterMode: 'none', height: 14, bottom: 4, showDetail: false,
+    { type: 'slider', xAxisIndex: along, filterMode: 'none', height: 14, bottom: 4, showDetail: false,
       left: 64, right: mapped ? MAP + 2 + '%' : 24,
       borderColor: line, textStyle: { color: text } },
   ],

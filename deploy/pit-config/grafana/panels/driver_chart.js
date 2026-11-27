@@ -304,7 +304,7 @@ const option = {
       const out = ['<b>' + Math.round(d) + ' m' + (sectionAt(d) ? ' &nbsp; ' + sectionAt(d) : '') + '</b>'];
       rows.forEach((row, i) => {
         const cells = params.filter((p) => p.axisIndex === i && p.value[1] != null).map((p) =>
-          p.marker + (row.series.length > 1 ? p.seriesName + ' ' : '') + '<b>' + Number(p.value[1]).toFixed(row.digits) + '</b>');
+          p.marker + '<b>' + Number(p.value[1]).toFixed(row.digits) + '</b>');
         if (cells.length) out.push(row.name + (row.unit ? ' (' + row.unit + ')' : '') + ': ' + cells.join(' &nbsp; '));
       });
       const offset = mapped ? offsetAt(d) : null;
